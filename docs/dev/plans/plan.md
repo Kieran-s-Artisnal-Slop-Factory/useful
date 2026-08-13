@@ -1,4 +1,8 @@
-The purpose of this project is to provide a set of standardized utilities that can be installable offline as a PWA. There are several categories of tools that should exist:
+The purpose of this project is to provide a set of standardized utilities that can be installable offline as a PWA. 
+
+## Features
+
+There are several categories of tools that should exist:
 
 1. Time
     1. Timers
@@ -116,3 +120,16 @@ The purpose of this project is to provide a set of standardized utilities that c
             3. See data in QR code
             4. if it's a link allow it to be clickable as well (but don't automatically click it)
 
+On top of these tools, there should also be the ability to press `ctrl+k` to bring up a quick-action panel (like spotlight search on macos) to access a tool quickly by name
+
+## Technical details
+
+The project was initially generated with [local-sync-template](https://github.com/Descent098/local-sync-template). It should already have all of the necessary peices to be a fully working installable PWA. As such there's a few key peices of technical guidance:
+
+1. this site MUST be fully statically buildable, and not rely on any server
+2. Everything should be componentized into either an astro or svelte component
+3. The design should be a collapsible sidebar-based layout to navigate through the features, but each feature should be in it's own page
+4. Use view-transitions to make it feel like a more native app when transitioning pages
+5. The quick-search should use something like pagefind that can generate the search indexes statically
+6. Plain CSS (no tailwind or frameworks)
+7. Theme should be orange-yellow accented, but plain colors overall (white background, dark-neutral-background, etc.) similar to what already exists in here, but can be tweaked as necessary
