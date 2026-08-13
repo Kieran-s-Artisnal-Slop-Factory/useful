@@ -1,0 +1,25 @@
+{
+  "name": "useful",
+  "short_name": "useful",
+  "description": "useful - Standardized tools, installable as a PWA",
+  "id": "./",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "theme_color": "#96640d",
+  "background_color": "#f7f9f9",
+  "icons": [
+    {
+      "src": "favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}
