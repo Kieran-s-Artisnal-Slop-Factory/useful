@@ -1,6 +1,7 @@
 <script lang="ts">
   import { href } from '../../lib/paths';
   import { byCategory } from '../../lib/registry';
+  import Icon from '../Icon.svelte';
 
   // Everything except Home itself — the home screen is the registry, rendered.
   const groups = byCategory()
@@ -18,7 +19,7 @@
     <div class="tiles">
       {#each group.tools as tool (tool.id)}
         <a class="tile" href={href(tool.route)} data-testid={'tile-' + tool.id}>
-          <span class="icon" aria-hidden="true">{tool.icon}</span>
+          <span class="icon"><Icon name={tool.icon} size={20} /></span>
           <span class="name">{tool.name}</span>
           <span class="desc">{tool.description}</span>
         </a>
@@ -38,11 +39,11 @@
   }
 
   .group h2 {
-    font-size: 0.7rem;
+    font-size: var(--font-size-eyebrow);
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: var(--tracking-label);
-    color: var(--color-stamp);
+    color: var(--text-muted-color);
     margin-bottom: var(--space-3);
   }
 
@@ -67,11 +68,16 @@
 
   .tile:hover {
     border-color: var(--color-primary);
-    box-shadow: 0 0 0 3px var(--color-primary-soft);
+    box-shadow: 0 0 0 1px var(--color-primary);
   }
 
   .icon {
-    font-size: var(--font-size-xl);
+    display: inline-flex;
+    color: var(--text-muted-color);
+  }
+
+  .tile:hover .icon {
+    color: var(--text-color);
   }
 
   .name {

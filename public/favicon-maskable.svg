@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <!-- Maskable app icon: every mark stays inside the safe zone (the circle of
+       radius 40% around the center) so circular Android masks never clip it.
+       No sheet frame — the field bleeds to the edges by design. -->
+  <rect width="128" height="128" fill="#142e63"/>
+  <g stroke="#e8eef7" stroke-opacity=".13" stroke-width="2">
+    <path d="M32 0v128M64 0v128M96 0v128M0 32h128M0 64h128M0 96h128"/>
+  </g>
+  <g stroke="#e8eef7" fill="none" stroke-linecap="square">
+    <path d="M64 18v10" stroke-width="9"/>
+    <circle cx="64" cy="37" r="9" stroke-width="8"/>
+    <path d="M58 46 45 92M70 46l13 46" stroke-width="9"/>
+  </g>
+  <path d="M41 100q23 13 46 0" fill="none" stroke="#f2c53d" stroke-width="7"/>
+</svg>

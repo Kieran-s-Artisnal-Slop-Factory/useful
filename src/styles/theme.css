@@ -51,10 +51,14 @@
   --grid-fine-size: 24px;
   --grid-major-size: 120px;
 
-  /* Feedback */
+  /* Feedback. Dark warning is deliberately NOT the stamp yellow — feedback
+     must never read as brand. */
   --color-success: light-dark(#17703a, #5fd68a);
   --color-danger: light-dark(#b93a21, #ff6f61);
-  --color-warning: light-dark(#9a5b00, #f2c53d);
+  --color-warning: light-dark(#9a5b00, #ffa94d);
+
+  /* Overlay scrim — ink wash, not neutral black, so the field stays blue. */
+  --scrim-color: light-dark(rgb(16 42 94 / 0.45), rgb(4 16 30 / 0.6));
 
   /* Typography — drafting-table mono for everything */
   --font-body: ui-monospace, "Cascadia Code", Consolas, "SF Mono", monospace;
@@ -64,9 +68,12 @@
   --font-size-xl: 1.5rem;
   --font-size-2xl: 2rem;
   --line-height: 1.55;
-  /* Annotation voice: tiny, uppercase, wide-tracked (apply with .eyebrow) */
+  /* Annotation voice: tiny, uppercase, wide-tracked (apply with .eyebrow).
+     One size for every annotation-register label so the voice can't drift. */
+  --font-size-eyebrow: 0.7rem;
   --tracking-label: 0.18em;
   --tracking-wide: 0.08em;
+  --tracking-brand: 0.24em;
 
   /* Spacing */
   --space-1: 0.2rem;

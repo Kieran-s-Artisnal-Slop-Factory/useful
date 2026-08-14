@@ -120,12 +120,18 @@ label {
   letter-spacing: var(--tracking-wide);
 }
 
-/* Annotation eyebrow — the "FIG. 01 —" voice. Reusable on section labels. */
+/* Annotation eyebrow — the "FIG. 01 —" voice. The STAMPED (amber) variant is
+   for at most one label per view; recurring structural labels use the plain
+   pencil-ink version so the stamp stays a stamp. */
 .eyebrow {
-  font-size: 0.7rem;
+  font-size: var(--font-size-eyebrow);
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: var(--tracking-label);
+  color: var(--text-muted-color);
+}
+
+.eyebrow-stamp {
   color: var(--color-stamp);
 }
 
@@ -148,9 +154,10 @@ label {
   letter-spacing: var(--tracking-wide);
 }
 
+/* Hover is a line-weight change (the rule doubles), not a soft glow. */
 .btn:hover {
   border-color: var(--color-primary);
-  box-shadow: 0 0 0 3px var(--color-primary-soft);
+  box-shadow: 0 0 0 1px var(--color-primary);
 }
 
 .btn-primary {
@@ -173,10 +180,17 @@ label {
   font-size: var(--font-size-sm);
 }
 
+/* Voids are hatched, the drafting way — not faded. */
 .btn:disabled {
-  opacity: 0.5;
+  color: var(--text-muted-color);
+  background-image: repeating-linear-gradient(45deg, transparent 0 4px, var(--border-color) 4px 5px);
   cursor: not-allowed;
   box-shadow: none;
+}
+
+.btn-primary:disabled {
+  background-color: var(--surface-color);
+  border-color: var(--border-strong-color);
 }
 
 /* Page shell. On wide screens the fixed sidebar (Chrome.svelte) owns the left
@@ -192,8 +206,23 @@ main.page {
   padding: var(--space-5) var(--space-4) var(--space-6);
   background: color-mix(in srgb, var(--surface-color) 94%, transparent);
   border: 1.5px solid var(--border-strong-color);
-  outline: 1px solid var(--border-color);
+  /* Dashed offset rule: the sheet's trim mark. */
+  outline: 1px dashed var(--border-color);
   outline-offset: 5px;
+}
+
+/* Title block: every sheet signs off at the bottom. */
+main.page::after {
+  content: 'SHEET UF-001 · REV A · SCALE NTS';
+  display: block;
+  margin-top: var(--space-6);
+  padding-top: var(--space-2);
+  border-top: 1.5px solid var(--text-color);
+  font-size: 0.64rem;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-label);
+  color: var(--text-muted-color);
+  text-align: right;
 }
 
 @media (width < 44rem) {
@@ -264,10 +293,10 @@ main.page {
 
 .data-table th {
   text-align: left;
-  font-size: 0.72rem;
+  font-size: var(--font-size-eyebrow);
   text-transform: uppercase;
   letter-spacing: var(--tracking-label);
-  color: var(--color-stamp);
+  color: var(--text-muted-color);
   font-weight: 600;
   padding: var(--space-2) var(--space-3);
   border-bottom: 1.5px solid var(--border-strong-color);
@@ -275,7 +304,7 @@ main.page {
 
 .data-table td {
   padding: var(--space-2) var(--space-3);
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px dashed var(--border-color);
   vertical-align: middle;
 }
 

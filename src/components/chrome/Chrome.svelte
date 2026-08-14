@@ -1,6 +1,7 @@
 <script lang="ts">
   import { href, isPath } from '../../lib/paths';
   import { byCategory } from '../../lib/registry';
+  import Icon from '../Icon.svelte';
   import CommandPalette from './CommandPalette.svelte';
 
   let { currentPath = '/' }: { currentPath?: string } = $props();
@@ -114,9 +115,12 @@
   </button>
 
   <a class="brand" href={href('/')}>
+    <!-- Drafting compass: hinge, two legs, and the amber arc it just drew. -->
     <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
-      <circle cx="8" cy="8" r="4.5" fill="none" stroke="currentColor" stroke-width="1.5" />
-      <path d="M8 0v4M8 12v4M0 8h4M12 8h4" stroke="currentColor" stroke-width="1.5" />
+      <path d="M8 1v2" stroke="currentColor" stroke-width="1.5" />
+      <circle cx="8" cy="4.5" r="1.5" fill="none" stroke="currentColor" stroke-width="1.5" />
+      <path d="M7.2 6 4 13M8.8 6l3.2 7" stroke="currentColor" stroke-width="1.5" stroke-linecap="square" />
+      <path d="M3 14.2q5 2.6 10 0" fill="none" stroke="var(--color-stamp)" stroke-width="1.5" />
     </svg>
     <span>useful</span>
   </a>
@@ -157,7 +161,7 @@
                 aria-current={isPath(path, tool.route) ? 'page' : undefined}
                 data-testid={'nav-' + tool.id}
               >
-                <span class="icon" aria-hidden="true">{tool.icon}</span>
+                <span class="icon"><Icon name={tool.icon} /></span>
                 <span>{tool.name}</span>
               </a>
             </li>
@@ -195,11 +199,11 @@
     text-decoration: none;
     color: var(--text-color);
     text-transform: uppercase;
-    letter-spacing: 0.24em;
+    letter-spacing: var(--tracking-brand);
   }
 
   .brand svg {
-    color: var(--color-stamp);
+    color: var(--text-color);
     flex: none;
   }
 
@@ -241,10 +245,12 @@
     padding: var(--space-2) var(--space-3);
     background: var(--bg-color);
     border: 1px solid var(--border-strong-color);
-    border-radius: var(--radius-full);
+    border-radius: var(--radius-sm);
     cursor: pointer;
     color: var(--text-muted-color);
     font-size: var(--font-size-sm);
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-wide);
   }
 
   .search-btn:hover {
@@ -276,11 +282,11 @@
   }
 
   .sidebar h2 {
-    font-size: 0.7rem;
+    font-size: var(--font-size-eyebrow);
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: var(--tracking-label);
-    color: var(--color-stamp);
+    color: var(--text-muted-color);
     padding: var(--space-2) var(--space-3);
   }
 
@@ -354,7 +360,7 @@
       position: fixed;
       inset: 0;
       z-index: 25;
-      background: rgb(0 0 0 / 0.4);
+      background: var(--scrim-color);
     }
 
     kbd {

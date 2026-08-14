@@ -227,7 +227,7 @@
   .modal-backdrop {
     position: fixed;
     inset: 0;
-    background: rgb(0 0 0 / 0.5);
+    background: var(--scrim-color);
     display: grid;
     place-items: center;
     z-index: 50;
@@ -236,7 +236,9 @@
 
   .modal {
     background: var(--surface-raised-color);
-    border: 1px solid var(--border-color);
+    border: 1px solid var(--border-strong-color);
+    outline: 1px dashed var(--border-color);
+    outline-offset: 4px;
     border-radius: var(--radius-lg);
     box-shadow: var(--shadow-2);
     padding: var(--space-4);
@@ -247,8 +249,14 @@
     gap: var(--space-3);
   }
 
+  .modal h3 {
+    font-size: var(--font-size-sm);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-label);
+  }
+
   .phrase {
-    font-family: ui-monospace, monospace;
     font-size: var(--font-size-sm);
     background: var(--color-primary-soft);
     border-radius: var(--radius-sm);

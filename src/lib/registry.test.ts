@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { hasIcon } from './icons';
 import { byCategory, CATEGORY_ORDER, REGISTRY, searchRegistry } from './registry';
 
 describe('registry shape', () => {
@@ -16,6 +17,12 @@ describe('registry shape', () => {
   it('only uses categories that CATEGORY_ORDER knows, so sidebar order is deliberate', () => {
     for (const tool of REGISTRY) {
       expect(CATEGORY_ORDER, tool.id + ' category "' + tool.category + '"').toContain(tool.category);
+    }
+  });
+
+  it('every icon key resolves to a real stroke icon', () => {
+    for (const tool of REGISTRY) {
+      expect(hasIcon(tool.icon), tool.id + ' icon "' + tool.icon + '"').toBe(true);
     }
   });
 });

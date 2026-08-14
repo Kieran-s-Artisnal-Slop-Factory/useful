@@ -2,6 +2,7 @@
   import { navigate } from 'astro:transitions/client';
   import { href } from '../../lib/paths';
   import { searchRegistry, type ToolDef } from '../../lib/registry';
+  import Icon from '../Icon.svelte';
 
   let {
     opener = null,
@@ -114,7 +115,7 @@
             open(tool);
           }}
         >
-          <span class="icon" aria-hidden="true">{tool.icon}</span>
+          <span class="icon"><Icon name={tool.icon} /></span>
           <span class="name">{tool.name}</span>
           <span class="desc">{tool.description}</span>
         </li>
@@ -129,7 +130,7 @@
   .backdrop {
     position: fixed;
     inset: 0;
-    background: rgb(0 0 0 / 0.5);
+    background: var(--scrim-color);
     z-index: 50;
     display: flex;
     justify-content: center;
@@ -181,7 +182,7 @@
 
   li {
     display: flex;
-    align-items: baseline;
+    align-items: center;
     gap: var(--space-3);
     padding: var(--space-3);
     border-radius: var(--radius-sm);
@@ -195,6 +196,15 @@
 
   .icon {
     flex: none;
+    display: inline-flex;
+  }
+
+  /* Narrow screens: the description crushes to ellipsis noise — drop it and
+     let the name own the row. */
+  @media (width < 30rem) {
+    .desc {
+      display: none;
+    }
   }
 
   .name {

@@ -58,7 +58,6 @@
 
 <style>
   .mono {
-    font-family: ui-monospace, monospace;
     font-size: var(--font-size-sm);
     overflow-wrap: anywhere;
   }

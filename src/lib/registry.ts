@@ -23,7 +23,7 @@ export interface ToolDef {
   category: string;
   /** App-absolute route with trailing slash, e.g. '/settings/'. */
   route: string;
-  /** Emoji glyph (plain CSS, no icon library). */
+  /** Stroke-icon key from src/lib/icons.ts (rendered by Icon.svelte). */
   icon: string;
 }
 
@@ -42,7 +42,7 @@ export const REGISTRY: ToolDef[] = [
     aliases: ['start', 'index', 'overview'],
     category: 'App',
     route: '/',
-    icon: '🏠',
+    icon: 'house',
   },
   {
     id: 'preferences',
@@ -51,7 +51,7 @@ export const REGISTRY: ToolDef[] = [
     aliases: ['prefs', 'defaults', 'options'],
     category: 'App',
     route: '/preferences/',
-    icon: '🎛️',
+    icon: 'sliders-horizontal',
   },
   {
     id: 'settings',
@@ -60,7 +60,7 @@ export const REGISTRY: ToolDef[] = [
     aliases: ['theme', 'backup', 'restore', 'export', 'import', 'dark mode'],
     category: 'App',
     route: '/settings/',
-    icon: '⚙️',
+    icon: 'settings',
   },
 ];
 
