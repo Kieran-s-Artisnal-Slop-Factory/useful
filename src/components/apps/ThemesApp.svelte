@@ -1,5 +1,6 @@
 <script lang="ts">
   import Card from '../Card.svelte';
+  import ColorField from '../ColorField.svelte';
   import Explainer from '../Explainer.svelte';
   import { allFormats, parseCssColor } from '../../lib/gen/color';
   import { harmonies } from '../../lib/gen/harmony';
@@ -35,15 +36,25 @@
     base: 'page background',
   };
 
-  // Primary defaults to the color explored above; the rest derive until set.
-  let themeColors = $state<string[]>(['#1e3a5f', '', '', '', '']);
+  // Primary defaults to the color explored above; every other slot (light AND
+  // dark, per role) derives until the user overrides it.
+  let themeColors = $state<{ light: string; dark: string }[]>([
+    { light: '#1e3a5f', dark: '' },
+    { light: '', dark: '' },
+    { light: '', dark: '' },
+    { light: '', dark: '' },
+    { light: '', dark: '' },
+  ]);
   let paddingPx = $state(12);
   let radiusPx = $state(8);
   let scheme = $state<'auto' | 'light' | 'dark'>('auto');
 
   let theme = $derived(
     buildTheme({
-      colors: themeColors.map((c) => (c.trim().length > 0 ? c : null)),
+      colors: themeColors.map((c) => ({
+        light: c.light.trim().length > 0 ? c.light : null,
+        dark: c.dark.trim().length > 0 ? c.dark : null,
+      })),
       paddingPx,
       radiusPx,
     })
@@ -55,7 +66,7 @@
   );
 
   function useAsPrimary() {
-    if (formats) themeColors[0] = formats.hex.slice(0, 7);
+    if (formats) themeColors[0]!.light = formats.hex.slice(0, 7);
   }
 </script>
 
@@ -199,41 +210,55 @@
         Output is plain CSS variables with automatic light/dark via
         <code>light-dark()</code>.
       </p>
-
       <div class="roles">
         {#each THEME_ROLES as role, i (role)}
           <div class="role">
-            <label for={'th-color-' + role}>
+            <span class="role-name">
               {role}
               <span class="muted hint">· {ROLE_HINTS[role]}</span>
-            </label>
-            <div class="role-line">
-              <input
+            </span>
+            <div class="slot">
+              <label class="slot-label" for={'th-color-' + role}>light</label>
+              <ColorField
                 id={'th-color-' + role}
-                data-testid={'th-color-' + role}
-                type="text"
-                class="mono"
+                testid={'th-color-' + role}
+                bind:value={themeColors[i]!.light}
                 placeholder="auto"
-                bind:value={themeColors[i]}
+                ariaLabel={role + ' light color'}
+                fallback={theme.swatches[i]!.light}
               />
-              <span
-                class="mini-chip"
-                data-testid={'th-chip-' + role}
-                style={`background: ${theme.swatches[i]!.light}`}
-                title={'light: ' + theme.swatches[i]!.light}
-              ></span>
-              <span
-                class="mini-chip"
-                style={`background: ${theme.swatches[i]!.dark}`}
-                title={'dark: ' + theme.swatches[i]!.dark}
-              ></span>
-              {#if theme.swatches[i]!.derived}
+              {#if theme.swatches[i]!.derivedLight}
                 <span class="eyebrow" data-testid={'th-derived-' + role}>auto</span>
+              {/if}
+            </div>
+            <div class="slot">
+              <label class="slot-label" for={'th-dark-' + role}>dark</label>
+              <ColorField
+                id={'th-dark-' + role}
+                testid={'th-dark-' + role}
+                bind:value={themeColors[i]!.dark}
+                placeholder="auto"
+                ariaLabel={role + ' dark color'}
+                fallback={theme.swatches[i]!.dark}
+              />
+              {#if theme.swatches[i]!.derivedDark}
+                <span class="eyebrow" data-testid={'th-derived-dark-' + role}>auto</span>
               {/if}
             </div>
           </div>
         {/each}
       </div>
+
+      {#if theme.warnings.length > 0}
+        <div class="warnings" role="status">
+          {#each theme.warnings as w (w.scheme + w.role)}
+            <p class="warn" data-testid="th-warning" data-role={w.role} data-scheme={w.scheme}>
+              ⚠ {w.role} is hard to see on the {w.scheme} background ({w.ratio}:1 —
+              aim for at least 3:1).
+            </p>
+          {/each}
+        </div>
+      {/if}
 
       <div class="row">
         <div>
@@ -436,18 +461,35 @@
     letter-spacing: normal;
   }
 
-  .role-line {
+  .role {
     display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  .role-name {
+    font-size: var(--font-size-sm);
+    color: var(--text-muted-color);
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-wide);
+  }
+
+  .slot {
+    display: grid;
+    grid-template-columns: 2.6rem 1fr auto;
     gap: var(--space-2);
     align-items: center;
   }
 
-  .mini-chip {
-    width: 1.6rem;
-    height: 1.6rem;
-    flex: none;
-    border: 1px solid var(--border-strong-color);
-    border-radius: var(--radius-sm);
+  .slot-label {
+    margin-bottom: 0;
+    font-size: var(--font-size-eyebrow);
+  }
+
+  .warnings {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
   }
 
   .num {

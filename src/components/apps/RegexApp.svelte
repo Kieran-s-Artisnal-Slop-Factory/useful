@@ -34,6 +34,12 @@
   let refQuery = $state('');
   let refGroups = $derived(filterReference(refQuery));
 
+  // Group N is the same color EVERYWHERE (in-match spans and table chips).
+  // Fixed light backgrounds + near-black ink read on both themes.
+  const GROUP_COLORS = ['#f0b25e', '#7db8ea', '#7ecfa2', '#cf9fe3', '#ef9d9d', '#7ecfd4'];
+  const groupColor = (number: number): string => GROUP_COLORS[(number - 1) % GROUP_COLORS.length]!;
+  const groupLabel = (g: { number: number; name: string | null }): string => g.name ?? '$' + g.number;
+
   // Prism output is safe HTML (it entity-escapes code text); the input is our
   // own generated snippet, never user HTML.
   function highlight(code: string, lang: string): string {
@@ -114,7 +120,9 @@
         <div class="highlighted mono" data-testid="rx-highlighted" aria-label="Sample text with matches highlighted">
           {#each segments as seg, i (i)}
             {#if seg.matchOrdinal !== null}
-              <mark data-testid="rx-mark" title={'Match ' + (seg.matchOrdinal + 1)}>{seg.text}</mark>
+              <!-- Kept on one line: any template whitespace inside the mark
+                   would inject spaces into the match text. -->
+              <mark data-testid="rx-mark" title={'Match ' + (seg.matchOrdinal + 1)}>{#each seg.parts ?? [] as part, j (j)}{#if part.groupNumber !== null}<span class="grp" style={`background: ${groupColor(part.groupNumber)}`} title={'Group ' + part.groupNumber}>{part.text}</span>{:else}{part.text}{/if}{/each}</mark>
             {:else}
               <span>{seg.text}</span>
             {/if}
@@ -142,8 +150,11 @@
                       {#if m.groups.length === 0}
                         <span class="muted">—</span>
                       {:else}
-                        {#each m.groups as g (g.label)}
-                          <span class="group">{g.label}: {g.value ?? '∅'}</span>
+                        {#each m.groups as g (g.number)}
+                          <span
+                            class="group"
+                            style={g.value !== null ? `background: ${groupColor(g.number)}` : ''}
+                          >{groupLabel(g)}: {g.value ?? '∅'}</span>
                         {/each}
                       {/if}
                     </td>
@@ -303,11 +314,23 @@
     padding: 0 1px;
   }
 
+  /* Group chips and in-match spans share fixed light backgrounds; near-black
+     ink keeps them AA-readable on both themes. */
   .groups .group {
     display: inline-block;
     margin-right: var(--space-2);
     background: var(--color-primary-soft);
     padding: 0 var(--space-1);
+    border-radius: 2px;
+  }
+
+  .groups .group[style] {
+    color: #10141c;
+  }
+
+  .highlighted .grp {
+    color: #10141c;
+    border-radius: 2px;
   }
 
   .ref-heading {

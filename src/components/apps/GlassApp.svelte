@@ -1,5 +1,6 @@
 <script lang="ts">
   import Card from '../Card.svelte';
+  import ColorField from '../ColorField.svelte';
   import { DEFAULT_GLASS, GLASS_PRESETS, glassCss, glassInlineStyle, type GlassDef } from '../../lib/gen/glass';
   import { copyText } from '../../lib/exportFile';
 
@@ -48,7 +49,7 @@
       </div>
       <div>
         <label for="gl-tint">Tint (any CSS color)</label>
-        <input id="gl-tint" data-testid="gl-tint" type="text" class="mono" bind:value={def.tint} />
+        <ColorField id="gl-tint" testid="gl-tint" bind:value={def.tint} fallback="#ffffff" />
       </div>
       <div>
         <label for="gl-tint-opacity">Tint opacity (%)</label>

@@ -5,21 +5,24 @@ import { findMatches, MAX_MATCHES, segmentText, type RegexTestFlags } from './re
 const FLAGS: RegexTestFlags = { ignoreCase: false, multiline: false, dotAll: false };
 
 describe('findMatches', () => {
-  it('finds all matches with positions and numbered groups', () => {
+  it('finds all matches with positions and numbered groups (with spans)', () => {
     const r = findMatches('(\\d+)-(\\d+)', FLAGS, 'a 12-34 b 5-6');
     expect(r).not.toBeNull();
     expect(r!.matches).toHaveLength(2);
     expect(r!.matches[0]).toMatchObject({ start: 2, end: 7, text: '12-34' });
     expect(r!.matches[0]!.groups).toEqual([
-      { label: '$1', value: '12' },
-      { label: '$2', value: '34' },
+      { number: 1, name: null, value: '12', start: 2, end: 4 },
+      { number: 2, name: null, value: '34', start: 5, end: 7 },
     ]);
     expect(r!.matches[1]!.text).toBe('5-6');
   });
 
-  it('reports named groups by name', () => {
-    const r = findMatches('(?<y>\\d{4})', FLAGS, 'in 2026 maybe');
-    expect(r!.matches[0]!.groups).toContainEqual({ label: 'y', value: '2026' });
+  it('merges named groups with their numbers instead of listing twice', () => {
+    const r = findMatches('(?<y>\\d{4})-(\\d{2})', FLAGS, 'in 2026-08 maybe');
+    expect(r!.matches[0]!.groups).toEqual([
+      { number: 1, name: 'y', value: '2026', start: 3, end: 7 },
+      { number: 2, name: null, value: '08', start: 8, end: 10 },
+    ]);
   });
 
   it('honors the flags', () => {
@@ -31,9 +34,11 @@ describe('findMatches', () => {
     expect(findMatches('a.b', { ...FLAGS, dotAll: true }, 'a\nb')!.matches).toHaveLength(1);
   });
 
-  it('unmatched optional groups come back null', () => {
+  it('unmatched optional groups come back null with null spans', () => {
     const r = findMatches('a(b)?', FLAGS, 'a');
-    expect(r!.matches[0]!.groups).toEqual([{ label: '$1', value: null }]);
+    expect(r!.matches[0]!.groups).toEqual([
+      { number: 1, name: null, value: null, start: null, end: null },
+    ]);
   });
 
   it('returns null for a broken pattern, and survives zero-length matches', () => {
@@ -51,31 +56,51 @@ describe('findMatches', () => {
 });
 
 describe('segmentText', () => {
-  it('splits text into plain and matched runs', () => {
+  it('splits text into plain and matched runs with group-colored parts', () => {
     const text = 'a 12-34 b';
-    const r = findMatches('\\d+-\\d+', FLAGS, text)!;
-    expect(segmentText(text, r.matches)).toEqual([
-      { text: 'a ', matchOrdinal: null },
-      { text: '12-34', matchOrdinal: 0 },
-      { text: ' b', matchOrdinal: null },
+    const r = findMatches('(\\d+)-(\\d+)', FLAGS, text)!;
+    const segments = segmentText(text, r.matches);
+    expect(segments).toHaveLength(3);
+    expect(segments[0]).toEqual({ text: 'a ', matchOrdinal: null });
+    expect(segments[2]).toEqual({ text: ' b', matchOrdinal: null });
+    expect(segments[1]!.matchOrdinal).toBe(0);
+    // "12" is $1, "-" belongs to the match itself, "34" is $2.
+    expect(segments[1]!.parts).toEqual([
+      { text: '12', groupNumber: 1 },
+      { text: '-', groupNumber: null },
+      { text: '34', groupNumber: 2 },
     ]);
   });
 
-  it('handles adjacent matches and match-at-edges', () => {
-    const text = 'abab';
-    const r = findMatches('ab', FLAGS, text)!;
-    expect(segmentText(text, r.matches)).toEqual([
-      { text: 'ab', matchOrdinal: 0 },
-      { text: 'ab', matchOrdinal: 1 },
+  it('inner (later) groups paint over outer ones', () => {
+    const text = 'abc';
+    const r = findMatches('(a(b)c)', FLAGS, text)!;
+    expect(segmentText(text, r.matches)[0]!.parts).toEqual([
+      { text: 'a', groupNumber: 1 },
+      { text: 'b', groupNumber: 2 },
+      { text: 'c', groupNumber: 1 },
     ]);
   });
 
-  it('drops zero-length runs but keeps surrounding text intact', () => {
-    const text = 'one two';
-    const r = findMatches('\\b', FLAGS, text)!;
+  it('a lookahead capture beyond the match is clamped, not crashed', () => {
+    const text = 'ab';
+    const r = findMatches('a(?=(b))', FLAGS, text)!;
+    expect(r.matches[0]!.groups[0]).toMatchObject({ number: 1, value: 'b' });
     const segments = segmentText(text, r.matches);
     expect(segments.map((s) => s.text).join('')).toBe(text);
-    expect(segments.every((s) => s.text.length > 0)).toBe(true);
+    expect(segments[0]!.parts).toEqual([{ text: 'a', groupNumber: null }]);
+  });
+
+  it('handles adjacent matches and drops zero-length runs', () => {
+    const text = 'abab';
+    const r = findMatches('ab', FLAGS, text)!;
+    const segments = segmentText(text, r.matches);
+    expect(segments.map((s) => s.text)).toEqual(['ab', 'ab']);
+
+    const boundaries = findMatches('\\b', FLAGS, 'one two')!;
+    const segs = segmentText('one two', boundaries.matches);
+    expect(segs.map((s) => s.text).join('')).toBe('one two');
+    expect(segs.every((s) => s.text.length > 0)).toBe(true);
   });
 });
 
@@ -85,7 +110,6 @@ describe('reference table', () => {
     for (const expected of ['Anchors', 'Character classes', 'Quantifiers', 'Groups & references', 'Lookaround', 'Escapes']) {
       expect(categories).toContain(expected);
     }
-    // Every entry is fully filled in.
     for (const group of REGEX_REFERENCE) {
       for (const entry of group.entries) {
         expect(entry.token.length).toBeGreaterThan(0);

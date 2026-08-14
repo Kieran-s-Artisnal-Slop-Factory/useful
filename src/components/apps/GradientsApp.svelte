@@ -1,7 +1,7 @@
 <script lang="ts">
   import Card from '../Card.svelte';
+  import ColorField from '../ColorField.svelte';
   import { DEFAULT_GRADIENT, gradientCss, gradientDeclaration, type GradientDef } from '../../lib/gen/gradient';
-  import { parseCssColor } from '../../lib/gen/color';
   import { copyText } from '../../lib/exportFile';
 
   // Stateless tool — deep-clone the default so $state never mutates the
@@ -29,8 +29,6 @@
   function removeStop(i: number) {
     if (def.stops.length > 2) def.stops.splice(i, 1);
   }
-
-  const validColor = (c: string): boolean => parseCssColor(c) !== null;
 </script>
 
 <div class="page-header">
@@ -73,14 +71,13 @@
         <legend class="eyebrow">Stops</legend>
         {#each def.stops as stop, i (i)}
           <div class="stop">
-            <input
-              type="text"
-              class="mono"
-              data-testid={'gr-stop-color-' + i}
-              aria-label={'Stop ' + (i + 1) + ' color'}
-              aria-invalid={!validColor(stop.color)}
-              bind:value={stop.color}
-            />
+            <div class="stop-color">
+              <ColorField
+                bind:value={stop.color}
+                testid={'gr-stop-color-' + i}
+                ariaLabel={'Stop ' + (i + 1) + ' color'}
+              />
+            </div>
             <input
               type="number"
               class="pos"
@@ -160,8 +157,9 @@
     width: 100%;
   }
 
-  .stop input[aria-invalid='true'] {
-    border-color: var(--color-danger);
+  .stop-color {
+    flex: 1 1 auto;
+    min-width: 0;
   }
 
   .pos {

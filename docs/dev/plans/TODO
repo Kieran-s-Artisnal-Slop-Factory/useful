@@ -62,6 +62,14 @@ Generator follow-ups (user request, 2026-08-14) — DONE:
       (harmony.ts) + CSS theme builder (theme.ts — up-to-5 swatch,
       light-dark(), WCAG on-colors, padding/radius, component preview)
 
+UI refinement round (user request, 2026-08-14) — DONE:
+- [x] Shared ColorField (text + synced picker) in gradient stops, glass tint,
+      theme role slots
+- [x] Themes: per-role light AND dark overrides (contrast-aware dark
+      derivation), per-scheme WCAG contrast warnings vs the theme background
+- [x] Regex: group color-coding via `d`-flag indices (marks + table chips,
+      named groups merged with their numbers)
+
 Next: Phase 5 (Image converters/resizer/compressor) per plan-phases.md. Notes:
 - NOTHING IS COMMITTED YET — the whole run (phases 0-2 + redesign) is one
   dirty working tree; commit when the user asks.

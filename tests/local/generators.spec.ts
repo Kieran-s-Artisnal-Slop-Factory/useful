@@ -112,6 +112,46 @@ test.describe('themes', () => {
 
     expect(await app.dumpAll()).toEqual(before);
   });
+
+  test('dark slots are overridable per role, and pickers write into the text', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/colors/');
+    const before = await app.dumpAll();
+
+    // The dark half of every light-dark() pair is editable independently.
+    await expect(page.getByTestId('th-derived-dark-primary')).toBeVisible();
+    await page.getByTestId('th-dark-primary').fill('#a5c8ff');
+    await expect(page.getByTestId('th-derived-dark-primary')).toHaveCount(0);
+    await expect(page.getByTestId('th-css')).toContainText('--primary: light-dark(#1e3a5f, #a5c8ff);');
+
+    // Every role slot has a synced native picker beside the text input.
+    await page.getByTestId('th-color-secondary-pick').fill('#e8a13a');
+    await expect(page.getByTestId('th-color-secondary')).toHaveValue('#e8a13a');
+    await expect(page.getByTestId('th-css')).toContainText('--secondary: light-dark(#e8a13a,');
+
+    expect(await app.dumpAll()).toEqual(before);
+  });
+
+  test('contrast warnings fire per scheme against the theme background', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/colors/');
+
+    // The default derivation is clean.
+    await expect(page.getByTestId('th-warning')).toHaveCount(0);
+
+    // A near-white primary sinks into the near-white light surface.
+    await page.getByTestId('th-color-primary').fill('#f3f5f7');
+    await expect(
+      page.locator('[data-testid="th-warning"][data-role="primary"][data-scheme="light"]')
+    ).toBeVisible();
+
+    // Fixing the light slot but breaking the dark one moves the warning.
+    await page.getByTestId('th-color-primary').fill('#1e3a5f');
+    await page.getByTestId('th-dark-primary').fill('#20242c');
+    await expect(
+      page.locator('[data-testid="th-warning"][data-role="primary"][data-scheme="dark"]')
+    ).toBeVisible();
+  });
 });
 
 test.describe('gradients', () => {
@@ -135,6 +175,11 @@ test.describe('gradients', () => {
     await expect(page.getByTestId('gr-css')).toContainText('oklch(0.7 0.1 200) 50%');
     await page.getByTestId('gr-stop-remove-2').click();
     await expect(page.getByTestId('gr-css')).not.toContainText('oklch');
+
+    // Each stop also has a synced native picker.
+    await page.getByTestId('gr-stop-color-0-pick').fill('#ff0000');
+    await expect(page.getByTestId('gr-stop-color-0')).toHaveValue('#ff0000');
+    await expect(page.getByTestId('gr-css')).toContainText('#ff0000 0%');
 
     // Radial swaps the angle control for a shape control.
     await page.getByTestId('gr-kind').selectOption('radial');
@@ -160,6 +205,8 @@ test.describe('glassmorphism', () => {
 
     await page.getByTestId('gl-blur').fill('24');
     await page.getByTestId('gl-tint').fill('rebeccapurple');
+    // The tint's synced picker resolves the named color.
+    await expect(page.getByTestId('gl-tint-pick')).toHaveValue('#663399');
     await expect(page.getByTestId('gl-css')).toContainText('blur(24px)');
     await expect(page.getByTestId('gl-css')).toContainText('rgb(102 51 153');
     await expect(page.getByTestId('gl-preview')).toHaveAttribute('style', /blur\(24px\)/);
@@ -248,6 +295,26 @@ test.describe('regex snippets', () => {
     const firstRow = page.getByTestId('rx-match-row').first();
     await expect(firstRow).toContainText('year: 2024');
     await expect(firstRow).toContainText('month: 01');
+
+    // Groups are color-coded: three colored spans inside the first match,
+    // and the table chip for group 1 wears the SAME color.
+    const firstMark = page.getByTestId('rx-mark').first();
+    await expect(firstMark.locator('.grp')).toHaveCount(3);
+    const spanColor = await firstMark
+      .locator('.grp')
+      .first()
+      .evaluate((el) => getComputedStyle(el).backgroundColor);
+    const chipColor = await firstRow
+      .locator('.group')
+      .first()
+      .evaluate((el) => getComputedStyle(el).backgroundColor);
+    expect(spanColor).toBe(chipColor);
+    // Different groups, different colors.
+    const secondSpanColor = await firstMark
+      .locator('.grp')
+      .nth(1)
+      .evaluate((el) => getComputedStyle(el).backgroundColor);
+    expect(secondSpanColor).not.toBe(spanColor);
 
     // Editing the sample re-runs live.
     await page.getByTestId('rx-test-text').fill('nothing to see');

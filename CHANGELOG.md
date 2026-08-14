@@ -100,6 +100,21 @@
   (card, accordion, table, plaintext, form fields) driven by the exact same
   variable string the Copy button emits — with an auto/light/dark scheme
   toggle.
+- Color inputs everywhere gained synced native pickers (a shared `ColorField`:
+  free-form CSS color text + a picker swatch that shows the resolved color and
+  writes hex back) — gradient stops, the glassmorphism tint, and every theme
+  role slot.
+- Theme builder: BOTH halves of every `light-dark()` pair are now editable per
+  role (blank still means derived — the dark slot derives from the role's
+  light value, lifting lightness until it clears 3:1 on the actual dark
+  surface), and the builder audits every brand role against the theme's own
+  background per scheme, listing WCAG 1.4.11 contrast warnings under the
+  swatch.
+- Regex tester: capturing groups are color-coded — group N wears the same
+  color in the highlighted sample text (sub-spans inside each match, computed
+  from real group indices via the `d` flag, lookahead spans clamped) and in
+  the match table, where named groups now merge with their number ("year:
+  2024" instead of a duplicate "$1" chip) so each group reads as one color.
 - Syntax highlighting for fenced code blocks in all rendered markdown (Prism, statically bundled — TypeScript/JavaScript, Python, Go, Rust, Bash, JSON, SQL, YAML, HTML/CSS), colored with the blueprint ink palette in both themes.
 
 ## Bug Fixes
