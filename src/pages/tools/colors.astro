@@ -1,0 +1,8 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import ColorsApp from '../../components/apps/ColorsApp.svelte';
+---
+
+<Layout title="Colors">
+  <ColorsApp client:only="svelte" />
+</Layout>

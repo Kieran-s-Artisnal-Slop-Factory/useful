@@ -1,0 +1,8 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import QrApp from '../../components/apps/QrApp.svelte';
+---
+
+<Layout title="QR code">
+  <QrApp client:only="svelte" />
+</Layout>

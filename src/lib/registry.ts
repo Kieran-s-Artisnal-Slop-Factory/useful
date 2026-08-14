@@ -32,7 +32,7 @@ export interface ToolDef {
  * land here as their phases ship (Time, Scheduler, Images, Calculators,
  * Generators); 'App' stays last — it holds the app's own pages.
  */
-export const CATEGORY_ORDER: string[] = ['Time', 'Scheduler', 'Calculators', 'App'];
+export const CATEGORY_ORDER: string[] = ['Time', 'Scheduler', 'Calculators', 'Generators', 'App'];
 
 export const REGISTRY: ToolDef[] = [
   {
@@ -73,9 +73,9 @@ export const REGISTRY: ToolDef[] = [
   },
   {
     id: 'number-conversion',
-    name: 'Number conversion',
+    name: 'Programming',
     description: 'Binary, octal, decimal and hex with bit-width operations',
-    aliases: ['binary', 'hex', 'hexadecimal', 'octal', 'decimal', 'base', 'twos complement', 'ones complement', 'bitwise not', 'bits'],
+    aliases: ['number conversion', 'binary', 'hex', 'hexadecimal', 'octal', 'decimal', 'base', 'twos complement', 'ones complement', 'bitwise not', 'bits', 'coding'],
     category: 'Calculators',
     route: '/tools/number-conversion/',
     icon: 'binary',
@@ -97,6 +97,51 @@ export const REGISTRY: ToolDef[] = [
     category: 'Calculators',
     route: '/tools/file-transfer/',
     icon: 'hard-drive-download',
+  },
+  {
+    id: 'colors',
+    name: 'Colors',
+    description: 'Convert any CSS color between hex, RGB, HSL, OKLCH and more',
+    aliases: ['color', 'hex', 'rgb', 'rgba', 'hsl', 'hwb', 'lab', 'lch', 'oklab', 'oklch', 'picker', 'named colors'],
+    category: 'Generators',
+    route: '/tools/colors/',
+    icon: 'palette',
+  },
+  {
+    id: 'gradients',
+    name: 'Gradients',
+    description: 'Build linear, radial and conic CSS gradients with live preview',
+    aliases: ['gradient', 'linear-gradient', 'radial', 'conic', 'css background'],
+    category: 'Generators',
+    route: '/tools/gradients/',
+    icon: 'blend',
+  },
+  {
+    id: 'glassmorphism',
+    name: 'Glassmorphism',
+    description: 'Frosted-glass panel CSS: backdrop blur, tint and border',
+    aliases: ['glass', 'frosted', 'blur', 'backdrop-filter', 'acrylic'],
+    category: 'Generators',
+    route: '/tools/glassmorphism/',
+    icon: 'layers',
+  },
+  {
+    id: 'regex',
+    name: 'Regex snippets',
+    description: 'Turn a regex into Go, Rust, JavaScript and Python code',
+    aliases: ['regular expression', 'pattern', 'go', 'rust', 'python', 'javascript', 're2', 'grep'],
+    category: 'Generators',
+    route: '/tools/regex/',
+    icon: 'regex',
+  },
+  {
+    id: 'qr',
+    name: 'QR code',
+    description: 'Create QR codes (PNG/SVG) and read them from images or camera',
+    aliases: ['qr code', 'barcode', 'scanner', 'qr reader', 'qr generator'],
+    category: 'Generators',
+    route: '/tools/qr/',
+    icon: 'qr-code',
   },
   {
     id: 'home',

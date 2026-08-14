@@ -40,7 +40,19 @@ Phase 3 (Calculators, 2026-08-14) — DONE:
 - [x] Unit tests (calc tables) + Playwright calculators.spec.ts (zero-write
       pages, isolated preferences delta, keyboard explainers)
 
-Next: Phase 4 (Generators) per plan-phases.md. Notes for the next session:
+Phase 4 (Generators, 2026-08-14) — DONE (incl. renaming the number-conversion
+tool to "Programming" per user request; route/id unchanged):
+- [x] Colors (CSS Color 4 conversions hand-rolled + browser-verified named
+      table), Gradients, Glassmorphism (pure builder fns shared with previews)
+- [x] Regex snippets (Go/Rust/JS/Python escaping + flag mapping + RE2
+      construct warnings), QR create (qrcode pkg; PNG/SVG download/copy via
+      new shared src/lib/exportFile.ts) + read (qr-scanner; camera
+      feature-detected, upload fallback)
+- [x] Registry Generators category + icons, SW shell + cache v7, CHANGELOG
+- [x] Unit tests (color round-trips, builders, regexgen, qr svg) + Playwright
+      generators.spec.ts
+
+Next: Phase 5 (Image converters/resizer/compressor) per plan-phases.md. Notes:
 - NOTHING IS COMMITTED YET — the whole run (phases 0-2 + redesign) is one
   dirty working tree; commit when the user asks.
 - Week/day calendar views deliberately deferred.

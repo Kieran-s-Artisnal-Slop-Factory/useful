@@ -11,16 +11,8 @@
 import { Marked } from 'marked';
 import { markedHighlight } from 'marked-highlight';
 import DOMPurify from 'dompurify';
-import Prism from 'prismjs';
-// Bundled grammars beyond Prism's default markup/css/clike/javascript.
-import 'prismjs/components/prism-typescript';
-import 'prismjs/components/prism-python';
-import 'prismjs/components/prism-go';
-import 'prismjs/components/prism-rust';
-import 'prismjs/components/prism-bash';
-import 'prismjs/components/prism-json';
-import 'prismjs/components/prism-sql';
-import 'prismjs/components/prism-yaml';
+// Core + grammars in guaranteed order — see the note in lib/prism.ts.
+import Prism from './prism';
 
 const escapeHtml = (s: string) =>
   s.replace(/[&<>]/g, (m) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[m]!);
