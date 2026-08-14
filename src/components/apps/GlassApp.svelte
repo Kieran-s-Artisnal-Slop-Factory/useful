@@ -1,10 +1,14 @@
 <script lang="ts">
   import Card from '../Card.svelte';
-  import { DEFAULT_GLASS, glassCss, glassInlineStyle, type GlassDef } from '../../lib/gen/glass';
+  import { DEFAULT_GLASS, GLASS_PRESETS, glassCss, glassInlineStyle, type GlassDef } from '../../lib/gen/glass';
   import { copyText } from '../../lib/exportFile';
 
   // Stateless tool — clone the default before handing it to $state.
   let def = $state<GlassDef>({ ...DEFAULT_GLASS });
+
+  function applyPreset(preset: GlassDef) {
+    def = { ...preset };
+  }
 
   let css = $derived(glassCss(def));
   let inline = $derived(glassInlineStyle(def));
@@ -24,6 +28,19 @@
 
 <div class="stack">
   <Card title="Panel">
+    <div class="stack">
+    <fieldset class="presets">
+      <legend class="eyebrow">Presets</legend>
+      {#each GLASS_PRESETS as preset (preset.id)}
+        <button
+          class="btn btn-sm"
+          data-testid={'gl-preset-' + preset.id}
+          onclick={() => applyPreset(preset.def)}
+        >
+          {preset.label}
+        </button>
+      {/each}
+    </fieldset>
     <div class="grid">
       <div>
         <label for="gl-blur">Backdrop blur (px)</label>
@@ -34,16 +51,34 @@
         <input id="gl-tint" data-testid="gl-tint" type="text" class="mono" bind:value={def.tint} />
       </div>
       <div>
-        <label for="gl-tint-opacity">Tint opacity (0–1)</label>
-        <input id="gl-tint-opacity" data-testid="gl-tint-opacity" type="number" min="0" max="1" step="0.05" bind:value={def.tintOpacity} />
+        <label for="gl-tint-opacity">Tint opacity (%)</label>
+        <input
+          id="gl-tint-opacity"
+          data-testid="gl-tint-opacity"
+          type="number"
+          min="0"
+          max="100"
+          step="5"
+          value={Math.round(def.tintOpacity * 100)}
+          oninput={(e) => (def.tintOpacity = Number(e.currentTarget.value) / 100)}
+        />
       </div>
       <div>
         <label for="gl-saturation">Backdrop saturation (%)</label>
         <input id="gl-saturation" data-testid="gl-saturation" type="number" min="0" max="300" step="10" bind:value={def.saturation} />
       </div>
       <div>
-        <label for="gl-border-opacity">Border opacity (0–1)</label>
-        <input id="gl-border-opacity" data-testid="gl-border-opacity" type="number" min="0" max="1" step="0.05" bind:value={def.borderOpacity} />
+        <label for="gl-border-opacity">Border opacity (%)</label>
+        <input
+          id="gl-border-opacity"
+          data-testid="gl-border-opacity"
+          type="number"
+          min="0"
+          max="100"
+          step="5"
+          value={Math.round(def.borderOpacity * 100)}
+          oninput={(e) => (def.borderOpacity = Number(e.currentTarget.value) / 100)}
+        />
       </div>
       <div>
         <label for="gl-radius">Corner radius (px)</label>
@@ -53,6 +88,7 @@
         <input type="checkbox" data-testid="gl-shadow" bind:checked={def.shadow} />
         Drop shadow
       </label>
+    </div>
     </div>
   </Card>
 
@@ -82,6 +118,14 @@
     gap: var(--space-3);
     grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
     align-items: end;
+  }
+
+  .presets {
+    border: 1px dashed var(--border-color);
+    padding: var(--space-3);
+    display: flex;
+    gap: var(--space-2);
+    flex-wrap: wrap;
   }
 
   .check {

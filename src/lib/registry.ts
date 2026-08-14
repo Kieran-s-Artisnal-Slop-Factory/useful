@@ -100,9 +100,9 @@ export const REGISTRY: ToolDef[] = [
   },
   {
     id: 'colors',
-    name: 'Colors',
-    description: 'Convert any CSS color between hex, RGB, HSL, OKLCH and more',
-    aliases: ['color', 'hex', 'rgb', 'rgba', 'hsl', 'hwb', 'lab', 'lch', 'oklab', 'oklch', 'picker', 'named colors'],
+    name: 'Themes',
+    description: 'Color conversion, harmonies, and a CSS variable theme builder',
+    aliases: ['colors', 'color', 'hex', 'rgb', 'rgba', 'hsl', 'hwb', 'lab', 'lch', 'oklab', 'oklch', 'picker', 'named colors', 'color wheel', 'harmony', 'complementary', 'palette', 'design tokens', 'css variables', 'light-dark'],
     category: 'Generators',
     route: '/tools/colors/',
     icon: 'palette',

@@ -31,6 +31,55 @@ export const DEFAULT_GLASS: GlassDef = {
   shadow: true,
 };
 
+/**
+ * One-click starting points (plan follow-up 2026-08-14). Each is a complete
+ * def, so applying one is a plain state replacement the controls then tweak.
+ */
+export const GLASS_PRESETS: { id: string; label: string; def: GlassDef }[] = [
+  {
+    id: 'frosted-light',
+    label: 'Frosted · light',
+    def: { blur: 6, tint: '#ffffff', tintOpacity: 0.1, saturation: 120, borderOpacity: 0.2, radius: 12, shadow: false },
+  },
+  {
+    id: 'frosted-medium',
+    label: 'Frosted · medium',
+    def: { blur: 12, tint: '#ffffff', tintOpacity: 0.18, saturation: 140, borderOpacity: 0.3, radius: 12, shadow: true },
+  },
+  {
+    id: 'frosted-strong',
+    label: 'Frosted · strong',
+    def: { blur: 28, tint: '#ffffff', tintOpacity: 0.3, saturation: 160, borderOpacity: 0.4, radius: 12, shadow: true },
+  },
+  {
+    id: 'dark-frost',
+    label: 'Dark frosted',
+    def: { blur: 16, tint: '#10141c', tintOpacity: 0.45, saturation: 120, borderOpacity: 0.18, radius: 12, shadow: true },
+  },
+  {
+    id: 'ios-clear',
+    // The iOS look: barely-there tint, heavy blur, saturation pushed well past
+    // 100 so the backdrop's colors refract through.
+    label: 'iOS clear',
+    def: { blur: 24, tint: '#ffffff', tintOpacity: 0.08, saturation: 190, borderOpacity: 0.25, radius: 18, shadow: false },
+  },
+  {
+    id: 'tint-blue',
+    label: 'Blue tint',
+    def: { blur: 14, tint: '#2f6fb0', tintOpacity: 0.28, saturation: 140, borderOpacity: 0.35, radius: 12, shadow: true },
+  },
+  {
+    id: 'tint-amber',
+    label: 'Amber tint',
+    def: { blur: 14, tint: '#e8a13a', tintOpacity: 0.28, saturation: 140, borderOpacity: 0.35, radius: 12, shadow: true },
+  },
+  {
+    id: 'tint-rose',
+    label: 'Rose tint',
+    def: { blur: 14, tint: '#c04a6b', tintOpacity: 0.28, saturation: 140, borderOpacity: 0.35, radius: 12, shadow: true },
+  },
+];
+
 const round = (n: number, d = 2): number => Math.round(n * 10 ** d) / 10 ** d;
 
 /** "255 255 255" from any parseable CSS color (falls back to white). */

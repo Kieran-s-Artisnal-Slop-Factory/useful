@@ -3,7 +3,7 @@
   import QrScanner from 'qr-scanner';
   import Card from '../Card.svelte';
   import Explainer from '../Explainer.svelte';
-  import { EC_LEVELS, QR_SIZES, qrPngDataUrl, qrSvg, type EcLevel } from '../../lib/gen/qr';
+  import { EC_LEVELS, QR_SIZES, qrColorWarning, qrPngDataUrl, qrSvg, type EcLevel } from '../../lib/gen/qr';
   import { copyPng, copyText, dataUrlToBlob, downloadDataUrl, downloadText } from '../../lib/exportFile';
 
   /* ------------------------------------------------------------ create --- */
@@ -11,21 +11,27 @@
   let text = $state('https://example.com/');
   let size = $state(256);
   let ecLevel = $state<EcLevel>('M');
+  let darkColor = $state('#000000');
+  let lightColor = $state('#ffffff');
 
   let svg = $state('');
   let createError = $state<string | null>(null);
+
+  let colorWarning = $derived(qrColorWarning(darkColor, lightColor));
 
   $effect(() => {
     const t = text;
     const s = size;
     const e = ecLevel;
+    const dark = darkColor;
+    const light = lightColor;
     if (t.trim().length === 0) {
       svg = '';
       createError = 'Enter text or a URL to encode.';
       return;
     }
     let stale = false;
-    qrSvg(t, { size: s, ecLevel: e })
+    qrSvg(t, { size: s, ecLevel: e, dark, light })
       .then((v) => {
         if (stale) return;
         svg = v;
@@ -55,7 +61,10 @@
   }
 
   async function downloadPng() {
-    downloadDataUrl(await qrPngDataUrl(text, { size, ecLevel }), 'qr-code.png');
+    downloadDataUrl(
+      await qrPngDataUrl(text, { size, ecLevel, dark: darkColor, light: lightColor }),
+      'qr-code.png'
+    );
     flash('PNG downloaded');
   }
 
@@ -65,7 +74,7 @@
 
   async function copyPngImage() {
     // Clipboard images are always PNG (the shared pipeline's convention).
-    const dataUrl = await qrPngDataUrl(text, { size, ecLevel });
+    const dataUrl = await qrPngDataUrl(text, { size, ecLevel, dark: darkColor, light: lightColor });
     flash((await copyPng(dataUrlToBlob(dataUrl))) ? 'PNG copied' : 'Copy failed — try downloading instead');
   }
 
@@ -170,12 +179,24 @@
             {/each}
           </select>
         </div>
+        <div>
+          <label for="qr-dark">Code color</label>
+          <input id="qr-dark" data-testid="qr-dark" type="color" bind:value={darkColor} />
+        </div>
+        <div>
+          <label for="qr-light">Background</label>
+          <input id="qr-light" data-testid="qr-light" type="color" bind:value={lightColor} />
+        </div>
       </div>
+
+      {#if colorWarning}
+        <p class="warn" data-testid="qr-color-warning">⚠ {colorWarning}</p>
+      {/if}
 
       {#if createError}
         <p class="error" data-testid="qr-create-error" role="alert">{createError}</p>
       {:else if svg}
-        <div class="qr-preview" data-testid="qr-preview">{@html svg}</div>
+        <div class="qr-preview" data-testid="qr-preview" style={`background: ${lightColor}`}>{@html svg}</div>
         <div class="row">
           <button class="btn btn-primary" data-testid="qr-download-png" onclick={downloadPng}>Download PNG</button>
           <button class="btn" data-testid="qr-download-svg" onclick={downloadSvg}>Download SVG</button>
@@ -256,7 +277,6 @@
   .qr-preview {
     width: min(16rem, 100%);
     border: 1.5px solid var(--border-strong-color);
-    background: #fff;
     padding: var(--space-2);
   }
 

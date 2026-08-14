@@ -352,6 +352,11 @@ const fmt = (v: number, digits: number): string => {
 
 const to255 = (v: number): number => Math.round(clamp01(v) * 255);
 
+/** '#rrggbb' from gamma sRGB components (clipped into range). */
+export function rgbToHex(rgb: [number, number, number]): string {
+  return '#' + rgb.map((v) => to255(v).toString(16).padStart(2, '0')).join('');
+}
+
 export interface ColorFormats {
   hex: string;
   rgb: string;
@@ -376,7 +381,7 @@ export function allFormats(color: ParsedColor): ColorFormats {
   const alphaSuffix = hasAlpha ? ` / ${fmt(a, 3)}` : '';
 
   const [r8, g8, b8] = rgb.map(to255) as Vec3;
-  const hexBody = [r8, g8, b8].map((v) => v.toString(16).padStart(2, '0')).join('');
+  const hexBody = rgbToHex(rgb).slice(1);
   const hex = '#' + hexBody + (hasAlpha ? Math.round(a * 255).toString(16).padStart(2, '0') : '');
 
   const [h, s, l] = rgbToHsl(rgb);

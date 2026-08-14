@@ -78,6 +78,28 @@
   are never auto-opened.
 - Sidebar/palette gained the Generators category (five tools above); service
   worker shell extended and cache bumped.
+- QR creator: code and background colors are now customizable (color pickers
+  wired through to both the SVG preview and the PNG/SVG exports), with a
+  scannability warning when the pair is inverted (light-on-dark) or too low
+  contrast for reliable scanning.
+- Regex tool grew a live tester (regex101-style): paste sample text and see
+  matches highlighted in place with a match table (positions, numbered and
+  named groups, lazy-safe zero-length handling, capped at 500 matches), plus a
+  filterable symbol reference table — six categories of tokens with plain-word
+  meanings and examples.
+- Glassmorphism: eight one-click presets (light/medium/strong frosted, dark
+  frosted, iOS-style clear-and-refractive, and blue/amber/rose color tints);
+  tint and border opacity are now dialed in percent.
+- **Colors is now Themes** (same `/tools/colors/` route): on top of the format
+  conversions it adds color-theory harmonies on the classic wheel
+  (complementary, monochromatic, analogous, tetradic — click a swatch to copy)
+  and a CSS theme builder: up to five swatch colors (primary/secondary/accent/
+  neutral/base, blanks derived from the primary), padding and border-radius
+  knobs, automatic light/dark variants emitted as `:root` custom properties
+  with `light-dark()`, WCAG-picked on-colors, and a live preview window
+  (card, accordion, table, plaintext, form fields) driven by the exact same
+  variable string the Copy button emits — with an auto/light/dark scheme
+  toggle.
 - Syntax highlighting for fenced code blocks in all rendered markdown (Prism, statically bundled — TypeScript/JavaScript, Python, Go, Rust, Bash, JSON, SQL, YAML, HTML/CSS), colored with the blueprint ink palette in both themes.
 
 ## Bug Fixes

@@ -55,6 +55,65 @@ test.describe('colors', () => {
   });
 });
 
+test.describe('themes', () => {
+  test('harmonies rotate the wheel and chips copy hex values', async ({ app }) => {
+    const { page } = app;
+    await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+    await app.goto('/tools/colors/');
+    const before = await app.dumpAll();
+
+    await page.getByTestId('col-input').fill('#ff0000');
+    const comp = page.getByTestId('harmony-complementary-chip');
+    await expect(comp).toHaveCount(2);
+    await expect(comp.nth(0)).toContainText('#ff0000');
+    await expect(comp.nth(1)).toContainText('#00ffff');
+    await expect(page.getByTestId('harmony-tetradic-chip')).toHaveCount(4);
+    await expect(page.getByTestId('harmony-analogous-chip').nth(2)).toContainText('#ff8000');
+
+    await comp.nth(1).click();
+    expect(await readClipboard(page)).toBe('#00ffff');
+
+    expect(await app.dumpAll()).toEqual(before);
+  });
+
+  test('theme builder: swatch → light-dark() CSS with derived roles and live preview', async ({ app }) => {
+    const { page } = app;
+    await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+    await app.goto('/tools/colors/');
+    const before = await app.dumpAll();
+
+    // One color is enough — the rest derive (and say so).
+    await expect(page.getByTestId('th-css')).toContainText('--primary: light-dark(#1e3a5f,');
+    await expect(page.getByTestId('th-css')).toContainText('color-scheme: light dark;');
+    await expect(page.getByTestId('th-derived-secondary')).toBeVisible();
+
+    // Pin the secondary — the derived badge goes away and the value lands.
+    await page.getByTestId('th-color-secondary').fill('rebeccapurple');
+    await expect(page.getByTestId('th-derived-secondary')).toHaveCount(0);
+    await expect(page.getByTestId('th-css')).toContainText('--secondary: light-dark(#663399,');
+
+    // The color explored above feeds the builder on demand.
+    await page.getByTestId('col-input').fill('#ff0000');
+    await page.getByTestId('th-use-color').click();
+    await expect(page.getByTestId('th-color-primary')).toHaveValue('#ff0000');
+    await expect(page.getByTestId('th-css')).toContainText('--primary: light-dark(#ff0000,');
+
+    // Knobs land in the variables; the preview runs on the same string.
+    await page.getByTestId('th-padding').fill('20');
+    await expect(page.getByTestId('th-css')).toContainText('--padding: 20px;');
+    await expect(page.getByTestId('th-preview')).toHaveAttribute('style', /--padding: 20px/);
+
+    // Forcing the scheme flips light-dark() in the preview window.
+    await page.getByTestId('th-scheme-dark').check();
+    await expect(page.getByTestId('th-preview')).toHaveAttribute('style', /color-scheme: dark/);
+
+    await page.getByTestId('th-copy').click();
+    expect(await readClipboard(page)).toMatch(/^:root \{/);
+
+    expect(await app.dumpAll()).toEqual(before);
+  });
+});
+
 test.describe('gradients', () => {
   test('builds and copies gradient CSS with zero DB writes', async ({ app }) => {
     const { page } = app;
@@ -108,9 +167,33 @@ test.describe('glassmorphism', () => {
     await page.getByTestId('gl-shadow').uncheck();
     await expect(page.getByTestId('gl-css')).not.toContainText('box-shadow');
 
+    // Opacity is dialed in percent and lands as a 0–1 alpha.
+    await page.getByTestId('gl-tint-opacity').fill('40');
+    await expect(page.getByTestId('gl-css')).toContainText('rgb(102 51 153 / 0.4)');
+
     await page.getByTestId('gl-copy').click();
     await expect(page.getByTestId('gl-copy')).toHaveText('Copied');
     expect(await readClipboard(page)).toContain('backdrop-filter: blur(24px)');
+
+    expect(await app.dumpAll()).toEqual(before);
+  });
+
+  test('presets apply complete looks in one click', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/glassmorphism/');
+    const before = await app.dumpAll();
+
+    await page.getByTestId('gl-preset-ios-clear').click();
+    await expect(page.getByTestId('gl-css')).toContainText('blur(24px) saturate(190%)');
+    await expect(page.getByTestId('gl-css')).not.toContainText('box-shadow');
+    await expect(page.getByTestId('gl-tint-opacity')).toHaveValue('8');
+    await expect(page.getByTestId('gl-radius')).toHaveValue('18');
+
+    await page.getByTestId('gl-preset-dark-frost').click();
+    await expect(page.getByTestId('gl-css')).toContainText('rgb(16 20 28 / 0.45)');
+
+    await page.getByTestId('gl-preset-tint-amber').click();
+    await expect(page.getByTestId('gl-css')).toContainText('rgb(232 161 58');
 
     expect(await app.dumpAll()).toEqual(before);
   });
@@ -151,6 +234,51 @@ test.describe('regex snippets', () => {
 
     expect(await app.dumpAll()).toEqual(before);
   });
+
+  test('live tester highlights matches and lists groups', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/regex/');
+    const before = await app.dumpAll();
+
+    // Default pattern over the default sample: two full dates, "99-9" ignored.
+    await expect(page.getByTestId('rx-match-count')).toContainText('2 matches');
+    await expect(page.getByTestId('rx-mark')).toHaveCount(2);
+    await expect(page.getByTestId('rx-mark').first()).toHaveText('2024-01-15');
+
+    const firstRow = page.getByTestId('rx-match-row').first();
+    await expect(firstRow).toContainText('year: 2024');
+    await expect(firstRow).toContainText('month: 01');
+
+    // Editing the sample re-runs live.
+    await page.getByTestId('rx-test-text').fill('nothing to see');
+    await expect(page.getByTestId('rx-match-count')).toContainText('No matches');
+    await expect(page.getByTestId('rx-mark')).toHaveCount(0);
+
+    // A broken pattern degrades the tester, not the page.
+    await page.getByTestId('rx-pattern').fill('a(');
+    await expect(page.getByTestId('rx-highlighted')).toHaveCount(0);
+
+    expect(await app.dumpAll()).toEqual(before);
+  });
+
+  test('symbol reference filters by token and meaning', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/regex/');
+
+    // Unfiltered: the full table is on the page.
+    expect(await page.getByTestId('rx-ref-row').count()).toBeGreaterThan(25);
+
+    await page.getByTestId('rx-ref-filter').fill('lookahead');
+    await expect(page.getByTestId('rx-ref-row')).toHaveCount(2);
+    await expect(page.getByTestId('rx-ref-row').first()).toContainText('(?=');
+
+    await page.getByTestId('rx-ref-filter').fill('boundary');
+    await expect(page.getByTestId('rx-ref-row').first()).toContainText('\\b');
+
+    await page.getByTestId('rx-ref-filter').fill('zzznothing');
+    await expect(page.getByTestId('rx-ref-row')).toHaveCount(0);
+    await expect(page.getByText('Nothing matches that filter.')).toBeVisible();
+  });
 });
 
 test.describe('qr code', () => {
@@ -175,6 +303,26 @@ test.describe('qr code', () => {
     // The decoded URL is a clickable link — but nothing auto-opened.
     await expect(page.getByTestId('qr-result-link')).toHaveAttribute('href', payload);
     expect(page.context().pages().length).toBe(1);
+
+    expect(await app.dumpAll()).toEqual(before);
+  });
+
+  test('custom colors reach the code; inverted pairs warn', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/qr/');
+    const before = await app.dumpAll();
+
+    await page.getByTestId('qr-dark').fill('#1e3a5f');
+    await page.getByTestId('qr-light').fill('#fff8dc');
+    // The SVG regenerates asynchronously — poll until the colors land.
+    await expect.poll(() => page.getByTestId('qr-preview').innerHTML()).toContain('#1e3a5f');
+    expect(await page.getByTestId('qr-preview').innerHTML()).toContain('#fff8dc');
+    await expect(page.getByTestId('qr-color-warning')).toHaveCount(0);
+
+    // White-on-black is inverted — scanners hate it, the tool says so.
+    await page.getByTestId('qr-dark').fill('#ffffff');
+    await page.getByTestId('qr-light').fill('#000000');
+    await expect(page.getByTestId('qr-color-warning')).toContainText('Inverted');
 
     expect(await app.dumpAll()).toEqual(before);
   });

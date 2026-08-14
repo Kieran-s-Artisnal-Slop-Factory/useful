@@ -2,6 +2,8 @@
   import Card from '../Card.svelte';
   import Explainer from '../Explainer.svelte';
   import { buildSnippets, validatePattern } from '../../lib/gen/regexgen';
+  import { findMatches, segmentText, MAX_MATCHES } from '../../lib/gen/regexTester';
+  import { filterReference } from '../../lib/gen/regexRef';
   import { copyText } from '../../lib/exportFile';
   // Core + grammars in guaranteed order — see the note in lib/prism.ts.
   import Prism from '../../lib/prism';
@@ -18,6 +20,19 @@
       ? []
       : buildSnippets({ pattern, ignoreCase, multiline, dotAll })
   );
+
+  // Live tester (JS engine — the snippets note where other engines differ).
+  let testText = $state('Dates: 2024-01-15, 2025-12-31 — and one that isn\'t: 99-9.');
+  let testResult = $derived(
+    pattern.length === 0 || error !== null
+      ? null
+      : findMatches(pattern, { ignoreCase, multiline, dotAll }, testText)
+  );
+  let segments = $derived(testResult ? segmentText(testText, testResult.matches) : null);
+
+  // Symbol reference filter.
+  let refQuery = $state('');
+  let refGroups = $derived(filterReference(refQuery));
 
   // Prism output is safe HTML (it entity-escapes code text); the input is our
   // own generated snippet, never user HTML.
@@ -75,6 +90,80 @@
     </div>
   </Card>
 
+  <Card title="Test">
+    <div class="stack">
+      <div>
+        <label for="rx-test-text">Sample text</label>
+        <textarea
+          id="rx-test-text"
+          data-testid="rx-test-text"
+          class="mono"
+          rows="4"
+          spellcheck="false"
+          bind:value={testText}
+        ></textarea>
+      </div>
+
+      {#if testResult && segments}
+        <p class="muted small" data-testid="rx-match-count">
+          {testResult.matches.length === 0
+            ? 'No matches.'
+            : `${testResult.matches.length}${testResult.truncated ? '+' : ''} match${testResult.matches.length === 1 ? '' : 'es'}`}
+          <span class="engine-note">(JavaScript engine — see snippet warnings for Go/Rust differences)</span>
+        </p>
+        <div class="highlighted mono" data-testid="rx-highlighted" aria-label="Sample text with matches highlighted">
+          {#each segments as seg, i (i)}
+            {#if seg.matchOrdinal !== null}
+              <mark data-testid="rx-mark" title={'Match ' + (seg.matchOrdinal + 1)}>{seg.text}</mark>
+            {:else}
+              <span>{seg.text}</span>
+            {/if}
+          {/each}
+        </div>
+
+        {#if testResult.matches.length > 0}
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Match</th>
+                  <th>At</th>
+                  <th>Groups</th>
+                </tr>
+              </thead>
+              <tbody>
+                {#each testResult.matches.slice(0, 50) as m (m.ordinal)}
+                  <tr data-testid="rx-match-row">
+                    <td>{m.ordinal + 1}</td>
+                    <td class="mono">{m.text}</td>
+                    <td class="muted">{m.start}–{m.end}</td>
+                    <td class="mono groups">
+                      {#if m.groups.length === 0}
+                        <span class="muted">—</span>
+                      {:else}
+                        {#each m.groups as g (g.label)}
+                          <span class="group">{g.label}: {g.value ?? '∅'}</span>
+                        {/each}
+                      {/if}
+                    </td>
+                  </tr>
+                {/each}
+              </tbody>
+            </table>
+          </div>
+          {#if testResult.matches.length > 50}
+            <p class="muted small">Showing the first 50 of {testResult.matches.length}{testResult.truncated ? '+' : ''} matches.</p>
+          {:else if testResult.truncated}
+            <p class="muted small">Stopped after {MAX_MATCHES} matches.</p>
+          {/if}
+        {/if}
+      {:else}
+        <p class="muted small">Fix the pattern above to test it.</p>
+      {/if}
+    </div>
+  </Card>
+
   {#each snippets as snip (snip.lang)}
     <Card title={snip.label}>
       {#snippet actions()}
@@ -94,6 +183,49 @@
       </div>
     </Card>
   {/each}
+
+  <Card title="Symbol reference">
+    <div class="stack">
+      <div>
+        <label for="rx-ref-filter">Filter</label>
+        <input
+          id="rx-ref-filter"
+          data-testid="rx-ref-filter"
+          type="text"
+          placeholder="e.g. \d, boundary, lookahead…"
+          bind:value={refQuery}
+        />
+      </div>
+      {#if refGroups.length === 0}
+        <p class="muted small">Nothing matches that filter.</p>
+      {/if}
+      {#each refGroups as group (group.category)}
+        <div>
+          <h3 class="eyebrow ref-heading">{group.category}</h3>
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Symbol</th>
+                  <th>Meaning</th>
+                  <th>Example</th>
+                </tr>
+              </thead>
+              <tbody>
+                {#each group.entries as entry (entry.token)}
+                  <tr data-testid="rx-ref-row">
+                    <td class="mono token">{entry.token}</td>
+                    <td>{entry.meaning}</td>
+                    <td class="muted example">{entry.example}</td>
+                  </tr>
+                {/each}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      {/each}
+    </div>
+  </Card>
 
   <Explainer summary="What gets adapted per language" testid="explainer-regex">
     <p>
@@ -144,5 +276,49 @@
 
   pre {
     margin: 0;
+  }
+
+  .small {
+    font-size: var(--font-size-sm);
+  }
+
+  .engine-note {
+    font-weight: 400;
+  }
+
+  .highlighted {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    border: 1px solid var(--border-color);
+    background: var(--bg-color);
+    padding: var(--space-3);
+    font-size: var(--font-size-sm);
+  }
+
+  /* The primary/on-primary pair is the design system's guaranteed-AA combo. */
+  .highlighted mark {
+    background: var(--color-primary);
+    color: var(--color-on-primary);
+    border-radius: 2px;
+    padding: 0 1px;
+  }
+
+  .groups .group {
+    display: inline-block;
+    margin-right: var(--space-2);
+    background: var(--color-primary-soft);
+    padding: 0 var(--space-1);
+  }
+
+  .ref-heading {
+    margin-bottom: var(--space-2);
+  }
+
+  .token {
+    white-space: nowrap;
+  }
+
+  .example {
+    font-size: var(--font-size-sm);
   }
 </style>
