@@ -12,15 +12,38 @@
  * alarms fire only while the app is open in some tab; completions that elapse
  * while closed are surfaced as "missed" on the next open.
  */
-import { all, get, patch, softDelete } from '../db/repo';
-import type { Timer } from '../db/types';
+import { all, get, getSingleton, patch, softDelete } from '../db/repo';
+import type { Event as CalendarEvent, Preferences, Timer, Todo } from '../db/types';
 
 export interface CompletionNotice {
   id: string;
+  /** What fired: a finished timer, a due todo, or a starting event. */
+  kind: 'timer' | 'todo' | 'event';
   label: string;
   /** Completed while the app was closed — surfaced on open, no sound. */
   missed: boolean;
   at: string;
+  /** The alarm loop is still ringing/vibrating for this notice. */
+  alarming: boolean;
+}
+
+/** The alarm cap: never ring longer than this, whatever preferences say. */
+export const MAX_ALARM_SECONDS = 25;
+
+interface ActiveAlarm {
+  until: number;
+  sound: boolean;
+  vibrate: boolean;
+}
+
+/** Live completions ring until dismissed/acted-on or their deadline passes. */
+const alarms = new Map<string, ActiveAlarm>();
+
+/** Stop the ringing for one notice (dismissal, or acting on the timer). */
+export function stopAlarm(id: string): void {
+  if (alarms.delete(id) && 'vibrate' in navigator) navigator.vibrate(0);
+  const notice = engineState.notices.find((n) => n.id === id);
+  if (notice) notice.alarming = false;
 }
 
 export const engineState = $state({
@@ -39,6 +62,7 @@ export async function refreshTimers(): Promise<void> {
 }
 
 export function dismissNotice(id: string): void {
+  stopAlarm(id);
   engineState.notices = engineState.notices.filter((n) => n.id !== id);
 }
 
@@ -97,10 +121,25 @@ async function complete(id: string, missed: boolean): Promise<void> {
   });
   if (!done) return;
 
+  // Live completions keep ringing until someone dismisses the banner or acts
+  // on the timer — capped by the configured alarm duration.
+  const prefs = await getSingleton<Preferences>('preferences');
+  const alarmSeconds = Math.min(
+    MAX_ALARM_SECONDS,
+    Math.max(0, prefs?.timer_alarm_seconds ?? MAX_ALARM_SECONDS)
+  );
+  const alarming = !missed && (current.sound || current.vibrate) && alarmSeconds > 0;
   engineState.notices = [
     ...engineState.notices,
-    { id, label: current.label, missed, at: new Date().toISOString() },
+    { id, kind: 'timer', label: current.label, missed, at: new Date().toISOString(), alarming },
   ];
+  if (alarming) {
+    alarms.set(id, {
+      until: Date.now() + alarmSeconds * 1000,
+      sound: current.sound,
+      vibrate: current.vibrate,
+    });
+  }
   if (!missed) {
     if (current.sound) beep();
     if (current.vibrate && 'vibrate' in navigator) navigator.vibrate([200, 100, 200]);
@@ -115,6 +154,43 @@ async function complete(id: string, missed: boolean): Promise<void> {
     await softDelete('timers', id);
   }
   await refreshTimers();
+}
+
+/**
+ * Scheduler due-time notifications. Fired keys are in-memory only: no row is
+ * written when a due moment passes (page loads must write nothing), so a
+ * full reload can re-notify — the fire window below keeps that to items due
+ * within the last minute.
+ */
+const firedDue = new Set<string>();
+const DUE_FIRE_WINDOW_MS = 60_000;
+
+async function scanDue(now: number): Promise<void> {
+  const [todos, events] = await Promise.all([all<Todo>('todos'), all<CalendarEvent>('events')]);
+  for (const t of todos) {
+    if (!t.notify || t.status === 'completed' || !t.due_date || !t.due_time) continue;
+    const due = new Date(`${t.due_date}T${t.due_time}`).getTime();
+    const key = `todo:${t.id}:${t.due_date}T${t.due_time}`;
+    if (Number.isNaN(due) || now < due || now - due > DUE_FIRE_WINDOW_MS || firedDue.has(key)) continue;
+    firedDue.add(key);
+    engineState.notices = [
+      ...engineState.notices,
+      { id: t.id, kind: 'todo', label: t.title, missed: false, at: new Date().toISOString(), alarming: false },
+    ];
+    await showNotification('Due now: ' + t.title, 'useful — scheduler', 'useful-todo-' + t.id);
+  }
+  for (const ev of events) {
+    if (!ev.notify) continue;
+    const start = Date.parse(ev.start);
+    const key = `event:${ev.id}:${ev.start}`;
+    if (Number.isNaN(start) || now < start || now - start > DUE_FIRE_WINDOW_MS || firedDue.has(key)) continue;
+    firedDue.add(key);
+    engineState.notices = [
+      ...engineState.notices,
+      { id: ev.id, kind: 'event', label: ev.title, missed: false, at: new Date().toISOString(), alarming: false },
+    ];
+    await showNotification('Starting now: ' + ev.title, 'useful — scheduler', 'useful-event-' + ev.id);
+  }
 }
 
 let stop: (() => void) | null = null;
@@ -133,6 +209,17 @@ export function startEngine(): () => void {
         const overdue = engineState.now - Date.parse(t.end_at);
         await complete(t.id, overdue > MISSED_THRESHOLD_MS);
       }
+    }
+    await scanDue(engineState.now);
+    // Keep active alarms ringing; retire the expired ones.
+    for (const [id, alarm] of alarms) {
+      const notice = engineState.notices.find((n) => n.id === id);
+      if (!notice || engineState.now >= alarm.until) {
+        stopAlarm(id);
+        continue;
+      }
+      if (alarm.sound) beep();
+      if (alarm.vibrate && 'vibrate' in navigator) navigator.vibrate([300, 150, 300]);
     }
   };
 

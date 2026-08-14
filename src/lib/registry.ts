@@ -32,7 +32,7 @@ export interface ToolDef {
  * land here as their phases ship (Time, Scheduler, Images, Calculators,
  * Generators); 'App' stays last — it holds the app's own pages.
  */
-export const CATEGORY_ORDER: string[] = ['Time', 'App'];
+export const CATEGORY_ORDER: string[] = ['Time', 'Scheduler', 'App'];
 
 export const REGISTRY: ToolDef[] = [
   {
@@ -61,6 +61,15 @@ export const REGISTRY: ToolDef[] = [
     category: 'Time',
     route: '/tools/timezones/',
     icon: 'globe',
+  },
+  {
+    id: 'scheduler',
+    name: 'Scheduler',
+    description: 'Events and TODOs on a list, board, or calendar',
+    aliases: ['todo', 'todos', 'tasks', 'kanban', 'calendar', 'events', 'agenda'],
+    category: 'Scheduler',
+    route: '/tools/scheduler/',
+    icon: 'calendar-days',
   },
   {
     id: 'home',

@@ -9,8 +9,16 @@
 {#if engineState.notices.length > 0}
   <div class="notices" role="status" aria-live="polite">
     {#each engineState.notices as notice (notice.id + notice.at)}
-      <div class="notice" data-testid="timer-notice" data-timer-id={notice.id}>
-        <span class="tag">{notice.missed ? 'MISSED' : 'DONE'}</span>
+      <div
+        class="notice"
+        class:alarming={notice.alarming}
+        data-testid="timer-notice"
+        data-timer-id={notice.id}
+        data-alarming={notice.alarming}
+      >
+        <span class="tag">
+          {notice.kind === 'todo' ? 'DUE' : notice.kind === 'event' ? 'NOW' : notice.missed ? 'MISSED' : 'DONE'}
+        </span>
         <span class="label">{notice.label}</span>
         <button
           class="dismiss"
@@ -72,5 +80,26 @@
 
   .dismiss:hover {
     color: var(--text-color);
+  }
+
+  /* A ringing notice pulses its stamp bar so the eye finds what the ear hears. */
+  .notice.alarming {
+    animation: notice-pulse 1s ease-in-out infinite;
+  }
+
+  @keyframes notice-pulse {
+    0%,
+    100% {
+      box-shadow: var(--shadow-2), inset 2px 0 0 var(--color-stamp);
+    }
+    50% {
+      box-shadow: var(--shadow-2), inset 6px 0 0 var(--color-stamp);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .notice.alarming {
+      animation: none;
+    }
   }
 </style>

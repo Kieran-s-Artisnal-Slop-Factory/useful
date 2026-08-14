@@ -4,7 +4,7 @@
   import { getSingleton, patch, put, putSingleton, softDelete, withSyncFields } from '../../lib/db/repo';
   import type { Preferences, Timer } from '../../lib/db/types';
   import { formatCountdown, hmsToMs, msToHms, remainingMs } from '../../lib/time/duration';
-  import { engineState, refreshTimers, unlockAudio } from '../../lib/time/engine.svelte';
+  import { dismissNotice, engineState, refreshTimers, unlockAudio } from '../../lib/time/engine.svelte';
   import { renderMarkdown } from '../../lib/markdown';
 
   const canVibrate = typeof navigator !== 'undefined' && 'vibrate' in navigator;
@@ -132,6 +132,8 @@
    * actually differ, so an unchanged save touches nothing else. */
   async function rememberDefaults() {
     const prefs = await getSingleton<Preferences>('preferences');
+    // With auto-remember off, the defaults only change on the Preferences page.
+    if (!(prefs?.auto_remember_based_on_last_value ?? true)) return;
     if (
       prefs?.timer_default_sound !== draft.sound ||
       prefs?.timer_default_vibrate !== draft.vibrate ||
@@ -148,6 +150,8 @@
   }
 
   async function start(t: Timer) {
+    // Acting on the timer acknowledges any completion still ringing for it.
+    dismissNotice(t.id);
     // The gesture that arms the alarm also unlocks audio + permission.
     unlockAudio();
     if (t.notify && canNotify && Notification.permission === 'default') {
@@ -177,6 +181,7 @@
   }
 
   async function reset(t: Timer) {
+    dismissNotice(t.id); // interrupts a ringing alarm too
     await patch<Timer>('timers', t.id, { state: 'idle', end_at: null, paused_remaining_ms: null });
     await refreshTimers();
   }

@@ -47,6 +47,22 @@ const MIGRATIONS: Migration[] = [
       db.createObjectStore('stopwatch', { keyPath: 'id' });
     }
   },
+  // v4 — Phase 2 (Scheduler): events, todos, todo comments.
+  (db) => {
+    if (!db.objectStoreNames.contains('events')) {
+      const events = db.createObjectStore('events', { keyPath: 'id' });
+      events.createIndex('start', 'start', { multiEntry: false });
+    }
+    if (!db.objectStoreNames.contains('todos')) {
+      const todos = db.createObjectStore('todos', { keyPath: 'id' });
+      todos.createIndex('status', 'status', { multiEntry: false });
+      todos.createIndex('due_date', 'due_date', { multiEntry: false });
+    }
+    if (!db.objectStoreNames.contains('todo_comments')) {
+      const comments = db.createObjectStore('todo_comments', { keyPath: 'id' });
+      comments.createIndex('todo_id', 'todo_id', { multiEntry: false });
+    }
+  },
 ];
 
 export const DB_VERSION = MIGRATIONS.length;

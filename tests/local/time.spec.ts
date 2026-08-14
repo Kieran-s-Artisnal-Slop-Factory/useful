@@ -182,6 +182,104 @@ test.describe('timer options', () => {
   });
 });
 
+test.describe('alarm loop + preferences panel', () => {
+  test('a finished timer rings until its banner is dismissed', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/timers/');
+    await page.getByTestId('timer-new').click();
+    await page.getByTestId('timer-label').fill('Ringer');
+    await page.getByTestId('timer-minutes').fill('0');
+    await page.getByTestId('timer-seconds').fill('2');
+    await page.getByTestId('timer-save-start').click();
+
+    const notice = page.getByTestId('timer-notice');
+    await expect(notice).toBeVisible({ timeout: 10_000 });
+    await expect(notice).toHaveAttribute('data-alarming', 'true');
+
+    await page.getByRole('button', { name: /Dismiss notification/ }).click();
+    await expect(page.getByTestId('timer-notice')).toHaveCount(0);
+  });
+
+  test('acting on the finished timer interrupts the alarm', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/timers/');
+    await page.getByTestId('timer-new').click();
+    await page.getByTestId('timer-label').fill('Interrupt me');
+    await page.getByTestId('timer-minutes').fill('0');
+    await page.getByTestId('timer-seconds').fill('2');
+    await page.getByTestId('timer-save-start').click();
+
+    await expect(page.getByTestId('timer-notice')).toHaveAttribute('data-alarming', 'true', {
+      timeout: 10_000,
+    });
+    await page.getByTestId('timer-start').click(); // "Run again"
+    await expect(page.getByTestId('timer-notice')).toHaveCount(0);
+    await expect(page.getByTestId('timer-state')).toHaveText('running');
+  });
+
+  test('the alarm duration preference caps the ringing', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/preferences/');
+    await page.getByTestId('pref-timer_alarm_seconds').fill('1');
+    await page.getByTestId('pref-timer_alarm_seconds').blur();
+    await expect
+      .poll(async () => (await app.get('preferences', 'singleton'))?.timer_alarm_seconds)
+      .toBe(1);
+
+    await app.goto('/tools/timers/');
+    await page.getByTestId('timer-new').click();
+    await page.getByTestId('timer-label').fill('Short ring');
+    await page.getByTestId('timer-minutes').fill('0');
+    await page.getByTestId('timer-seconds').fill('2');
+    await page.getByTestId('timer-save-start').click();
+
+    const notice = page.getByTestId('timer-notice');
+    await expect(notice).toBeVisible({ timeout: 10_000 });
+    // Ringing stops on its own within the configured second (+tick slack)…
+    await expect(notice).toHaveAttribute('data-alarming', 'false', { timeout: 6_000 });
+    // …but the banner persists until dismissed.
+    await expect(notice).toBeVisible();
+  });
+
+  test('panel toggles write only the singleton and drive the timer form', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/preferences/');
+    const before = await app.dumpAll();
+    await page.getByTestId('pref-timer_default_delete_on_complete').check();
+    await expect
+      .poll(async () => (await app.get('preferences', 'singleton'))?.timer_default_delete_on_complete)
+      .toBe(true);
+    assertIsolatedDelta(before, await app.dumpAll(), [{ store: 'preferences', id: 'singleton' }]);
+
+    await app.goto('/tools/timers/');
+    await page.getByTestId('timer-new').click();
+    await expect(page.getByTestId('timer-delete-on-complete')).toBeChecked();
+  });
+
+  test('with auto-remember off, saving a timer leaves the set defaults alone', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/preferences/');
+    await page.getByTestId('pref-auto_remember_based_on_last_value').uncheck();
+    await expect
+      .poll(async () => (await app.get('preferences', 'singleton'))?.auto_remember_based_on_last_value)
+      .toBe(false);
+
+    await app.goto('/tools/timers/');
+    await page.getByTestId('timer-new').click();
+    await page.getByTestId('timer-label').fill('No remember');
+    await page.getByRole('checkbox', { name: 'Play sound' }).uncheck();
+    await page.getByTestId('timer-save').click();
+    await expect(page.getByTestId('timer-state')).toHaveText('idle');
+
+    // The stored default did NOT follow the saved timer…
+    const prefs = (await app.get('preferences', 'singleton')) as Record<string, unknown>;
+    expect(prefs.timer_default_sound).not.toBe(false);
+    // …so the next new timer pre-fills sound on again.
+    await page.getByTestId('timer-new').click();
+    await expect(page.getByRole('checkbox', { name: 'Play sound' })).toBeChecked();
+  });
+});
+
 test.describe('stopwatch', () => {
   test('start/lap/pause/reset write only the singleton; elapsed survives reload', async ({ app }) => {
     const { page } = app;

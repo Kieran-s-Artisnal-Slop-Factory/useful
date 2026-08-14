@@ -36,6 +36,13 @@ export interface Preferences extends SyncFields {
   timer_default_vibrate?: boolean;
   timer_default_notify?: boolean;
   timer_default_delete_on_complete?: boolean;
+  /** How long a completed timer keeps ringing/vibrating (1-25s, default 25). */
+  timer_alarm_seconds?: number;
+  /** ON (default): saving a timer updates the defaults above. OFF: the
+   * defaults only change on the Preferences page. */
+  auto_remember_based_on_last_value?: boolean;
+  /** Last-used scheduler view. */
+  scheduler_view?: 'list' | 'board' | 'calendar';
   /** Last-used timezone pair on the converter. */
   tz_last_from?: string;
   tz_last_to?: string;
@@ -73,6 +80,54 @@ export interface Stopwatch extends SyncFields {
   state: 'idle' | 'running' | 'paused';
 }
 
+/** A calendar event. No workflow, no recurrence (recurrence is TODO-only). */
+export interface Event extends SyncFields {
+  title: string;
+  description_md: string;
+  /** UTC ISO start instant. */
+  start: string;
+  /** Optional UTC ISO end instant (>= start). */
+  end: string | null;
+  all_day: boolean;
+  notify: boolean;
+}
+
+export type TodoStatus = 'todo' | 'in_progress' | 'completed';
+export type TodoPriority = 'low' | 'medium' | 'high' | 'urgent';
+
+/** Recurrence rule, stored ON the todo (donetick-style — no full RRULE).
+ * Completing a recurring todo creates exactly ONE successor inside the same
+ * user action; occurrences are never materialized on render. */
+export type RecurrenceRule =
+  | { kind: 'every'; interval: number; unit: 'days' | 'weeks' | 'months' }
+  | { kind: 'weekdays'; days: number[] }; // 0 = Sunday … 6 = Saturday
+
+export interface Todo extends SyncFields {
+  title: string;
+  description_md: string;
+  /** Local calendar date 'YYYY-MM-DD'; null = undated (list/kanban only). */
+  due_date: string | null;
+  /** Local time 'HH:MM'; only meaningful with a due_date. Date-only todos
+   * produce no timed notification. */
+  due_time: string | null;
+  priority: TodoPriority;
+  status: TodoStatus;
+  completed_at: string | null;
+  recurrence: RecurrenceRule | null;
+  /** The todo this one was spawned from when a recurring todo completed. */
+  recurrence_parent_id: string | null;
+  /** Fractional ordering key for the kanban column (see lib/scheduler/rank). */
+  rank: string;
+  notify: boolean;
+}
+
+/** One comment on a todo — a child row, so edits stay isolated and the FK
+ * integrity checks apply. */
+export interface TodoComment extends SyncFields {
+  todo_id: string;
+  body_md: string;
+}
+
 export interface StoreIndex {
   name: string;
   multiEntry?: boolean;
@@ -94,6 +149,11 @@ export const STORES: Record<string, StoreDef> = {
   preferences: { indexes: [], singleton: true, fieldMerge: true },
   timers: { indexes: [] },
   stopwatch: { indexes: [], singleton: true },
+  events: { indexes: [{ name: 'start' }] },
+  // fieldMerge: status changed on one device and description on another must
+  // both survive a future sync/merge.
+  todos: { indexes: [{ name: 'status' }, { name: 'due_date' }], fieldMerge: true },
+  todo_comments: { indexes: [{ name: 'todo_id' }] },
 };
 
 export type StoreName = keyof typeof STORES;

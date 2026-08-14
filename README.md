@@ -13,6 +13,11 @@ their own browser.
 - `timers` — countdown timers; running timers store an absolute `end_at`
   deadline, so nothing writes per tick
 - `stopwatch` — singleton; start epoch + accumulated elapsed + lap list
+- `events` — calendar events (title, start/end, all-day); no recurrence
+- `todos` — field-merged; title, markdown, due date/time, priority, fixed
+  three-state workflow, recurrence rule (successor spawned on complete, never
+  on render), fractional `rank` for kanban ordering
+- `todo_comments` — child rows with a foreign key to `todos`
 
 Every table also carries bookkeeping fields (`id`, `updated_at`,
 `deleted_at`, `server_seq`) that power soft deletes and keep the door open
