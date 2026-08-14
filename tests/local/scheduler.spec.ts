@@ -101,13 +101,13 @@ test.describe('todos', () => {
     const { page } = app;
     await app.goto('/tools/scheduler/');
     await createTodo(app, 'Commented');
-    await page.getByTestId('todo-open').click();
+    await page.getByTestId('todo-open').click(); // opens the read modal
     await page.getByTestId('comment-input').fill('First **comment**');
     await page.getByTestId('comment-add').click();
     await expect(page.getByTestId('todo-comment')).toHaveCount(1);
 
     page.on('dialog', (d) => void d.accept());
-    await page.getByTestId('todo-delete').click();
+    await page.getByTestId('modal-delete').click(); // deletes from the modal
     await expect(page.getByTestId('todo-row')).toHaveCount(0);
 
     // Soft-deleted, not holes; FK invariants stay green.
@@ -124,7 +124,7 @@ test.describe('todos', () => {
     const { page } = app;
     await app.goto('/tools/scheduler/');
     await createTodo(app, 'Discuss');
-    await page.getByTestId('todo-open').click();
+    await page.getByTestId('todo-open').click(); // opening the modal writes nothing
     const before = await app.dumpAll();
     await page.getByTestId('comment-input').fill('A note');
     await page.getByTestId('comment-add').click();
@@ -135,6 +135,106 @@ test.describe('todos', () => {
     ]);
   });
 });
+
+test.describe('modal read/update + calendar interactions', () => {
+  test('the read modal renders markdown and the pencil switches to edit', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/scheduler/');
+    await page.getByTestId('scheduler-new-todo').click();
+    await expect(page.getByTestId('scheduler-modal')).toBeVisible(); // creation is a modal now
+    await page.getByTestId('todo-title').fill('Documented');
+    await page.getByTestId('todo-desc').fill('Some **bold** words');
+    await page.getByTestId('todo-save').click();
+
+    await page.getByTestId('todo-open').click();
+    await expect(page.getByTestId('modal-read')).toBeVisible();
+    await expect(page.getByTestId('modal-desc').locator('strong')).toHaveText('bold');
+
+    await page.getByTestId('modal-edit').click();
+    await expect(page.getByTestId('todo-title')).toHaveValue('Documented');
+    await page.getByTestId('modal-close').click();
+    await expect(page.getByTestId('scheduler-modal')).not.toBeVisible();
+  });
+
+  test('a board card title opens the same read modal', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/scheduler/');
+    await createTodo(app, 'Board me');
+    await page.getByTestId('view-board').click();
+    await page.getByTestId('board-card-title').click();
+    await expect(page.getByTestId('modal-read')).toBeVisible();
+    await expect(page.getByTestId('modal-read')).toContainText('Board me');
+  });
+
+  test('calendar entries show a hover preview with rendered markdown', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/scheduler/');
+    await page.getByTestId('scheduler-new-event').click();
+    await page.getByTestId('event-title').fill('Site walk');
+    await page.locator('#event-desc').fill('Bring the **helmet**');
+    await page.getByTestId('event-date').fill('2024-06-12');
+    await page.getByTestId('event-time').fill('09:00');
+    await page.getByTestId('event-save').click();
+
+    await page.getByTestId('view-calendar').click();
+    await gotoMonth(app, 'June 2024');
+    await page.getByTestId('cal-event').hover();
+    await expect(page.getByTestId('cal-preview')).toBeVisible();
+    await expect(page.getByTestId('cal-preview').locator('strong')).toHaveText('helmet');
+  });
+
+  test('dragging an event to another day reschedules it, keeping the time (one row)', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/scheduler/');
+    await page.getByTestId('scheduler-new-event').click();
+    await page.getByTestId('event-title').fill('Movable');
+    await page.getByTestId('event-date').fill('2024-06-12');
+    await page.getByTestId('event-time').fill('14:30');
+    await page.getByTestId('event-save').click();
+
+    await page.getByTestId('view-calendar').click();
+    await gotoMonth(app, 'June 2024');
+    const before = await app.dumpAll();
+    await page.dragAndDrop('[data-testid="cal-event"]', '[data-testid="cal-cell"][data-date="2024-06-20"]');
+
+    await expect
+      .poll(async () => ((await app.dump('events'))[0] as Record<string, unknown>).start)
+      .toBe(new Date('2024-06-20T14:30').toISOString());
+    const ev = (await app.dump('events'))[0]!;
+    assertIsolatedDelta(before, await app.dumpAll(), [{ store: 'events', id: String(ev.id) }]);
+  });
+
+  test('dragging a todo to another day moves its due date (one row)', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/scheduler/');
+    await page.getByTestId('scheduler-new-todo').click();
+    await page.getByTestId('todo-title').fill('Sliding task');
+    await page.getByTestId('todo-due').fill('2024-06-12');
+    await page.getByTestId('todo-save').click();
+
+    await page.getByTestId('view-calendar').click();
+    await gotoMonth(app, 'June 2024');
+    const before = await app.dumpAll();
+    await page.dragAndDrop('[data-testid="cal-todo"]', '[data-testid="cal-cell"][data-date="2024-06-21"]');
+
+    await expect
+      .poll(async () => ((await app.dump('todos'))[0] as Record<string, unknown>).due_date)
+      .toBe('2024-06-21');
+    const t = (await app.dump('todos'))[0]!;
+    assertIsolatedDelta(before, await app.dumpAll(), [{ store: 'todos', id: String(t.id) }]);
+  });
+});
+
+async function gotoMonth(app: import('./helpers/app').App, label: string) {
+  const { page } = app;
+  for (let i = 0; i < 40; i++) {
+    const current = await page.getByTestId('cal-label').textContent();
+    if (current?.includes(label)) return;
+    const isFuture = new Date(current + ' 1').getTime() > new Date(label + ' 1').getTime();
+    await page.getByTestId(isFuture ? 'cal-prev' : 'cal-next').click();
+  }
+  throw new Error('never reached ' + label);
+}
 
 test('a todo due just now raises a DUE banner (no writes)', async ({ app }) => {
   const { page } = app;

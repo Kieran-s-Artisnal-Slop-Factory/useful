@@ -69,6 +69,7 @@ From `docs/dev/plans/TODO`; a phase is not done until all of these hold:
 1. Events (§2.1) and TODOs (§2.2) CRUD; markdown via `marked`+`DOMPurify`; priority; fixed three-state workflow; comments as child records.
 2. Recurrence (§2.2.7): rule on the todo; completing creates exactly one successor inside the complete action, idempotently; never materialized on render.
 3. Views (§2.3): month calendar (events + dated todos), list + kanban toggle, fractional `rank` drag-reorder. Week/day calendar views (plan's nice-to-haves) are deliberately deferred past v1.
+6. Detail/edit modal + calendar interactions (§2.3.4–2.3.6, added 2026-08-15): `<dialog>`-based create and read/update modal (read-first with pencil-to-edit, comments inside the TODO modal), calendar drag-and-drop rescheduling for events and TODOs, and hover previews with rendered markdown on calendar entries. Board card titles and list titles open the same modal.
 4. Notifications (§2.4): reuse the Phase 1 engine; due-time/event-start scheduling; global defaults + per-item toggle.
 
 **Data model:** migration v4 — `events`, `todos` (fieldMerge), `todo_comments` (FK → todos), indexes per plan §Data model; `preferences` gains board-view prefs.

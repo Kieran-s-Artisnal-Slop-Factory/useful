@@ -60,6 +60,9 @@ An interface to manage events and TODOs, inspired by JIRA/Linear and [donetick](
 1. Calendar view (month first; week/day are nice-to-haves) showing events and dated TODOs
 2. List view and kanban board (three fixed columns matching the workflow), with a toggle between them. Undated TODOs appear in list/kanban only.
 3. Kanban drag-reorder uses a per-card rank key, so reordering one card writes exactly one row.
+4. Calendar entries support true drag-and-drop rescheduling: dragging an event to another day shifts its start (keeping the time of day) and shifts its end by the same number of days; dragging a TODO sets its due date. One row written per drop; dropping on the same day writes nothing.
+5. Calendar entries show wiki-link-style hover previews: a small floating card with the item's attributes and its markdown description rendered (sanitized), appearing after a short hover delay.
+6. Creation and detail use a native `<dialog>` modal (focus-trapped, Escape closes): "+ TODO" / "+ Event" open it in edit mode; clicking an existing calendar entry, a TODO's title in the list view, or a card title on the board opens it in READ mode — rendered markdown, attributes, and (for TODOs) the comment thread — with a pencil button switching to edit mode. Read-then-edit is the Update path for both entity types.
 
 #### 2.4 Notifications
 

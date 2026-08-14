@@ -3,6 +3,34 @@
   - [x] GeoNames city→timezone dataset (downloaded + bundled; regenerate with
     `tools/build-city-dataset.mjs`)
 
+## Session status (handoff notes — updated 2026-08-15)
+
+Done and fully green (51 unit + 60 Playwright, trust gate 5/5; nothing committed yet):
+- [x] Phase 0 (shell/registry/palette/data-layer groundwork) + blueprint redesign
+- [x] Phase 1 (timers incl. looping alarm + editable preferences + auto-remember,
+      stopwatch, timezones incl. GeoNames city lookup) — DB v3
+- [x] Phase 2 core (scheduler: list/board/calendar, recurrence, comments,
+      due notifications) — DB v4
+
+Scheduler UI increment (spec'd in plan.md §2.3.4–2.3.6 and plan-phases.md
+Phase 2 item 6) — DONE, all green (51 unit + 65 Playwright, trust gate 5/5):
+- [x] Convert TODO/event create to a <dialog> modal
+- [x] Read/Update modal (read-first, rendered markdown + attributes + comments,
+      pencil → edit) opened from calendar entries, list titles, board card titles
+- [x] Calendar drag-and-drop rescheduling (events keep time-of-day, end shifts
+      by the same delta; todos move due_date; same-day drop writes nothing)
+- [x] Wiki-style hover previews on calendar entries (rendered markdown)
+- [x] Update/extend Playwright specs + CHANGELOG entry
+
+Next: Phase 3 (Calculators) per plan-phases.md. Notes for the next session:
+- NOTHING IS COMMITTED YET — the whole run (phases 0-2 + redesign) is one
+  dirty working tree; commit when the user asks.
+- Board drag-and-drop (kanban columns) is still button-based; calendar has
+  real dnd. Week/day calendar views deliberately deferred.
+- Subagent workflows may fail on a monthly spend limit — work inline if so.
+- Suites: `npm test` (Playwright, builds prod + trust gate) and
+  `npm run test:unit` (Vitest). Preview via .claude/launch.json "useful-dev".
+
 
 
 Ensure for each change:

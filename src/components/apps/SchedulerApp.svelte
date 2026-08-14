@@ -1,9 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import Card from '../Card.svelte';
   import {
     all,
-    byIndex,
     get,
     getSingleton,
     nowIso,
@@ -24,7 +22,7 @@
     TodoStatus,
   } from '../../lib/db/types';
   import { describeRule, nextDueDate } from '../../lib/scheduler/recurrence';
-  import { initialRank, rankAfter, rankBetween } from '../../lib/scheduler/rank';
+  import { rankAfter, rankBetween } from '../../lib/scheduler/rank';
   import { renderMarkdown } from '../../lib/markdown';
   import CalendarView from './CalendarView.svelte';
 
@@ -42,7 +40,6 @@
   let events: CalendarEvent[] = $state([]);
   let comments: TodoComment[] = $state([]);
 
-  // ---- data
   async function refresh() {
     [todos, events, comments] = await Promise.all([
       all<Todo>('todos'),
@@ -65,9 +62,37 @@
     void putSingleton<Partial<Preferences>>('preferences', { scheduler_view: v });
   }
 
-  // ---- todo form
-  let todoFormOpen = $state(false);
-  let todoEditingId: string | null = $state(null);
+  // ---- the modal (native <dialog>): create opens in edit mode; existing
+  // items open in READ mode with a pencil to switch to edit.
+  interface ModalState {
+    type: 'todo' | 'event';
+    id: string | null; // null = creating
+    mode: 'read' | 'edit';
+  }
+  let modal: ModalState | null = $state(null);
+  let dialogEl: HTMLDialogElement | undefined = $state();
+
+  $effect(() => {
+    if (!dialogEl) return;
+    if (modal && !dialogEl.open) dialogEl.showModal();
+    if (!modal && dialogEl.open) dialogEl.close();
+  });
+
+  $effect(() => {
+    document.body.style.overflow = modal ? 'hidden' : '';
+    return () => {
+      document.body.style.overflow = '';
+    };
+  });
+
+  let modalTodo = $derived(modal?.type === 'todo' && modal.id ? todos.find((t) => t.id === modal!.id) ?? null : null);
+  let modalEvent = $derived(modal?.type === 'event' && modal.id ? events.find((e) => e.id === modal!.id) ?? null : null);
+
+  function closeModal() {
+    modal = null;
+  }
+
+  // ---- todo draft/form
   let todoError: string | null = $state(null);
   let todoDraft = $state(blankTodoDraft());
 
@@ -89,11 +114,15 @@
   function openTodoCreate() {
     todoDraft = blankTodoDraft();
     todoError = null;
-    todoEditingId = null;
-    todoFormOpen = true;
+    modal = { type: 'todo', id: null, mode: 'edit' };
   }
 
-  function openTodoEdit(t: Todo) {
+  function openTodoRead(t: Todo) {
+    todoError = null;
+    modal = { type: 'todo', id: t.id, mode: 'read' };
+  }
+
+  function editTodoFromModal(t: Todo) {
     todoDraft = {
       title: t.title,
       description_md: t.description_md,
@@ -107,8 +136,7 @@
       weekdays: t.recurrence?.kind === 'weekdays' ? [...t.recurrence.days] : [],
     };
     todoError = null;
-    todoEditingId = t.id;
-    todoFormOpen = true;
+    modal = { type: 'todo', id: t.id, mode: 'edit' };
   }
 
   function draftRule(): RecurrenceRule | null {
@@ -141,8 +169,8 @@
       notify: todoDraft.notify,
       recurrence: draftRule(),
     };
-    if (todoEditingId) {
-      const saved = await patch<Todo>('todos', todoEditingId, fields);
+    if (modal?.id) {
+      const saved = await patch<Todo>('todos', modal.id, fields);
       if (!saved) {
         todoError = 'That TODO was deleted somewhere else — nothing was saved.';
         await refresh();
@@ -160,7 +188,7 @@
         })
       );
     }
-    todoFormOpen = false;
+    closeModal();
     await refresh();
   }
 
@@ -226,7 +254,7 @@
       'todo_comments',
       comments.filter((c) => c.todo_id === t.id).map((c) => c.id)
     );
-    if (detailId === t.id) detailId = null;
+    closeModal();
     await refresh();
   }
 
@@ -243,7 +271,6 @@
   }
 
   // ---- comments
-  let detailId: string | null = $state(null);
   let commentDraft = $state('');
 
   function commentsFor(todoId: string): TodoComment[] {
@@ -264,9 +291,7 @@
     await refresh();
   }
 
-  // ---- event form
-  let eventFormOpen = $state(false);
-  let eventEditingId: string | null = $state(null);
+  // ---- event draft/form
   let eventError: string | null = $state(null);
   let eventDraft = $state(blankEventDraft());
 
@@ -277,11 +302,15 @@
   function openEventCreate(date?: string) {
     eventDraft = { ...blankEventDraft(), date: date ?? '' };
     eventError = null;
-    eventEditingId = null;
-    eventFormOpen = true;
+    modal = { type: 'event', id: null, mode: 'edit' };
   }
 
-  function openEventEdit(ev: CalendarEvent) {
+  function openEventRead(ev: CalendarEvent) {
+    eventError = null;
+    modal = { type: 'event', id: ev.id, mode: 'read' };
+  }
+
+  function editEventFromModal(ev: CalendarEvent) {
     const start = new Date(ev.start);
     const end = ev.end ? new Date(ev.end) : null;
     eventDraft = {
@@ -295,8 +324,7 @@
       notify: ev.notify,
     };
     eventError = null;
-    eventEditingId = ev.id;
-    eventFormOpen = true;
+    modal = { type: 'event', id: ev.id, mode: 'edit' };
   }
 
   const pad = (n: number) => String(n).padStart(2, '0');
@@ -330,8 +358,8 @@
       all_day: eventDraft.all_day,
       notify: eventDraft.notify,
     };
-    if (eventEditingId) {
-      const saved = await patch<CalendarEvent>('events', eventEditingId, fields);
+    if (modal?.id) {
+      const saved = await patch<CalendarEvent>('events', modal.id, fields);
       if (!saved) {
         eventError = 'That event was deleted somewhere else — nothing was saved.';
         await refresh();
@@ -340,14 +368,38 @@
     } else {
       await put<CalendarEvent>('events', withSyncFields(fields));
     }
-    eventFormOpen = false;
+    closeModal();
     await refresh();
   }
 
   async function deleteEvent(ev: CalendarEvent) {
     if (!confirm('Delete event "' + ev.title + '"?')) return;
     await softDelete('events', ev.id);
-    eventFormOpen = false;
+    closeModal();
+    await refresh();
+  }
+
+  /** Calendar drag-and-drop: ONE row per drop; same-day drops write nothing.
+   * Events keep their time of day (end shifts by the same delta). */
+  async function dropOnDate(type: 'todo' | 'event', id: string, date: string) {
+    if (type === 'todo') {
+      const t = todos.find((x) => x.id === id);
+      if (!t || t.due_date === date) return;
+      await patch<Todo>('todos', id, { due_date: date });
+    } else {
+      const ev = events.find((x) => x.id === id);
+      if (!ev) return;
+      const start = new Date(ev.start);
+      if (localDate(start) === date) return;
+      const [y, m, d] = date.split('-').map(Number);
+      const newStart = new Date(start);
+      newStart.setFullYear(y!, m! - 1, d!);
+      const deltaMs = newStart.getTime() - start.getTime();
+      await patch<CalendarEvent>('events', id, {
+        start: newStart.toISOString(),
+        end: ev.end ? new Date(Date.parse(ev.end) + deltaMs).toISOString() : null,
+      });
+    }
     await refresh();
   }
 
@@ -367,6 +419,19 @@
     if (t.status === 'completed' || !t.due_date) return false;
     const due = new Date(`${t.due_date}T${t.due_time ?? '23:59'}`);
     return due.getTime() < Date.now();
+  }
+
+  function eventWhen(ev: CalendarEvent): string {
+    const start = new Date(ev.start);
+    const startText = ev.all_day
+      ? start.toLocaleDateString()
+      : start.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+    if (!ev.end) return startText;
+    const end = new Date(ev.end);
+    const endText = ev.all_day
+      ? end.toLocaleDateString()
+      : end.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+    return `${startText} → ${endText}`;
   }
 </script>
 
@@ -392,133 +457,241 @@
   {/each}
 </div>
 
-{#if todoFormOpen}
-  <Card title={todoEditingId ? 'Edit TODO' : 'New TODO'}>
-    <form class="stack" onsubmit={saveTodo}>
-      <div>
-        <label for="todo-title">Title</label>
-        <input id="todo-title" data-testid="todo-title" bind:value={todoDraft.title} required />
+<!-- The scheduler modal: create (edit mode) and read/update for both types. -->
+<dialog
+  bind:this={dialogEl}
+  data-testid="scheduler-modal"
+  onclose={() => (modal = null)}
+  onclick={(e) => e.target === dialogEl && closeModal()}
+>
+  {#if modal?.type === 'todo'}
+    {#if modal.mode === 'read' && modalTodo}
+      <div class="modal-body stack" data-testid="modal-read">
+        <header class="row modal-head">
+          <h3>{modalTodo.title}</h3>
+          <span class="spacer"></span>
+          <button
+            class="btn btn-sm"
+            data-testid="modal-edit"
+            aria-label="Edit"
+            onclick={() => modalTodo && editTodoFromModal(modalTodo)}
+          >
+            ✎ Edit
+          </button>
+          <button class="btn btn-sm" data-testid="modal-close" onclick={closeModal}>Close</button>
+        </header>
+        <dl class="attrs">
+          <dt>Status</dt>
+          <dd>{STATUSES.find((s) => s.key === modalTodo!.status)?.label}</dd>
+          <dt>Due</dt>
+          <dd class:overdue={isOverdue(modalTodo)}>
+            {modalTodo.due_date ?? '—'}{modalTodo.due_time ? ' ' + modalTodo.due_time : ''}
+          </dd>
+          <dt>Priority</dt>
+          <dd class="prio prio-{modalTodo.priority}">{modalTodo.priority}</dd>
+          <dt>Repeats</dt>
+          <dd>{modalTodo.recurrence ? describeRule(modalTodo.recurrence) : 'never'}</dd>
+          <dt>Notify</dt>
+          <dd>{modalTodo.notify ? 'at due time' : 'no'}</dd>
+        </dl>
+        {#if modalTodo.description_md.trim()}
+          <div class="desc" data-testid="modal-desc">{@html renderMarkdown(modalTodo.description_md)}</div>
+        {:else}
+          <p class="muted">No description.</p>
+        {/if}
+        <section class="stack" aria-label="Comments" data-testid="todo-comments">
+          <h4 class="eyebrow">Comments</h4>
+          {#each commentsFor(modalTodo.id) as c (c.id)}
+            <div class="comment" data-testid="todo-comment">
+              <span class="muted small">{new Date(c.updated_at).toLocaleString()}</span>
+              <div class="desc">{@html renderMarkdown(c.body_md)}</div>
+              <button class="btn btn-sm btn-danger" onclick={() => deleteComment(c)}>Delete</button>
+            </div>
+          {/each}
+          <form
+            class="row"
+            onsubmit={(e) => {
+              e.preventDefault();
+              if (modalTodo) void addComment(modalTodo.id);
+            }}
+          >
+            <input data-testid="comment-input" placeholder="Add a comment (markdown)…" bind:value={commentDraft} />
+            <button class="btn btn-sm" data-testid="comment-add" type="submit">Comment</button>
+          </form>
+        </section>
+        <div class="row">
+          <button class="btn btn-sm btn-danger" data-testid="modal-delete" onclick={() => modalTodo && deleteTodo(modalTodo)}>
+            Delete
+          </button>
+        </div>
       </div>
-      <div>
-        <label for="todo-desc">Description (markdown)</label>
-        <textarea id="todo-desc" data-testid="todo-desc" rows="3" bind:value={todoDraft.description_md}></textarea>
-      </div>
-      <div class="row">
-        <div>
-          <label for="todo-due">Due date</label>
-          <input id="todo-due" data-testid="todo-due" type="date" bind:value={todoDraft.due_date} />
-        </div>
-        <div>
-          <label for="todo-due-time">Time (optional)</label>
-          <input id="todo-due-time" data-testid="todo-due-time" type="time" bind:value={todoDraft.due_time} disabled={!todoDraft.due_date} />
-        </div>
-        <div>
-          <label for="todo-priority">Priority</label>
-          <select id="todo-priority" data-testid="todo-priority" bind:value={todoDraft.priority}>
-            {#each PRIORITIES as p (p)}<option value={p}>{p}</option>{/each}
-          </select>
-        </div>
-      </div>
-      <div class="row">
-        <div>
-          <label for="todo-recur">Repeats</label>
-          <select id="todo-recur" data-testid="todo-recur" bind:value={todoDraft.recur}>
-            <option value="none">never</option>
-            <option value="every">every N…</option>
-            <option value="weekdays">weekly on…</option>
-          </select>
-        </div>
-        {#if todoDraft.recur === 'every'}
+    {:else}
+      <div class="modal-body stack">
+        <header class="row modal-head">
+          <h3>{modal.id ? 'Edit TODO' : 'New TODO'}</h3>
+          <span class="spacer"></span>
+          <button class="btn btn-sm" data-testid="modal-close" onclick={closeModal}>Close</button>
+        </header>
+        <form class="stack" onsubmit={saveTodo}>
           <div>
-            <label for="todo-every-n">Every</label>
-            <div class="row">
-              <input id="todo-every-n" class="num" type="number" min="1" max="365" bind:value={todoDraft.every_interval} />
-              <select bind:value={todoDraft.every_unit} aria-label="Unit">
-                <option value="days">days</option>
-                <option value="weeks">weeks</option>
-                <option value="months">months</option>
+            <label for="todo-title">Title</label>
+            <input id="todo-title" data-testid="todo-title" bind:value={todoDraft.title} required />
+          </div>
+          <div>
+            <label for="todo-desc">Description (markdown)</label>
+            <textarea id="todo-desc" data-testid="todo-desc" rows="4" bind:value={todoDraft.description_md}></textarea>
+          </div>
+          <div class="row">
+            <div>
+              <label for="todo-due">Due date</label>
+              <input id="todo-due" data-testid="todo-due" type="date" bind:value={todoDraft.due_date} />
+            </div>
+            <div>
+              <label for="todo-due-time">Time (optional)</label>
+              <input id="todo-due-time" data-testid="todo-due-time" type="time" bind:value={todoDraft.due_time} disabled={!todoDraft.due_date} />
+            </div>
+            <div>
+              <label for="todo-priority">Priority</label>
+              <select id="todo-priority" data-testid="todo-priority" bind:value={todoDraft.priority}>
+                {#each PRIORITIES as p (p)}<option value={p}>{p}</option>{/each}
               </select>
             </div>
           </div>
-        {:else if todoDraft.recur === 'weekdays'}
-          <div class="row" role="group" aria-label="Weekdays">
-            {#each ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as name, day (day)}
-              <label class="check">
-                <input type="checkbox" checked={todoDraft.weekdays.includes(day)} onchange={(e) => {
-                  todoDraft.weekdays = e.currentTarget.checked
-                    ? [...todoDraft.weekdays, day]
-                    : todoDraft.weekdays.filter((d) => d !== day);
-                }} />
-                {name}
-              </label>
-            {/each}
+          <div class="row">
+            <div>
+              <label for="todo-recur">Repeats</label>
+              <select id="todo-recur" data-testid="todo-recur" bind:value={todoDraft.recur}>
+                <option value="none">never</option>
+                <option value="every">every N…</option>
+                <option value="weekdays">weekly on…</option>
+              </select>
+            </div>
+            {#if todoDraft.recur === 'every'}
+              <div>
+                <label for="todo-every-n">Every</label>
+                <div class="row">
+                  <input id="todo-every-n" class="num" type="number" min="1" max="365" bind:value={todoDraft.every_interval} />
+                  <select bind:value={todoDraft.every_unit} aria-label="Unit">
+                    <option value="days">days</option>
+                    <option value="weeks">weeks</option>
+                    <option value="months">months</option>
+                  </select>
+                </div>
+              </div>
+            {:else if todoDraft.recur === 'weekdays'}
+              <div class="row" role="group" aria-label="Weekdays">
+                {#each ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as name, day (day)}
+                  <label class="check">
+                    <input type="checkbox" checked={todoDraft.weekdays.includes(day)} onchange={(e) => {
+                      todoDraft.weekdays = e.currentTarget.checked
+                        ? [...todoDraft.weekdays, day]
+                        : todoDraft.weekdays.filter((d) => d !== day);
+                    }} />
+                    {name}
+                  </label>
+                {/each}
+              </div>
+            {/if}
+            <label class="check">
+              <input type="checkbox" data-testid="todo-notify" bind:checked={todoDraft.notify} />
+              Notify when due
+            </label>
           </div>
+          {#if todoError}<p class="form-error">{todoError}</p>{/if}
+          <div class="row">
+            <button class="btn btn-primary" data-testid="todo-save" type="submit">Save</button>
+            <button class="btn" type="button" onclick={closeModal}>Cancel</button>
+          </div>
+        </form>
+      </div>
+    {/if}
+  {:else if modal?.type === 'event'}
+    {#if modal.mode === 'read' && modalEvent}
+      <div class="modal-body stack" data-testid="modal-read">
+        <header class="row modal-head">
+          <h3>{modalEvent.title}</h3>
+          <span class="spacer"></span>
+          <button
+            class="btn btn-sm"
+            data-testid="modal-edit"
+            aria-label="Edit"
+            onclick={() => modalEvent && editEventFromModal(modalEvent)}
+          >
+            ✎ Edit
+          </button>
+          <button class="btn btn-sm" data-testid="modal-close" onclick={closeModal}>Close</button>
+        </header>
+        <dl class="attrs">
+          <dt>When</dt>
+          <dd>{eventWhen(modalEvent)}</dd>
+          <dt>All day</dt>
+          <dd>{modalEvent.all_day ? 'yes' : 'no'}</dd>
+          <dt>Notify</dt>
+          <dd>{modalEvent.notify ? 'at start' : 'no'}</dd>
+        </dl>
+        {#if modalEvent.description_md.trim()}
+          <div class="desc" data-testid="modal-desc">{@html renderMarkdown(modalEvent.description_md)}</div>
+        {:else}
+          <p class="muted">No description.</p>
         {/if}
-        <label class="check">
-          <input type="checkbox" data-testid="todo-notify" bind:checked={todoDraft.notify} />
-          Notify when due
-        </label>
-      </div>
-      {#if todoError}<p class="form-error">{todoError}</p>{/if}
-      <div class="row">
-        <button class="btn btn-primary" data-testid="todo-save" type="submit">Save</button>
-        <button class="btn" type="button" onclick={() => (todoFormOpen = false)}>Cancel</button>
-      </div>
-    </form>
-  </Card>
-{/if}
-
-{#if eventFormOpen}
-  <Card title={eventEditingId ? 'Edit event' : 'New event'}>
-    <form class="stack" onsubmit={saveEvent}>
-      <div>
-        <label for="event-title">Title</label>
-        <input id="event-title" data-testid="event-title" bind:value={eventDraft.title} required />
-      </div>
-      <div>
-        <label for="event-desc">Description (markdown, optional)</label>
-        <textarea id="event-desc" rows="2" bind:value={eventDraft.description_md}></textarea>
-      </div>
-      <div class="row">
-        <div>
-          <label for="event-date">Date</label>
-          <input id="event-date" data-testid="event-date" type="date" bind:value={eventDraft.date} required />
+        <div class="row">
+          <button class="btn btn-sm btn-danger" data-testid="modal-delete" onclick={() => modalEvent && deleteEvent(modalEvent)}>
+            Delete
+          </button>
         </div>
-        {#if !eventDraft.all_day}
+      </div>
+    {:else}
+      <div class="modal-body stack">
+        <header class="row modal-head">
+          <h3>{modal.id ? 'Edit event' : 'New event'}</h3>
+          <span class="spacer"></span>
+          <button class="btn btn-sm" data-testid="modal-close" onclick={closeModal}>Close</button>
+        </header>
+        <form class="stack" onsubmit={saveEvent}>
           <div>
-            <label for="event-time">Time</label>
-            <input id="event-time" data-testid="event-time" type="time" bind:value={eventDraft.time} />
+            <label for="event-title">Title</label>
+            <input id="event-title" data-testid="event-title" bind:value={eventDraft.title} required />
           </div>
-        {/if}
-        <div>
-          <label for="event-end-date">End date (optional)</label>
-          <input id="event-end-date" type="date" bind:value={eventDraft.end_date} />
-        </div>
-        {#if !eventDraft.all_day && eventDraft.end_date}
           <div>
-            <label for="event-end-time">End time</label>
-            <input id="event-end-time" type="time" bind:value={eventDraft.end_time} />
+            <label for="event-desc">Description (markdown, optional)</label>
+            <textarea id="event-desc" rows="3" bind:value={eventDraft.description_md}></textarea>
           </div>
-        {/if}
+          <div class="row">
+            <div>
+              <label for="event-date">Date</label>
+              <input id="event-date" data-testid="event-date" type="date" bind:value={eventDraft.date} required />
+            </div>
+            {#if !eventDraft.all_day}
+              <div>
+                <label for="event-time">Time</label>
+                <input id="event-time" data-testid="event-time" type="time" bind:value={eventDraft.time} />
+              </div>
+            {/if}
+            <div>
+              <label for="event-end-date">End date (optional)</label>
+              <input id="event-end-date" type="date" bind:value={eventDraft.end_date} />
+            </div>
+            {#if !eventDraft.all_day && eventDraft.end_date}
+              <div>
+                <label for="event-end-time">End time</label>
+                <input id="event-end-time" type="time" bind:value={eventDraft.end_time} />
+              </div>
+            {/if}
+          </div>
+          <div class="row">
+            <label class="check"><input type="checkbox" data-testid="event-all-day" bind:checked={eventDraft.all_day} /> All day</label>
+            <label class="check"><input type="checkbox" bind:checked={eventDraft.notify} /> Notify at start</label>
+          </div>
+          {#if eventError}<p class="form-error">{eventError}</p>{/if}
+          <div class="row">
+            <button class="btn btn-primary" data-testid="event-save" type="submit">Save</button>
+            <button class="btn" type="button" onclick={closeModal}>Cancel</button>
+          </div>
+        </form>
       </div>
-      <div class="row">
-        <label class="check"><input type="checkbox" data-testid="event-all-day" bind:checked={eventDraft.all_day} /> All day</label>
-        <label class="check"><input type="checkbox" bind:checked={eventDraft.notify} /> Notify at start</label>
-      </div>
-      {#if eventError}<p class="form-error">{eventError}</p>{/if}
-      <div class="row">
-        <button class="btn btn-primary" data-testid="event-save" type="submit">Save</button>
-        {#if eventEditingId}
-          {@const editing = events.find((ev) => ev.id === eventEditingId)}
-          {#if editing}
-            <button class="btn btn-sm btn-danger" type="button" onclick={() => deleteEvent(editing)}>Delete</button>
-          {/if}
-        {/if}
-        <button class="btn" type="button" onclick={() => (eventFormOpen = false)}>Cancel</button>
-      </div>
-    </form>
-  </Card>
-{/if}
+    {/if}
+  {/if}
+</dialog>
 
 {#if loading}
   <p class="muted">Loading…</p>
@@ -546,47 +719,17 @@
                 </select>
               </td>
               <td>
-                <button class="linklike" data-testid="todo-open" onclick={() => (detailId = detailId === t.id ? null : t.id)}>
+                <button class="linklike" data-testid="todo-open" onclick={() => openTodoRead(t)}>
                   {t.title}
                 </button>
                 {#if t.recurrence}<span class="muted recur-tag">↻ {describeRule(t.recurrence)}</span>{/if}
-                {#if detailId === t.id}
-                  <div class="detail stack">
-                    {#if t.description_md.trim()}
-                      <div class="desc">{@html renderMarkdown(t.description_md)}</div>
-                    {/if}
-                    <div class="stack" data-testid="todo-comments">
-                      {#each commentsFor(t.id) as c (c.id)}
-                        <div class="comment" data-testid="todo-comment">
-                          <span class="muted small">{new Date(c.updated_at).toLocaleString()}</span>
-                          <div class="desc">{@html renderMarkdown(c.body_md)}</div>
-                          <button class="btn btn-sm btn-danger" onclick={() => deleteComment(c)}>Delete</button>
-                        </div>
-                      {/each}
-                      <form
-                        class="row"
-                        onsubmit={(e) => {
-                          e.preventDefault();
-                          void addComment(t.id);
-                        }}
-                      >
-                        <input
-                          data-testid="comment-input"
-                          placeholder="Add a comment (markdown)…"
-                          bind:value={commentDraft}
-                        />
-                        <button class="btn btn-sm" data-testid="comment-add" type="submit">Comment</button>
-                      </form>
-                    </div>
-                  </div>
-                {/if}
               </td>
               <td class:overdue={isOverdue(t)} data-testid="todo-due-cell">
                 {t.due_date ?? '—'}{t.due_time ? ' ' + t.due_time : ''}
               </td>
               <td class="prio prio-{t.priority}">{t.priority}</td>
               <td class="actions">
-                <button class="btn btn-sm" data-testid="todo-edit" onclick={() => openTodoEdit(t)}>Edit</button>
+                <button class="btn btn-sm" data-testid="todo-edit" onclick={() => editTodoFromModal(t)}>Edit</button>
                 <button class="btn btn-sm btn-danger" data-testid="todo-delete" onclick={() => deleteTodo(t)}>Delete</button>
               </td>
             </tr>
@@ -602,7 +745,9 @@
         <h2>{s.label} <span class="muted">{column(s.key).length}</span></h2>
         {#each column(s.key) as t, i (t.id)}
           <div class="card-item" data-testid="board-card" data-todo-id={t.id}>
-            <p class="card-title">{t.title}</p>
+            <button class="linklike card-title" data-testid="board-card-title" onclick={() => openTodoRead(t)}>
+              {t.title}
+            </button>
             <p class="muted small">
               {t.due_date ?? ''}{t.due_time ? ' ' + t.due_time : ''}
               <span class="prio prio-{t.priority}">{t.priority}</span>
@@ -626,14 +771,72 @@
   <CalendarView
     {events}
     {todos}
-    oneventclick={(ev) => openEventEdit(ev)}
+    oneventclick={(ev) => openEventRead(ev)}
+    ontodoclick={(t) => openTodoRead(t)}
     ondayclick={(date) => openEventCreate(date)}
+    ondropitem={(type, id, date) => void dropOnDate(type, id, date)}
   />
 {/if}
 
 <style>
   .views {
     margin-bottom: var(--space-4);
+  }
+
+  dialog {
+    width: min(38rem, calc(100vw - 2 * var(--space-4)));
+    max-height: 85vh;
+    background: var(--surface-raised-color);
+    color: var(--text-color);
+    border: 1px solid var(--border-strong-color);
+    outline: 1px dashed var(--border-color);
+    outline-offset: 4px;
+    padding: 0;
+  }
+
+  dialog::backdrop {
+    background: var(--scrim-color);
+  }
+
+  .modal-body {
+    padding: var(--space-4);
+  }
+
+  .modal-head h3 {
+    font-size: var(--font-size-lg);
+    overflow-wrap: anywhere;
+  }
+
+  .spacer {
+    flex: 1;
+  }
+
+  .attrs {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: var(--space-1) var(--space-4);
+    margin: 0;
+  }
+
+  .attrs dt {
+    font-size: var(--font-size-eyebrow);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-label);
+    color: var(--text-muted-color);
+    align-self: center;
+  }
+
+  .attrs dd {
+    margin: 0;
+  }
+
+  .eyebrow {
+    font-size: var(--font-size-eyebrow);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-label);
+    color: var(--text-muted-color);
   }
 
   .num {
@@ -677,17 +880,12 @@
     font-weight: 600;
     text-decoration: underline;
     text-underline-offset: 3px;
+    text-align: left;
   }
 
   .recur-tag {
     margin-left: var(--space-2);
     font-size: var(--font-size-sm);
-  }
-
-  .detail {
-    margin-top: var(--space-3);
-    padding: var(--space-3);
-    border: 1px dashed var(--border-color);
   }
 
   .comment {
@@ -726,6 +924,11 @@
     margin-block: var(--space-1);
   }
 
+  .desc :global(ul),
+  .desc :global(ol) {
+    padding-left: var(--space-5);
+  }
+
   .board {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
@@ -757,5 +960,7 @@
   .card-title {
     font-weight: 700;
     overflow-wrap: anywhere;
+    display: block;
+    margin-bottom: var(--space-1);
   }
 </style>

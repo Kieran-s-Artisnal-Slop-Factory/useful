@@ -1,17 +1,24 @@
 <script lang="ts">
   import type { Event as CalendarEvent, Todo } from '../../lib/db/types';
+  import { describeRule } from '../../lib/scheduler/recurrence';
+  import { renderMarkdown } from '../../lib/markdown';
 
-  // Pure display: renders the month grid from props, writes nothing.
+  // Pure display + interaction affordances: renders the month grid from
+  // props; every mutation goes back through the callbacks.
   let {
     events,
     todos,
     oneventclick,
+    ontodoclick,
     ondayclick,
+    ondropitem,
   }: {
     events: CalendarEvent[];
     todos: Todo[];
     oneventclick: (ev: CalendarEvent) => void;
+    ontodoclick: (t: Todo) => void;
     ondayclick: (date: string) => void;
+    ondropitem: (type: 'todo' | 'event', id: string, date: string) => void;
   } = $props();
 
   const today = new Date();
@@ -78,6 +85,84 @@
     year = today.getFullYear();
     month = today.getMonth();
   }
+
+  // ---- drag-and-drop rescheduling
+  let dragOverDate: string | null = $state(null);
+
+  function onDragStart(e: DragEvent, type: 'todo' | 'event', id: string) {
+    hidePreview();
+    e.dataTransfer?.setData('application/x-useful-item', JSON.stringify({ type, id }));
+    if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
+  }
+
+  function onDrop(e: DragEvent, date: string) {
+    e.preventDefault();
+    dragOverDate = null;
+    const raw = e.dataTransfer?.getData('application/x-useful-item');
+    if (!raw) return;
+    try {
+      const { type, id } = JSON.parse(raw) as { type: 'todo' | 'event'; id: string };
+      if ((type === 'todo' || type === 'event') && typeof id === 'string') ondropitem(type, id, date);
+    } catch {
+      // not our payload — ignore
+    }
+  }
+
+  // ---- wiki-style hover previews
+  interface Preview {
+    x: number;
+    y: number;
+    title: string;
+    meta: string;
+    html: string;
+  }
+  let preview: Preview | null = $state(null);
+  let previewTimer: ReturnType<typeof setTimeout> | null = null;
+
+  function showPreview(e: MouseEvent | FocusEvent, item: { kind: 'todo'; t: Todo } | { kind: 'event'; ev: CalendarEvent }) {
+    if (previewTimer) clearTimeout(previewTimer);
+    const target = e.currentTarget as HTMLElement;
+    previewTimer = setTimeout(() => {
+      const r = target.getBoundingClientRect();
+      const x = Math.min(r.left, window.innerWidth - 320);
+      const y = r.bottom + 6;
+      if (item.kind === 'todo') {
+        const t = item.t;
+        preview = {
+          x,
+          y,
+          title: t.title,
+          meta: [
+            t.status.replace('_', ' '),
+            t.priority,
+            t.due_date ? `due ${t.due_date}${t.due_time ? ' ' + t.due_time : ''}` : 'undated',
+            t.recurrence ? describeRule(t.recurrence) : null,
+          ]
+            .filter(Boolean)
+            .join(' · '),
+          html: t.description_md.trim() ? renderMarkdown(t.description_md) : '',
+        };
+      } else {
+        const ev = item.ev;
+        const start = new Date(ev.start);
+        preview = {
+          x,
+          y,
+          title: ev.title,
+          meta: ev.all_day
+            ? 'all day'
+            : start.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }),
+          html: ev.description_md.trim() ? renderMarkdown(ev.description_md) : '',
+        };
+      }
+    }, 250);
+  }
+
+  function hidePreview() {
+    if (previewTimer) clearTimeout(previewTimer);
+    previewTimer = null;
+    preview = null;
+  }
 </script>
 
 <div class="cal">
@@ -97,26 +182,72 @@
         class="cell"
         class:out={!cell.inMonth}
         class:today={cell.date === todayKey}
+        class:dropping={dragOverDate === cell.date}
         role="gridcell"
         data-testid="cal-cell"
         data-date={cell.date}
+        ondragover={(e) => {
+          e.preventDefault();
+          dragOverDate = cell.date;
+        }}
+        ondragleave={() => {
+          if (dragOverDate === cell.date) dragOverDate = null;
+        }}
+        ondrop={(e) => onDrop(e, cell.date)}
       >
         <button class="day" aria-label={'Add event on ' + cell.date} onclick={() => ondayclick(cell.date)}>
           {cell.day}
         </button>
         {#each cell.events as ev (ev.id)}
-          <button class="entry event" data-testid="cal-event" onclick={() => oneventclick(ev)}>
+          <button
+            class="entry event"
+            data-testid="cal-event"
+            draggable="true"
+            ondragstart={(e) => onDragStart(e, 'event', ev.id)}
+            onmouseenter={(e) => showPreview(e, { kind: 'event', ev })}
+            onmouseleave={hidePreview}
+            onfocus={(e) => showPreview(e, { kind: 'event', ev })}
+            onblur={hidePreview}
+            onclick={() => {
+              hidePreview();
+              oneventclick(ev);
+            }}
+          >
             {ev.all_day ? '' : new Date(ev.start).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }) + ' '}{ev.title}
           </button>
         {/each}
         {#each cell.todos as t (t.id)}
-          <span class="entry todo" class:done={t.status === 'completed'} data-testid="cal-todo">
+          <button
+            class="entry todo"
+            class:done={t.status === 'completed'}
+            data-testid="cal-todo"
+            draggable="true"
+            ondragstart={(e) => onDragStart(e, 'todo', t.id)}
+            onmouseenter={(e) => showPreview(e, { kind: 'todo', t })}
+            onmouseleave={hidePreview}
+            onfocus={(e) => showPreview(e, { kind: 'todo', t })}
+            onblur={hidePreview}
+            onclick={() => {
+              hidePreview();
+              ontodoclick(t);
+            }}
+          >
             ☐ {t.title}
-          </span>
+          </button>
         {/each}
       </div>
     {/each}
   </div>
+
+  {#if preview}
+    <div class="preview" data-testid="cal-preview" style="left: {preview.x}px; top: {preview.y}px" role="tooltip">
+      <p class="preview-title">{preview.title}</p>
+      <p class="preview-meta">{preview.meta}</p>
+      {#if preview.html}
+        <div class="preview-body">{@html preview.html}</div>
+      {/if}
+    </div>
+  {/if}
 </div>
 
 <style>
@@ -168,6 +299,11 @@
     opacity: 0.45;
   }
 
+  .cell.dropping {
+    outline: 2px solid var(--color-stamp);
+    outline-offset: -2px;
+  }
+
   .cell.today .day {
     color: var(--color-stamp);
     font-weight: 700;
@@ -191,22 +327,58 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     padding: 0 var(--space-1);
+    cursor: pointer;
   }
 
   .entry.event {
     background: var(--color-primary-soft);
     border: none;
     border-left: 2px solid var(--color-primary);
-    cursor: pointer;
     color: var(--text-color);
   }
 
   .entry.todo {
+    background: none;
+    border: none;
     color: var(--text-muted-color);
   }
 
   .entry.todo.done {
     text-decoration: line-through;
+  }
+
+  .preview {
+    position: fixed;
+    z-index: 40;
+    width: min(19rem, calc(100vw - 2 * var(--space-4)));
+    background: var(--surface-raised-color);
+    border: 1px solid var(--border-strong-color);
+    box-shadow: var(--shadow-2), inset 2px 0 0 var(--color-stamp);
+    padding: var(--space-3);
+    pointer-events: none;
+  }
+
+  .preview-title {
+    font-weight: 700;
+    overflow-wrap: anywhere;
+  }
+
+  .preview-meta {
+    font-size: var(--font-size-eyebrow);
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-wide);
+    color: var(--text-muted-color);
+    margin-bottom: var(--space-2);
+  }
+
+  .preview-body {
+    font-size: var(--font-size-sm);
+    max-height: 10rem;
+    overflow: hidden;
+  }
+
+  .preview-body :global(p) {
+    margin-block: var(--space-1);
   }
 
   @media (width < 44rem) {
