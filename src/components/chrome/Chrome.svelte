@@ -113,7 +113,14 @@
     </svg>
   </button>
 
-  <a class="brand" href={href('/')}>useful</a>
+  <a class="brand" href={href('/')}>
+    <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+      <circle cx="8" cy="8" r="4.5" fill="none" stroke="currentColor" stroke-width="1.5" />
+      <path d="M8 0v4M8 12v4M0 8h4M12 8h4" stroke="currentColor" stroke-width="1.5" />
+    </svg>
+    <span>useful</span>
+  </a>
+  <span class="sheet-code" aria-hidden="true">DWG · UF-001</span>
 
   <span class="spacer"></span>
 
@@ -176,15 +183,33 @@
     height: var(--navbar-height);
     padding-inline: var(--space-4);
     background: var(--surface-color);
-    border-bottom: 1px solid var(--border-color);
+    border-bottom: 1.5px solid var(--border-strong-color);
   }
 
   .brand {
-    font-weight: 800;
-    font-size: var(--font-size-lg);
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-weight: 700;
+    font-size: var(--font-size-base);
     text-decoration: none;
-    color: var(--color-primary);
-    letter-spacing: -0.02em;
+    color: var(--text-color);
+    text-transform: uppercase;
+    letter-spacing: 0.24em;
+  }
+
+  .brand svg {
+    color: var(--color-stamp);
+    flex: none;
+  }
+
+  .sheet-code {
+    font-size: 0.64rem;
+    letter-spacing: var(--tracking-label);
+    color: var(--text-muted-color);
+    text-transform: uppercase;
+    border-left: 1px solid var(--border-color);
+    padding-left: var(--space-3);
   }
 
   .spacer {
@@ -251,10 +276,11 @@
   }
 
   .sidebar h2 {
-    font-size: var(--font-size-sm);
+    font-size: 0.7rem;
+    font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 0.06em;
-    color: var(--text-muted-color);
+    letter-spacing: var(--tracking-label);
+    color: var(--color-stamp);
     padding: var(--space-2) var(--space-3);
   }
 
@@ -283,6 +309,7 @@
   .sidebar a[aria-current='page'] {
     background: var(--color-primary-soft);
     color: var(--color-primary-strong);
+    box-shadow: inset 2px 0 0 var(--color-stamp);
   }
 
   .sidebar .icon {
@@ -334,7 +361,8 @@
       display: none;
     }
 
-    .search-btn span {
+    .search-btn span,
+    .sheet-code {
       display: none;
     }
   }

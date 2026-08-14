@@ -2,10 +2,10 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "preview",
-      "runtimeExecutable": "node",
-      "runtimeArgs": ["tools/preview-server.mjs", "--port", "4331"],
-      "port": 4331
+      "name": "useful-dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "port": 4321
     }
   ]
 }

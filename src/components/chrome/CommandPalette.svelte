@@ -190,6 +190,7 @@
 
   li.selected {
     background: var(--color-primary-soft);
+    box-shadow: inset 2px 0 0 var(--color-stamp);
   }
 
   .icon {

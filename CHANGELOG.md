@@ -8,6 +8,8 @@
 - Quick-action palette: `ctrl+k` / `cmd+k` (plus a visible header search button for touch) with fuzzy search, full keyboard navigation, focus trap, and focus restore.
 - Tool registry (`src/lib/registry.ts`): single source of truth (name, aliases, category, route, icon) driving the sidebar, the home screen tiles, and the palette — adding a tool there is all future phases need for navigation and search.
 
+- Blueprint design system (plain CSS): light theme is dark-blue ink on white drafting paper, dark theme is chalk-white lines on a cyanotype blue field. Two-scale graph-grid page background, content column framed as a drawing sheet (heavy rule + faint offset outer rule), square corners everywhere, letterspaced uppercase drafting annotations, corner registration marks on cards, and a single amber "stamp" accent (section eyebrows, focus rings, active markers). New registration-mark favicon and matching PWA manifest colors; wordmark restyled with a crosshair glyph and a `DWG · UF-001` sheet code. Contrast verified numerically in both themes (text ≥ 4.7:1 AA, control boundaries ≥ 3.8:1).
+
 ## Bug Fixes
 
 - The Playwright suite could never run under Astro 7: `astro preview` daemonizes itself when stdin is not a TTY, so Playwright's webServer saw the process exit and aborted every run. Replaced with a dependency-free foreground static server (`tools/preview-server.mjs`).

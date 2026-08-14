@@ -38,10 +38,11 @@
   }
 
   .group h2 {
-    font-size: var(--font-size-sm);
+    font-size: 0.7rem;
+    font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 0.06em;
-    color: var(--text-muted-color);
+    letter-spacing: var(--tracking-label);
+    color: var(--color-stamp);
     margin-bottom: var(--space-3);
   }
 
@@ -57,7 +58,7 @@
     gap: var(--space-1);
     padding: var(--space-4);
     background: var(--surface-color);
-    border: 1px solid var(--border-color);
+    border: 1px solid var(--border-strong-color);
     border-radius: var(--radius-lg);
     box-shadow: var(--shadow-1);
     text-decoration: none;
@@ -66,6 +67,7 @@
 
   .tile:hover {
     border-color: var(--color-primary);
+    box-shadow: 0 0 0 3px var(--color-primary-soft);
   }
 
   .icon {

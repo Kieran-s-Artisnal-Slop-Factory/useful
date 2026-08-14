@@ -1,37 +1,62 @@
 /*
- * useful theme — all configurable design tokens live here.
- * Uses light-dark() so both themes are defined in one place;
- * color-scheme on :root makes the browser honor the user preference.
+ * useful theme — construction-blueprint design system. All configurable
+ * design tokens live here; uses light-dark() so both themes are defined in
+ * one place, and color-scheme on :root makes the browser honor the user
+ * preference.
+ *
+ * Two sheets, one drafting language:
+ *   light — dark-blue ink on white drafting paper (modern printed plans)
+ *   dark  — chalk-white lines on a cyanotype blueprint field
+ *
+ * Three inks + one stamp:
+ *   ink    (--text-color / --color-primary)  primary linework and text
+ *   pencil (--text-muted-color)              annotations, secondary text
+ *   hair   (--border-color)                  decorative hairlines; strong
+ *                                            boundaries use --border-strong-color
+ *   stamp  (--color-stamp)                   the ONE hot accent — section
+ *                                            eyebrows, focus rings, markers —
+ *                                            used sparingly, like a surveyor's
+ *                                            stamp
  */
 :root {
   color-scheme: light dark;
 
-  /* Brand */
-  --color-primary: light-dark(#96640d, #ffae00);
-  --color-primary-strong: light-dark(#5e3e08, #ffc13d);
-  --color-primary-soft: light-dark(#faf1e0, #3d2d0b);
-  --color-on-primary: #ffffff;
+  /* Brand / primary linework */
+  --color-primary: light-dark(#1c4c9c, #e8eef7);
+  --color-primary-strong: light-dark(#102a56, #ffffff);
+  --color-primary-soft: light-dark(#d9e5f6, #24488f);
+  --color-on-primary: light-dark(#ffffff, #142e63);
 
-  /* Surfaces */
-  --bg-color: light-dark(#f7f9f9, #101413);
-  --surface-color: light-dark(#ffffff, #1a201f);
-  --surface-raised-color: light-dark(#ffffff, color-mix(in srgb, #1a201f 88%, white));
-  --border-color: light-dark(color-mix(in srgb, #ffffff 88%, black), color-mix(in srgb, #1a201f 78%, white));
-  /* Boundaries that IDENTIFY a control (inputs, the search pill, kbd chips)
-     need >= 3:1 against their surface (WCAG 1.4.11); --border-color is
-     decorative-only (cards, table rules). */
-  --border-strong-color: light-dark(#8a8a8a, #7c8482);
+  /* The stamp accent (drafting yellow on the blue field, oxidized amber on paper) */
+  --color-stamp: light-dark(#a55f0b, #f2c53d);
+
+  /* Surfaces — paper sheet vs cyanotype field */
+  --bg-color: light-dark(#e9eef6, #142e63);
+  --surface-color: light-dark(#f8fbfe, #1a3a77);
+  --surface-raised-color: light-dark(#ffffff, #1f4287);
 
   /* Text */
-  --text-color: light-dark(#1c2321, #ecf1f0);
-  --text-muted-color: light-dark(color-mix(in srgb, #1c2321 65%, #f7f9f9), color-mix(in srgb, #ecf1f0 65%, #101413));
+  --text-color: light-dark(#14305e, #e8eef7);
+  --text-muted-color: light-dark(#3f5c8c, #aac2e8);
+
+  /* Lines. --border-color is decorative (card edges, table rules);
+     boundaries that IDENTIFY a control (inputs, search, kbd) need >= 3:1
+     against their surface (WCAG 1.4.11) and use --border-strong-color. */
+  --border-color: light-dark(#b7c8de, #33528f);
+  --border-strong-color: light-dark(#5f7aa6, #8099c9);
+
+  /* Background drafting grid (two scales, painted in global.css) */
+  --grid-fine-color: light-dark(rgb(28 60 120 / 0.07), rgb(232 238 247 / 0.05));
+  --grid-major-color: light-dark(rgb(28 60 120 / 0.13), rgb(232 238 247 / 0.09));
+  --grid-fine-size: 24px;
+  --grid-major-size: 120px;
 
   /* Feedback */
-  --color-success: light-dark(#1a7f37, #4ade80);
-  --color-danger: light-dark(#c62828, #f87171);
-  --color-warning: light-dark(#b45309, #fbbf24);
+  --color-success: light-dark(#17703a, #5fd68a);
+  --color-danger: light-dark(#b93a21, #ff6f61);
+  --color-warning: light-dark(#9a5b00, #f2c53d);
 
-  /* Typography */
+  /* Typography — drafting-table mono for everything */
   --font-body: ui-monospace, "Cascadia Code", Consolas, "SF Mono", monospace;
   --font-size-sm: 0.85rem;
   --font-size-base: 1rem;
@@ -39,6 +64,9 @@
   --font-size-xl: 1.5rem;
   --font-size-2xl: 2rem;
   --line-height: 1.55;
+  /* Annotation voice: tiny, uppercase, wide-tracked (apply with .eyebrow) */
+  --tracking-label: 0.18em;
+  --tracking-wide: 0.08em;
 
   /* Spacing */
   --space-1: 0.2rem;
@@ -48,15 +76,15 @@
   --space-5: 1.2rem;
   --space-6: 2rem;
 
-  /* Shape */
-  --radius-sm: 10px;
-  --radius-md: 16px;
-  --radius-lg: 24px;
-  --radius-full: 999px;
+  /* Shape — drafting is drawn with a straightedge; nothing is rounded */
+  --radius-sm: 0px;
+  --radius-md: 0px;
+  --radius-lg: 0px;
+  --radius-full: 0px;
 
-  /* Elevation */
-  --shadow-1: 0 1px 3px light-dark(rgb(0 0 0 / 0.08), rgb(0 0 0 / 0.4));
-  --shadow-2: 0 4px 16px light-dark(rgb(0 0 0 / 0.14), rgb(0 0 0 / 0.55));
+  /* Elevation — sheets don't cast soft shadows; overlays get one hard throw */
+  --shadow-1: none;
+  --shadow-2: light-dark(0 16px 40px rgb(16 42 94 / 0.22), 0 18px 44px rgb(4 16 30 / 0.5));
 
   /* Layout */
   --page-max-width: 60rem;
