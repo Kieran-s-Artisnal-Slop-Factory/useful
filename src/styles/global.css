@@ -13,12 +13,15 @@ html {
   font-family: var(--font-body);
   line-height: var(--line-height);
   -webkit-text-size-adjust: 100%;
+  scroll-padding-top: var(--navbar-height);
 }
 
 /* The drafting table: field color under a two-scale graph grid. Content sits
    on opaque surfaces (sheet, cards, chrome), so the grid reads as the paper
    margin around them, never under body text. */
 body {
+  /* Clears the fixed topbar (Chrome.svelte). */
+  padding-top: var(--navbar-height);
   background-color: var(--bg-color);
   background-image:
     linear-gradient(var(--grid-fine-color) 1px, transparent 1px),

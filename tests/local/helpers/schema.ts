@@ -21,8 +21,40 @@ export const TABLES: TableMeta[] = [
     fieldMerge: true,
     singleton: true,
     columns: [
-      // Tool phases add their preference fields here, mirroring
-      // src/lib/db/types.ts `Preferences`.
+      { name: 'timer_default_sound', type: 'boolean', nullable: true, references: null },
+      { name: 'timer_default_vibrate', type: 'boolean', nullable: true, references: null },
+      { name: 'timer_default_notify', type: 'boolean', nullable: true, references: null },
+      { name: 'timer_default_delete_on_complete', type: 'boolean', nullable: true, references: null },
+      { name: 'tz_last_from', type: 'text', nullable: true, references: null },
+      { name: 'tz_last_to', type: 'text', nullable: true, references: null },
+    ],
+  },
+  {
+    name: 'timers',
+    fieldMerge: false,
+    singleton: false,
+    columns: [
+      { name: 'label', type: 'text', nullable: false, references: null },
+      { name: 'description_md', type: 'text', nullable: false, references: null },
+      { name: 'duration_ms', type: 'integer', nullable: false, references: null },
+      { name: 'end_at', type: 'timestamp', nullable: true, references: null },
+      { name: 'paused_remaining_ms', type: 'integer', nullable: true, references: null },
+      { name: 'state', type: 'text', nullable: false, references: null },
+      { name: 'sound', type: 'boolean', nullable: false, references: null },
+      { name: 'vibrate', type: 'boolean', nullable: false, references: null },
+      { name: 'notify', type: 'boolean', nullable: false, references: null },
+      { name: 'delete_on_complete', type: 'boolean', nullable: false, references: null },
+    ],
+  },
+  {
+    name: 'stopwatch',
+    fieldMerge: false,
+    singleton: true,
+    columns: [
+      { name: 'started_at', type: 'timestamp', nullable: true, references: null },
+      { name: 'elapsed_before_pause_ms', type: 'integer', nullable: false, references: null },
+      { name: 'laps', type: 'json', nullable: false, references: null },
+      { name: 'state', type: 'text', nullable: false, references: null },
     ],
   },
 ];

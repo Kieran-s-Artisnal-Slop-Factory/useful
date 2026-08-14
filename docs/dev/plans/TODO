@@ -1,5 +1,7 @@
-- [ ] begin working on phase 1 of `plan-phases.md`
-  - [ ] Check off work as you go
+- [x] begin working on phase 1 of `plan-phases.md`
+  - [x] Check off work as you go
+  - [x] GeoNames city→timezone dataset (downloaded + bundled; regenerate with
+    `tools/build-city-dataset.mjs`)
 
 
 

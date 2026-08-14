@@ -178,8 +178,14 @@
 
 <style>
   .topbar {
-    position: sticky;
+    /* Fixed and full-bleed: the body gets padding-left while the sidebar is
+       open, and a sticky bar inside the padded body would start 15rem in,
+       leaving a dead square above the sidebar. The body compensates with
+       padding-top (global.css). */
+    position: fixed;
     top: 0;
+    left: 0;
+    right: 0;
     z-index: 20;
     display: flex;
     align-items: center;

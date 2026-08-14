@@ -1,0 +1,8 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import TimezonesApp from '../../components/apps/TimezonesApp.svelte';
+---
+
+<Layout title="Timezones">
+  <TimezonesApp client:only="svelte" />
+</Layout>

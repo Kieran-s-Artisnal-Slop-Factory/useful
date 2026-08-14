@@ -76,9 +76,9 @@ function stampFields<T extends SyncFields>(
  * as stamped "fields" hands a future per-field merge two meta-columns to
  * mis-merge. `deleted_at` is stamped explicitly by the delete/revive paths.
  */
-const SYNC_META = new Set(['id', 'updated_at', 'deleted_at', 'server_seq', 'field_updated_at']);
+export const SYNC_META = new Set(['id', 'updated_at', 'deleted_at', 'server_seq', 'field_updated_at']);
 
-function domainKeys(row: object): string[] {
+export function domainKeys(row: object): string[] {
   return Object.keys(row).filter((k) => !SYNC_META.has(k));
 }
 

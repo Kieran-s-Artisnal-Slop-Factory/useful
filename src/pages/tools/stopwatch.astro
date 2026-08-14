@@ -1,0 +1,8 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import StopwatchApp from '../../components/apps/StopwatchApp.svelte';
+---
+
+<Layout title="Stopwatch">
+  <StopwatchApp client:only="svelte" />
+</Layout>

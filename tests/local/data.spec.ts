@@ -126,6 +126,107 @@ test('restoring an older backup does not wipe stores it never covered', async ({
   ).toBeTruthy();
 });
 
+test.describe('per-field merge folding (field-merged stores)', () => {
+  const T0 = '2024-01-01T00:00:00.000Z';
+  const T1 = '2024-03-01T00:00:00.000Z';
+  const T2 = '2024-06-01T00:00:00.000Z';
+  const base = { id: 'singleton', deleted_at: null as string | null, server_seq: null as number | null };
+
+  test('two devices editing DIFFERENT fields both keep their edit', async ({ app }) => {
+    // "This device": changed tz_last_from at T2; tz_last_to untouched since T0.
+    await app.call('rawPut', 'preferences', {
+      ...base,
+      updated_at: T2,
+      field_updated_at: { tz_last_from: T2, tz_last_to: T0 },
+      tz_last_from: 'local-from',
+      tz_last_to: 'stale-to',
+    });
+    // The backup (other device): changed tz_last_to at T1 — an OLDER row clock
+    // than local, which whole-row LWW would discard entirely.
+    const envelope = {
+      schemaVersion: 1,
+      exportedAt: T1,
+      data: {
+        preferences: [
+          {
+            ...base,
+            server_seq: 7,
+            updated_at: T1,
+            field_updated_at: { tz_last_from: T0, tz_last_to: T1 },
+            tz_last_from: 'stale-from',
+            tz_last_to: 'imported-to',
+          },
+        ],
+      },
+    };
+    await app.call('importData', envelope, 'merge');
+
+    const row = (await app.get('preferences', 'singleton')) as Record<string, unknown>;
+    expect(row.tz_last_from, 'the locally-newer field was clobbered').toBe('local-from');
+    expect(row.tz_last_to, 'the imported-newer field was discarded').toBe('imported-to');
+    expect(row.updated_at, 'row clock must be the max of both').toBe(T2);
+    expect(row.server_seq, 'a folded row must be queued to re-push').toBeNull();
+    const stamps = row.field_updated_at as Record<string, string>;
+    expect(stamps.tz_last_from).toBe(T2);
+    expect(stamps.tz_last_to).toBe(T1);
+  });
+
+  test('a backup with nothing newer changes nothing and counts as skipped', async ({ app }) => {
+    await app.call('rawPut', 'preferences', {
+      ...base,
+      updated_at: T2,
+      field_updated_at: { tz_last_from: T2, tz_last_to: T2 },
+      tz_last_from: 'local-from',
+      tz_last_to: 'local-to',
+    });
+    const before = await app.dumpAll();
+    const result = await app.call<{ skipped: number }>('importData', {
+      schemaVersion: 1,
+      exportedAt: T1,
+      data: {
+        preferences: [
+          {
+            ...base,
+            updated_at: T1,
+            field_updated_at: { tz_last_from: T0, tz_last_to: T1 },
+            tz_last_from: 'stale',
+            tz_last_to: 'stale',
+          },
+        ],
+      },
+    }, 'merge');
+    expect(result.skipped).toBeGreaterThan(0);
+    expect(await app.dumpAll()).toEqual(before);
+  });
+
+  test('folding never resurrects a newer tombstone', async ({ app }) => {
+    await app.call('rawPut', 'preferences', {
+      ...base,
+      updated_at: T2,
+      deleted_at: T2,
+      field_updated_at: { tz_last_from: T0 },
+      tz_last_from: 'was-deleted',
+    });
+    await app.call('importData', {
+      schemaVersion: 1,
+      exportedAt: T1,
+      data: {
+        preferences: [
+          {
+            ...base,
+            updated_at: T1,
+            field_updated_at: { tz_last_from: T1 },
+            tz_last_from: 'zombie',
+          },
+        ],
+      },
+    }, 'merge');
+    const row = (await app.get('preferences', 'singleton')) as Record<string, unknown>;
+    expect(row.deleted_at, 'the fold un-deleted a newer tombstone').toBe(T2);
+    expect(row.tz_last_from).toBe('was-deleted');
+  });
+});
+
 test.describe('sabotage: the oracle can go red', () => {
   test('sabotage: a changed field is detected', async ({ app }) => {
     const table = tableOf(T);

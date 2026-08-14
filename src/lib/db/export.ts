@@ -20,8 +20,9 @@
  * sync and rejected forever).
  */
 import { getDB, DB_VERSION } from './db';
-import { STORES } from './types';
+import { FIELD_MERGED_STORES, STORES } from './types';
 import type { SyncFields } from './types';
+import { domainKeys } from './repo';
 import { clearOutbox, enqueue } from './outbox';
 
 export interface ExportEnvelope {
@@ -107,6 +108,48 @@ function validate(envelope: ExportEnvelope, names: string[]): void {
   }
 }
 
+/**
+ * Fold an imported row into the local one FIELD BY FIELD on a field-merged
+ * store: for each domain field, the copy with the newer per-field stamp wins
+ * (ties keep local); stamp maps are unioned to the max per key. This is what
+ * the field_updated_at stamps exist for — whole-row LWW on a merged store
+ * would let a backup from device A silently revert the one field device B
+ * changed.
+ *
+ * Fields with no stamp fall back to their row's updated_at, so rows written
+ * before field stamps existed still merge sanely.
+ *
+ * Returns null when nothing changed (the import is skipped for this row).
+ */
+function foldFieldMerged(local: SyncFields, incoming: SyncFields): SyncFields | null {
+  const localRec = local as unknown as Record<string, unknown>;
+  const incomingRec = incoming as unknown as Record<string, unknown>;
+  const localStamps = local.field_updated_at ?? {};
+  const incomingStamps = incoming.field_updated_at ?? {};
+  const stampOf = (stamps: Record<string, string>, row: SyncFields, field: string): string =>
+    stamps[field] ?? row.updated_at;
+
+  const merged: Record<string, unknown> = { ...localRec };
+  const stamps: Record<string, string> = { ...localStamps };
+  let changed = false;
+  for (const field of new Set([...domainKeys(localRec), ...domainKeys(incomingRec)])) {
+    if (!(field in incomingRec)) continue; // local-only field stays
+    const incomingAt = stampOf(incomingStamps, incoming, field);
+    const localAt = field in localRec ? stampOf(localStamps, local, field) : '';
+    if (incomingAt > localAt) {
+      merged[field] = incomingRec[field];
+      stamps[field] = incomingAt;
+      changed = true;
+    }
+  }
+  if (!changed) return null;
+  merged.field_updated_at = stamps;
+  // The row-level clock advances to the newer of the two so a later
+  // whole-row comparison can't regress the fold.
+  merged.updated_at = incoming.updated_at > local.updated_at ? incoming.updated_at : local.updated_at;
+  return merged as unknown as SyncFields;
+}
+
 /** Load a backup. Defaults to a full restore; pass 'merge' to fold it in. */
 export async function importData(
   envelope: ExportEnvelope,
@@ -150,9 +193,25 @@ export async function importData(
       }
       continue;
     }
+    const fieldMerged = FIELD_MERGED_STORES.includes(name);
     const ids: string[] = [];
     for (const row of incoming) {
       const local = (await store.get(row.id)) as SyncFields | undefined;
+      // Field-merged stores fold per field when both copies are alive — the
+      // row-level clock alone must not decide, or the backup's whole row
+      // clobbers the one field this device changed. Tombstones keep the
+      // whole-row rules below (a fold must never resurrect a deletion).
+      if (local && fieldMerged && !local.deleted_at && !row.deleted_at) {
+        const folded = foldFieldMerged(local, row);
+        if (!folded) {
+          skipped++;
+          continue;
+        }
+        store.put({ ...folded, server_seq: null });
+        ids.push(row.id);
+        rows++;
+        continue;
+      }
       // Strictly newer only. On a tie the local row stays, which also means an
       // imported row can never un-delete something deleted at the same instant.
       if (local && row.updated_at <= local.updated_at) {

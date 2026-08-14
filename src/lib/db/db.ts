@@ -38,6 +38,15 @@ const MIGRATIONS: Migration[] = [
       db.createObjectStore('sync_outbox', { keyPath: 'key' });
     }
   },
+  // v3 — Phase 1 (Time): countdown timers + the stopwatch singleton.
+  (db) => {
+    if (!db.objectStoreNames.contains('timers')) {
+      db.createObjectStore('timers', { keyPath: 'id' });
+    }
+    if (!db.objectStoreNames.contains('stopwatch')) {
+      db.createObjectStore('stopwatch', { keyPath: 'id' });
+    }
+  },
 ];
 
 export const DB_VERSION = MIGRATIONS.length;

@@ -32,9 +32,36 @@ export interface ToolDef {
  * land here as their phases ship (Time, Scheduler, Images, Calculators,
  * Generators); 'App' stays last — it holds the app's own pages.
  */
-export const CATEGORY_ORDER: string[] = ['App'];
+export const CATEGORY_ORDER: string[] = ['Time', 'App'];
 
 export const REGISTRY: ToolDef[] = [
+  {
+    id: 'timers',
+    name: 'Timers',
+    description: 'Countdown timers with sound, vibration and notifications',
+    aliases: ['countdown', 'alarm', 'pomodoro'],
+    category: 'Time',
+    route: '/tools/timers/',
+    icon: 'timer',
+  },
+  {
+    id: 'stopwatch',
+    name: 'Stopwatch',
+    description: 'Elapsed time with laps',
+    aliases: ['laps', 'chronometer', 'elapsed'],
+    category: 'Time',
+    route: '/tools/stopwatch/',
+    icon: 'watch',
+  },
+  {
+    id: 'timezones',
+    name: 'Timezones',
+    description: 'Convert a time between any two timezones',
+    aliases: ['tz', 'time zone', 'utc', 'conversion', 'world clock'],
+    category: 'Time',
+    route: '/tools/timezones/',
+    icon: 'globe',
+  },
   {
     id: 'home',
     name: 'Home',

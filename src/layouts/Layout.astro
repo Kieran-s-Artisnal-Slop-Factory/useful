@@ -4,6 +4,7 @@ import '../styles/global.css';
 import { ClientRouter } from 'astro:transitions';
 import { href } from '../lib/paths';
 import Chrome from '../components/chrome/Chrome.svelte';
+import NotificationEngine from '../components/chrome/NotificationEngine.svelte';
 
 interface Props {
   title: string;
@@ -61,6 +62,7 @@ const swPath = href('/sw.js');
       installTestHookIfEnabled();
     </script>
     <Chrome client:load transition:persist="chrome" {currentPath} />
+    <NotificationEngine client:load transition:persist="engine" />
     <main class="page">
       <slot />
     </main>
