@@ -379,6 +379,55 @@
     await refresh();
   }
 
+  // ---- board drag-and-drop (one write per drop; dropping into Completed
+  // runs the same complete path as the buttons, so recurrence still spawns)
+  let boardDropCol: TodoStatus | null = $state(null);
+
+  function onCardDragStart(e: DragEvent, t: Todo) {
+    e.dataTransfer?.setData('application/x-useful-todo', t.id);
+    if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
+  }
+
+  async function dropOnColumn(e: DragEvent, status: TodoStatus) {
+    e.preventDefault();
+    boardDropCol = null;
+    const id = e.dataTransfer?.getData('application/x-useful-todo');
+    const t = id ? todos.find((x) => x.id === id) : undefined;
+    if (!t) return;
+    if (t.status !== status) {
+      await setStatus(t, status);
+      return;
+    }
+    const col = column(status);
+    if (col[col.length - 1]?.id === t.id) return; // already last — write nothing
+    const rest = col.filter((x) => x.id !== t.id);
+    await patch<Todo>('todos', t.id, { rank: rankAfter(rest[rest.length - 1]?.rank ?? null) });
+    await refresh();
+  }
+
+  async function dropOnCard(e: DragEvent, target: Todo) {
+    e.preventDefault();
+    e.stopPropagation();
+    boardDropCol = null;
+    const id = e.dataTransfer?.getData('application/x-useful-todo');
+    const t = id ? todos.find((x) => x.id === id) : undefined;
+    if (!t || t.id === target.id) return;
+    if (t.status !== target.status) {
+      await setStatus(t, target.status); // cross-column drops append
+      return;
+    }
+    const orig = column(target.status);
+    if (orig.findIndex((x) => x.id === t.id) === orig.findIndex((x) => x.id === target.id) - 1) {
+      return; // already directly above the target — write nothing
+    }
+    const rest = orig.filter((x) => x.id !== t.id);
+    const idx = rest.findIndex((x) => x.id === target.id);
+    await patch<Todo>('todos', t.id, {
+      rank: rankBetween(idx > 0 ? rest[idx - 1]!.rank : null, target.rank),
+    });
+    await refresh();
+  }
+
   /** Calendar drag-and-drop: ONE row per drop; same-day drops write nothing.
    * Events keep their time of day (end shifts by the same delta). */
   async function dropOnDate(type: 'todo' | 'event', id: string, date: string) {
@@ -741,10 +790,32 @@
 {:else if view === 'board'}
   <div class="board">
     {#each STATUSES as s (s.key)}
-      <section class="col" aria-label={s.label}>
+      <section
+        class="col"
+        class:dropping={boardDropCol === s.key}
+        aria-label={s.label}
+        data-testid={'board-col-' + s.key}
+        ondragover={(e) => {
+          e.preventDefault();
+          boardDropCol = s.key;
+        }}
+        ondragleave={() => {
+          if (boardDropCol === s.key) boardDropCol = null;
+        }}
+        ondrop={(e) => void dropOnColumn(e, s.key)}
+      >
         <h2>{s.label} <span class="muted">{column(s.key).length}</span></h2>
         {#each column(s.key) as t, i (t.id)}
-          <div class="card-item" data-testid="board-card" data-todo-id={t.id}>
+          <div
+            class="card-item"
+            data-testid="board-card"
+            data-todo-id={t.id}
+            role="listitem"
+            draggable="true"
+            ondragstart={(e) => onCardDragStart(e, t)}
+            ondragover={(e) => e.preventDefault()}
+            ondrop={(e) => void dropOnCard(e, t)}
+          >
             <button class="linklike card-title" data-testid="board-card-title" onclick={() => openTodoRead(t)}>
               {t.title}
             </button>
@@ -784,8 +855,10 @@
   }
 
   dialog {
-    width: min(38rem, calc(100vw - 2 * var(--space-4)));
-    max-height: 85vh;
+    /* Centered by `dialog { margin: auto }` in global.css (the blanket margin
+       reset would otherwise pin it top-left). */
+    width: min(46rem, calc(100vw - 2 * var(--space-4)));
+    max-height: 88vh;
     background: var(--surface-raised-color);
     color: var(--text-color);
     border: 1px solid var(--border-strong-color);
@@ -941,6 +1014,15 @@
     }
   }
 
+  .col {
+    min-height: 10rem; /* an empty column is still a drop target */
+  }
+
+  .col.dropping {
+    outline: 2px solid var(--color-stamp);
+    outline-offset: -2px;
+  }
+
   .col h2 {
     font-size: var(--font-size-eyebrow);
     font-weight: 600;
@@ -955,6 +1037,7 @@
     border: 1px solid var(--border-strong-color);
     padding: var(--space-3);
     margin-bottom: var(--space-3);
+    cursor: grab;
   }
 
   .card-title {

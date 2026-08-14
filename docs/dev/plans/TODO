@@ -22,11 +22,18 @@ Phase 2 item 6) — DONE, all green (51 unit + 65 Playwright, trust gate 5/5):
 - [x] Wiki-style hover previews on calendar entries (rendered markdown)
 - [x] Update/extend Playwright specs + CHANGELOG entry
 
+Follow-up fixes (2026-08-15, all green — 51 unit + 68 Playwright, gate 5/5):
+- [x] Modal centered + enlarged (the global `* { margin: 0 }` reset was
+      killing the dialog's UA auto-centering — `dialog { margin: auto }`)
+- [x] Prism syntax highlighting in rendered markdown (statically bundled,
+      blueprint token palette in global.css)
+- [x] Board drag-and-drop (cross-column = same path as buttons incl.
+      recurrence complete; in-column positional reorder; one write per drop)
+
 Next: Phase 3 (Calculators) per plan-phases.md. Notes for the next session:
 - NOTHING IS COMMITTED YET — the whole run (phases 0-2 + redesign) is one
   dirty working tree; commit when the user asks.
-- Board drag-and-drop (kanban columns) is still button-based; calendar has
-  real dnd. Week/day calendar views deliberately deferred.
+- Week/day calendar views deliberately deferred.
 - Subagent workflows may fail on a monthly spend limit — work inline if so.
 - Suites: `npm test` (Playwright, builds prod + trust gate) and
   `npm run test:unit` (Vitest). Preview via .claude/launch.json "useful-dev".

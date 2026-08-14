@@ -156,6 +156,55 @@ test.describe('modal read/update + calendar interactions', () => {
     await expect(page.getByTestId('scheduler-modal')).not.toBeVisible();
   });
 
+  test('the modal is centered in the viewport', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/scheduler/');
+    await page.getByTestId('scheduler-new-todo').click();
+    const dialogBox = (await page.getByTestId('scheduler-modal').boundingBox())!;
+    const viewport = page.viewportSize()!;
+    const centerX = dialogBox.x + dialogBox.width / 2;
+    // The blanket margin reset once pinned the dialog top-left; assert the
+    // dialog's center sits near the viewport's horizontal center.
+    expect(Math.abs(centerX - viewport.width / 2)).toBeLessThan(40);
+    expect(dialogBox.y).toBeGreaterThan(10);
+  });
+
+  test('code blocks in descriptions are syntax-highlighted', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/scheduler/');
+    await page.getByTestId('scheduler-new-todo').click();
+    await page.getByTestId('todo-title').fill('With code');
+    await page.getByTestId('todo-desc').fill('```python\nimport math\nmath.ceil(3.1)\n```');
+    await page.getByTestId('todo-save').click();
+
+    await page.getByTestId('todo-open').click();
+    const keyword = page.getByTestId('modal-desc').locator('.token.keyword').first();
+    await expect(keyword).toHaveText('import');
+  });
+
+  test('dragging a board card to another column changes only that row', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/scheduler/');
+    await createTodo(app, 'Drag me');
+    await createTodo(app, 'Bystander');
+    await page.getByTestId('view-board').click();
+    await expect(page.getByTestId('board-card')).toHaveCount(2);
+    const before = await app.dumpAll();
+
+    await page
+      .getByTestId('board-card')
+      .filter({ hasText: 'Drag me' })
+      .dragTo(page.getByTestId('board-col-in_progress'));
+
+    await expect
+      .poll(async () =>
+        ((await app.dump('todos')).find((t) => t.title === 'Drag me') as Record<string, unknown>)?.status
+      )
+      .toBe('in_progress');
+    const moved = (await app.dump('todos')).find((t) => t.title === 'Drag me')!;
+    assertIsolatedDelta(before, await app.dumpAll(), [{ store: 'todos', id: String(moved.id) }]);
+  });
+
   test('a board card title opens the same read modal', async ({ app }) => {
     const { page } = app;
     await app.goto('/tools/scheduler/');
