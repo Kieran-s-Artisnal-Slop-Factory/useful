@@ -30,6 +30,7 @@ export const TABLES: TableMeta[] = [
       { name: 'scheduler_view', type: 'text', nullable: true, references: null },
       { name: 'tz_last_from', type: 'text', nullable: true, references: null },
       { name: 'tz_last_to', type: 'text', nullable: true, references: null },
+      { name: 'photo_last_format', type: 'text', nullable: true, references: null },
     ],
   },
   {

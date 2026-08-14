@@ -30,7 +30,17 @@ Follow-up fixes (2026-08-15, all green — 51 unit + 68 Playwright, gate 5/5):
 - [x] Board drag-and-drop (cross-column = same path as buttons incl.
       recurrence complete; in-column positional reorder; one write per drop)
 
-Next: Phase 3 (Calculators) per plan-phases.md. Notes for the next session:
+Phase 3 (Calculators, 2026-08-14) — DONE:
+- [x] Number conversion (bases + bit-width ops, BigInt, explainers)
+- [x] Photography (total-light equivalents w/ 1/3-stop snapping incl. Canon
+      1.6; exact light-stop comparison; format remembered in preferences)
+- [x] File transfer (decimal units, bits-vs-bytes explicit, overhead %)
+- [x] Registry Calculators category + icons, SW shell + cache v6,
+      `photo_last_format` pref (types + schema mirror + README), CHANGELOG
+- [x] Unit tests (calc tables) + Playwright calculators.spec.ts (zero-write
+      pages, isolated preferences delta, keyboard explainers)
+
+Next: Phase 4 (Generators) per plan-phases.md. Notes for the next session:
 - NOTHING IS COMMITTED YET — the whole run (phases 0-2 + redesign) is one
   dirty working tree; commit when the user asks.
 - Week/day calendar views deliberately deferred.

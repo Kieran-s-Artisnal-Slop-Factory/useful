@@ -46,6 +46,8 @@ export interface Preferences extends SyncFields {
   /** Last-used timezone pair on the converter. */
   tz_last_from?: string;
   tz_last_to?: string;
+  /** Last-used sensor format on the photography calculators. */
+  photo_last_format?: 'mft' | 'apsc' | 'apsc-canon' | 'ff';
 }
 
 /** A countdown timer. While running, `end_at` is the absolute deadline —

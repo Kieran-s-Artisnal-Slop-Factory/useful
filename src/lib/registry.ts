@@ -32,7 +32,7 @@ export interface ToolDef {
  * land here as their phases ship (Time, Scheduler, Images, Calculators,
  * Generators); 'App' stays last — it holds the app's own pages.
  */
-export const CATEGORY_ORDER: string[] = ['Time', 'Scheduler', 'App'];
+export const CATEGORY_ORDER: string[] = ['Time', 'Scheduler', 'Calculators', 'App'];
 
 export const REGISTRY: ToolDef[] = [
   {
@@ -70,6 +70,33 @@ export const REGISTRY: ToolDef[] = [
     category: 'Scheduler',
     route: '/tools/scheduler/',
     icon: 'calendar-days',
+  },
+  {
+    id: 'number-conversion',
+    name: 'Number conversion',
+    description: 'Binary, octal, decimal and hex with bit-width operations',
+    aliases: ['binary', 'hex', 'hexadecimal', 'octal', 'decimal', 'base', 'twos complement', 'ones complement', 'bitwise not', 'bits'],
+    category: 'Calculators',
+    route: '/tools/number-conversion/',
+    icon: 'binary',
+  },
+  {
+    id: 'photography',
+    name: 'Photography',
+    description: 'Equivalent settings across sensor formats, and light-stop differences',
+    aliases: ['equivalent settings', 'light stops', 'aperture', 'iso', 'crop factor', 'exposure', 'f-stop', 'sensor', 'camera'],
+    category: 'Calculators',
+    route: '/tools/photography/',
+    icon: 'camera',
+  },
+  {
+    id: 'file-transfer',
+    name: 'File transfer',
+    description: 'How long a file takes to move at a given network speed',
+    aliases: ['download time', 'bandwidth', 'network speed', 'upload', 'mbps', 'transfer time', 'bits', 'bytes'],
+    category: 'Calculators',
+    route: '/tools/file-transfer/',
+    icon: 'hard-drive-download',
   },
   {
     id: 'home',

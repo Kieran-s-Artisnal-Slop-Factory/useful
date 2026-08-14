@@ -1,0 +1,8 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import NumberBaseApp from '../../components/apps/NumberBaseApp.svelte';
+---
+
+<Layout title="Number conversion">
+  <NumberBaseApp client:only="svelte" />
+</Layout>

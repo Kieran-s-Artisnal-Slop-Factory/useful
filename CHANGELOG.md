@@ -23,6 +23,28 @@
 - Database schema v4: new `events`, `todos` (field-merged, indexed on status/due date), and `todo_comments` (foreign key to `todos`) stores.
 - Scheduler detail modal (native `<dialog>`, focus-trapped): creating a TODO/event now opens a modal, and clicking an existing item — a calendar entry, a list title, or a board card title — opens it in READ view (rendered markdown, attributes, and the TODO's comment thread) with a pencil to switch to edit. Calendar entries gained true drag-and-drop rescheduling (events keep their time of day and shift their end by the same delta; TODOs move their due date; one row per drop, same-day drops write nothing) and wiki-style hover previews showing rendered markdown after a short delay.
 - Board drag-and-drop: cards drag between columns (running the same complete path as the buttons, so recurrence still spawns) and reorder positionally within a column — one row written per drop, no-op drops write nothing. The arrow buttons remain for keyboard users.
+- **Number conversion** (`/tools/number-conversion/`): binary, octal, decimal and
+  hexadecimal kept in sync as you type, with an 8/16/32/64 bit-width selector
+  governing padding, ranges and the operations (bitwise NOT, one's complement,
+  two's complement — signed and unsigned readings shown side by side; negative
+  decimals encode as two's complement). Every conversion and operation has a
+  "by hand" explainer drop-down. BigInt throughout, so 64-bit values are exact.
+- **Photography** (`/tools/photography/`): total-light equivalent-settings
+  calculator across Micro 4/3 (2.0×), APS-C (1.5×), Canon APS-C (1.6×) and full
+  frame — focal × crop, f-number × crop, ISO × crop², shutter unchanged, with
+  displayed values snapped to the standard 1/3-stop scales — plus a light-stop
+  calculator comparing a second set of settings exactly (shutter `log2(t1/t2)`,
+  ISO `log2(i1/i2)`, aperture `2·log2(N1/N2)`, sensor `2·log2(crop1/crop2)`)
+  with per-component wording and image-brightness vs total-light totals.
+  Explainers clarify the equivalence model. The last-used sensor format is
+  remembered in preferences (picking it is the only write the tool ever makes).
+- **File transfer** (`/tools/file-transfer/`): time estimate from a file size
+  (KB/MB/GB/TB) and a network speed with bits-vs-bytes explicit in the unit
+  selector (Kbps/Mbps/Gbps vs KB/s / MB/s), decimal units throughout, an
+  optional protocol-overhead percentage, and the link speed spelled both ways
+  (e.g. "100 Mbps = 12.5 MB/s"). A bits-vs-bytes explainer included.
+- Sidebar/palette gained the Calculators category (three tools above); service
+  worker shell extended accordingly.
 - Syntax highlighting for fenced code blocks in all rendered markdown (Prism, statically bundled — TypeScript/JavaScript, Python, Go, Rust, Bash, JSON, SQL, YAML, HTML/CSS), colored with the blueprint ink palette in both themes.
 
 ## Bug Fixes

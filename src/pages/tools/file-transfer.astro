@@ -1,0 +1,8 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import FileTransferApp from '../../components/apps/FileTransferApp.svelte';
+---
+
+<Layout title="File transfer">
+  <FileTransferApp client:only="svelte" />
+</Layout>
