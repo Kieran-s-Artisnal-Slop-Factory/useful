@@ -68,7 +68,7 @@ input,
 select,
 textarea {
   background: var(--surface-color);
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--border-strong-color);
   border-radius: var(--radius-sm);
   padding: var(--space-2) var(--space-3);
   width: 100%;
@@ -140,11 +140,19 @@ label {
   cursor: not-allowed;
 }
 
-/* Page shell */
+/* Page shell. On wide screens the fixed sidebar (Chrome.svelte) owns the left
+   edge, so the whole body shifts right unless it is collapsed — the collapse
+   attribute is set on <html> before first paint (see Layout.astro). */
 main.page {
   max-width: var(--page-max-width);
   margin-inline: auto;
   padding: var(--space-5) var(--space-4) calc(var(--space-6) * 2);
+}
+
+@media (width >= 64rem) {
+  html:not([data-sidebar='collapsed']) body {
+    padding-left: var(--sidebar-width);
+  }
 }
 
 .page-header {

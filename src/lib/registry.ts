@@ -1,0 +1,103 @@
+/**
+ * The tool registry — the single source of truth for every page in the app.
+ *
+ * The sidebar, the home screen, and the ctrl+k quick-action palette all render
+ * from this list, so adding a tool here is what makes it navigable and
+ * searchable; nothing else needs to know it exists. Each phase of
+ * docs/dev/plans/plan-phases.md appends its tools here (and adds the page to
+ * SHELL in public/sw.js).
+ *
+ * Routes are app-absolute with a trailing slash and MUST be rendered through
+ * href() from src/lib/paths.ts so they stay correct under a sub-path base.
+ */
+import { fuzzyScore } from './fuzzy';
+
+export interface ToolDef {
+  /** Stable slug, used as the key in lists. */
+  id: string;
+  name: string;
+  /** One line shown in the palette and on home tiles. */
+  description: string;
+  /** Extra search terms ("tz", "cmd+k"…) the name doesn't contain. */
+  aliases: string[];
+  category: string;
+  /** App-absolute route with trailing slash, e.g. '/settings/'. */
+  route: string;
+  /** Emoji glyph (plain CSS, no icon library). */
+  icon: string;
+}
+
+/**
+ * Category display order for the sidebar and home screen. Tool categories
+ * land here as their phases ship (Time, Scheduler, Images, Calculators,
+ * Generators); 'App' stays last — it holds the app's own pages.
+ */
+export const CATEGORY_ORDER: string[] = ['App'];
+
+export const REGISTRY: ToolDef[] = [
+  {
+    id: 'home',
+    name: 'Home',
+    description: 'Overview of every tool',
+    aliases: ['start', 'index', 'overview'],
+    category: 'App',
+    route: '/',
+    icon: '🏠',
+  },
+  {
+    id: 'preferences',
+    name: 'Preferences',
+    description: 'Per-tool defaults and remembered values',
+    aliases: ['prefs', 'defaults', 'options'],
+    category: 'App',
+    route: '/preferences/',
+    icon: '🎛️',
+  },
+  {
+    id: 'settings',
+    name: 'Settings',
+    description: 'Theme, storage, backup and restore',
+    aliases: ['theme', 'backup', 'restore', 'export', 'import', 'dark mode'],
+    category: 'App',
+    route: '/settings/',
+    icon: '⚙️',
+  },
+];
+
+/** Registry grouped for the sidebar: categories in CATEGORY_ORDER, then any strays. */
+export function byCategory(): { category: string; tools: ToolDef[] }[] {
+  const known = new Set(CATEGORY_ORDER);
+  const strays = [...new Set(REGISTRY.map((t) => t.category))].filter((c) => !known.has(c));
+  return [...CATEGORY_ORDER, ...strays]
+    .map((category) => ({ category, tools: REGISTRY.filter((t) => t.category === category) }))
+    .filter((g) => g.tools.length > 0);
+}
+
+/**
+ * Rank tools for the palette. Name matches outrank alias matches, which
+ * outrank category/description matches — searching "set" must surface
+ * Settings before anything that merely mentions settings.
+ */
+export function searchRegistry(query: string, tools: ToolDef[] = REGISTRY): ToolDef[] {
+  const q = query.trim();
+  if (q.length === 0) return [...tools];
+  return tools
+    .map((tool) => {
+      const name = fuzzyScore(q, tool.name);
+      const alias = best(tool.aliases.map((a) => fuzzyScore(q, a)));
+      const rest = best([fuzzyScore(q, tool.category), fuzzyScore(q, tool.description)]);
+      let score: number | null = null;
+      if (name !== null) score = 400 + name;
+      else if (alias !== null) score = 200 + alias;
+      else if (rest !== null) score = rest;
+      return { tool, score };
+    })
+    .filter((r): r is { tool: ToolDef; score: number } => r.score !== null)
+    .sort((a, b) => b.score - a.score || a.tool.name.localeCompare(b.tool.name))
+    .map((r) => r.tool);
+}
+
+function best(scores: (number | null)[]): number | null {
+  const real = scores.filter((s): s is number => s !== null);
+  return real.length > 0 ? Math.max(...real) : null;
+}

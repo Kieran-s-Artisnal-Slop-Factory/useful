@@ -8,7 +8,9 @@ export default defineConfig({
   webServer: {
     // A PRODUCTION build, not the dev server: the service worker only exists in
     // production, and a suite that never loads it tests a path no user runs.
-    command: 'npm run build && npm run preview -- --port 4330',
+    // NOT `astro preview`: Astro 7's preview daemonizes itself under a non-TTY
+    // stdin, so Playwright sees the process exit and aborts the run.
+    command: 'npm run build && node tools/preview-server.mjs --port 4330 --dir dist',
     url: 'http://127.0.0.1:4330/',
     reuseExistingServer: !process.env.CI,
     timeout: 180_000,

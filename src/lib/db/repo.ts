@@ -69,6 +69,19 @@ function stampFields<T extends SyncFields>(
   return { ...row, field_updated_at: stamps };
 }
 
+/**
+ * The domain fields of a row — sync bookkeeping excluded. Whole-row writes
+ * stamp these, and ONLY these, on field-merged stores: per-field stamps exist
+ * to merge user-visible columns, and letting `updated_at`/`deleted_at` leak in
+ * as stamped "fields" hands a future per-field merge two meta-columns to
+ * mis-merge. `deleted_at` is stamped explicitly by the delete/revive paths.
+ */
+const SYNC_META = new Set(['id', 'updated_at', 'deleted_at', 'server_seq', 'field_updated_at']);
+
+function domainKeys(row: object): string[] {
+  return Object.keys(row).filter((k) => !SYNC_META.has(k));
+}
+
 export async function all<T extends SyncFields>(store: StoreName): Promise<T[]> {
   const rows = (await (await getDB()).getAll(store)) as T[];
   return rows.filter((r) => !r.deleted_at);
@@ -100,7 +113,7 @@ export async function byIndex<T extends SyncFields>(
  */
 export async function put<T extends SyncFields>(store: StoreName, row: T): Promise<T> {
   const at = nowIso();
-  const stamped = toPlain(stampFields(store, { ...row, updated_at: at }, Object.keys(row), at));
+  const stamped = toPlain(stampFields(store, { ...row, updated_at: at }, domainKeys(row), at));
   const db = await getDB();
   const tx = db.transaction([store, OUTBOX_STORE], 'readwrite');
   tx.objectStore(store).put(stamped);
@@ -139,7 +152,7 @@ export async function patch<T extends SyncFields>(
   }
   const at = nowIso();
   const next = toPlain(
-    stampFields(store, { ...current, ...changes, updated_at: at } as T, Object.keys(changes), at)
+    stampFields(store, { ...current, ...changes, updated_at: at } as T, domainKeys(changes), at)
   );
   tx.objectStore(store).put(next);
   enqueueIn(tx, store, id, at);
@@ -150,7 +163,7 @@ export async function patch<T extends SyncFields>(
 export async function bulkPut<T extends SyncFields>(store: StoreName, rows: T[]): Promise<T[]> {
   const db = await getDB();
   const at = nowIso();
-  const stamped = rows.map((r) => toPlain(stampFields(store, { ...r, updated_at: at }, Object.keys(r), at)));
+  const stamped = rows.map((r) => toPlain(stampFields(store, { ...r, updated_at: at }, domainKeys(r), at)));
   const tx = db.transaction([store, OUTBOX_STORE], 'readwrite');
   for (const row of stamped) {
     tx.objectStore(store).put(row);
@@ -233,6 +246,11 @@ export async function putSingleton<T extends object>(
   const at = nowIso();
   const tx = db.transaction([store, OUTBOX_STORE], 'readwrite');
   const existing = (await tx.objectStore(store).get(SINGLETON_ID)) as SyncFields | undefined;
+  // Reviving a tombstoned singleton is a change to deleted_at — stamp it, or a
+  // future per-field merge would let the older delete stamp beat this revive.
+  const changed = existing?.deleted_at
+    ? [...domainKeys(fields), 'deleted_at']
+    : domainKeys(fields);
   const row = toPlain(
     stampFields(
       store,
@@ -244,7 +262,7 @@ export async function putSingleton<T extends object>(
         deleted_at: null,
         server_seq: existing?.server_seq ?? null,
       } as T & SyncFields,
-      Object.keys(fields),
+      changed,
       at
     )
   );

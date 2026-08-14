@@ -18,10 +18,11 @@ export interface TableMeta {
 export const TABLES: TableMeta[] = [
   {
     name: 'preferences',
-    fieldMerge: false,
-    singleton: false,
+    fieldMerge: true,
+    singleton: true,
     columns: [
-
+      // Tool phases add their preference fields here, mirroring
+      // src/lib/db/types.ts `Preferences`.
     ],
   },
 ];

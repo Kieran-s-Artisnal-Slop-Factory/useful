@@ -17,6 +17,10 @@
   --surface-color: light-dark(#ffffff, #1a201f);
   --surface-raised-color: light-dark(#ffffff, color-mix(in srgb, #1a201f 88%, white));
   --border-color: light-dark(color-mix(in srgb, #ffffff 88%, black), color-mix(in srgb, #1a201f 78%, white));
+  /* Boundaries that IDENTIFY a control (inputs, the search pill, kbd chips)
+     need >= 3:1 against their surface (WCAG 1.4.11); --border-color is
+     decorative-only (cards, table rules). */
+  --border-strong-color: light-dark(#8a8a8a, #7c8482);
 
   /* Text */
   --text-color: light-dark(#1c2321, #ecf1f0);
@@ -57,4 +61,5 @@
   /* Layout */
   --page-max-width: 60rem;
   --navbar-height: 3.5rem;
+  --sidebar-width: 15rem;
 }

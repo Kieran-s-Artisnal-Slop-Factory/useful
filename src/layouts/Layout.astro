@@ -1,8 +1,9 @@
 ---
 import '../styles/theme.css';
 import '../styles/global.css';
+import { ClientRouter } from 'astro:transitions';
 import { href } from '../lib/paths';
-import Navbar from '../components/Navbar.svelte';
+import Chrome from '../components/chrome/Chrome.svelte';
 
 interface Props {
   title: string;
@@ -13,8 +14,6 @@ const currentPath = Astro.url.pathname;
 // Base-aware paths for the inline scripts / static links below (works whether
 // the app is served at the root or under a sub-path like GitHub Pages).
 const swPath = href('/sw.js');
-const onboardingPath = href('/onboarding/');
-const testModeKey = 'useful-test-mode';
 ---
 
 <!doctype html>
@@ -27,28 +26,41 @@ const testModeKey = 'useful-test-mode';
     <link rel="icon" href={href('/favicon.svg')} type="image/svg+xml" />
     <link rel="manifest" href={href('/manifest.webmanifest')} />
     <title>{title} · useful</title>
+    <ClientRouter />
     <script is:inline>
-      // Apply the manual theme override before first paint to avoid a flash.
-      // 'light'/'dark' pin the scheme; anything else follows the OS setting.
-      try {
-        const theme = localStorage.getItem('useful-theme');
-        if (theme === 'light' || theme === 'dark') {
-          document.documentElement.style.colorScheme = theme;
-        }
-      } catch {}
+      // Apply the manual theme override and the persisted sidebar state before
+      // first paint to avoid a flash. 'light'/'dark' pin the scheme; anything
+      // else follows the OS setting. Both live as attributes on <html> — which
+      // ClientRouter WIPES on every client-side navigation (swapRootAttributes
+      // replaces the attribute set with the incoming document's) — so the same
+      // routine re-runs on astro:after-swap. The listener survives swaps
+      // because inline scripts execute once per full document load.
+      (() => {
+        const apply = () => {
+          try {
+            const theme = localStorage.getItem('useful-theme');
+            document.documentElement.style.colorScheme =
+              theme === 'light' || theme === 'dark' ? theme : '';
+            if (localStorage.getItem('useful-sidebar-collapsed') === '1') {
+              document.documentElement.dataset.sidebar = 'collapsed';
+            } else {
+              delete document.documentElement.dataset.sidebar;
+            }
+          } catch {}
+        };
+        apply();
+        document.addEventListener('astro:after-swap', apply);
+      })();
     </script>
   </head>
   <body>
-    <script is:inline define:vars={{ testModeKey }}>
-      // Test hook: fetched ONLY when the test-mode flag is set on this profile,
-      // so a real user never downloads it. See src/lib/testMode.ts.
-      try {
-        if (localStorage.getItem(testModeKey) === '1') {
-          import('../lib/testHook.ts').then((m) => m.installTestHook());
-        }
-      } catch {}
+    <script>
+      // Test hook: the chunk is fetched ONLY when the test-mode flag is set on
+      // this profile, so a real user never downloads it. See src/lib/testMode.ts.
+      import { installTestHookIfEnabled } from '../lib/testMode';
+      installTestHookIfEnabled();
     </script>
-    <Navbar client:load {currentPath} />
+    <Chrome client:load transition:persist="chrome" {currentPath} />
     <main class="page">
       <slot />
     </main>

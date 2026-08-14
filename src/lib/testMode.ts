@@ -23,3 +23,17 @@ export function isTestMode(): boolean {
     return false; // storage blocked — treat as a normal run
   }
 }
+
+/**
+ * Load and install the test hook when the flag is set. The dynamic import
+ * keeps the hook in its own chunk, so a real user (flag unset) downloads only
+ * this tiny loader. Called from a bundled layout script — an UNBUNDLED inline
+ * `import('../lib/testHook.ts')` resolves against the page URL and 404s in a
+ * production build, which is exactly the environment the Playwright suite
+ * runs against.
+ */
+export async function installTestHookIfEnabled(): Promise<void> {
+  if (!isTestMode()) return;
+  const mod = await import('./testHook');
+  mod.installTestHook();
+}

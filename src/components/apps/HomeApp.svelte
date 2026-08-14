@@ -1,42 +1,54 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
-  import { all } from '../../lib/db/repo';
   import { href } from '../../lib/paths';
+  import { byCategory } from '../../lib/registry';
 
-  let loading = $state(true);
-  let preferencesCount = $state(0);
-
-  onMount(async () => {
-    preferencesCount = (await all('preferences')).length;
-    loading = false;
-  });
+  // Everything except Home itself — the home screen is the registry, rendered.
+  const groups = byCategory()
+    .map((g) => ({ ...g, tools: g.tools.filter((t) => t.id !== 'home') }))
+    .filter((g) => g.tools.length > 0);
 </script>
 
 <div class="page-header">
   <h1>useful</h1>
 </div>
 
-{#if loading}
-  <p class="muted">Loading…</p>
-{:else}
-  <div class="tiles">
-    <a class="tile" href={href('/preferences/')}>
-      <span class="count">{preferencesCount}</span>
-      <span class="label">Preferences</span>
-    </a>
-  </div>
+{#each groups as group (group.category)}
+  <section class="group">
+    <h2>{group.category}</h2>
+    <div class="tiles">
+      {#each group.tools as tool (tool.id)}
+        <a class="tile" href={href(tool.route)} data-testid={'tile-' + tool.id}>
+          <span class="icon" aria-hidden="true">{tool.icon}</span>
+          <span class="name">{tool.name}</span>
+          <span class="desc">{tool.description}</span>
+        </a>
+      {/each}
+    </div>
+  </section>
+{/each}
 
-  <p class="muted status">
-    Everything lives in this browser — remember to export a backup now and then in
-    <a href={href('/settings/')}>Settings</a>.
-  </p>
-{/if}
+<p class="muted status">
+  Everything lives in this browser — remember to export a backup now and then in
+  <a href={href('/settings/')}>Settings</a>.
+</p>
 
 <style>
+  .group {
+    margin-bottom: var(--space-5);
+  }
+
+  .group h2 {
+    font-size: var(--font-size-sm);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-muted-color);
+    margin-bottom: var(--space-3);
+  }
+
   .tiles {
     display: grid;
     gap: var(--space-4);
-    grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
   }
 
   .tile {
@@ -56,14 +68,16 @@
     border-color: var(--color-primary);
   }
 
-  .count {
-    font-size: var(--font-size-2xl);
-    font-weight: 800;
-    color: var(--color-primary-strong);
+  .icon {
+    font-size: var(--font-size-xl);
   }
 
-  .label {
-    font-weight: 600;
+  .name {
+    font-weight: 700;
+  }
+
+  .desc {
+    font-size: var(--font-size-sm);
     color: var(--text-muted-color);
   }
 

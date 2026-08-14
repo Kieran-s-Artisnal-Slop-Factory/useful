@@ -1,5 +1,5 @@
 import { expect } from '@playwright/test';
-import { TABLES } from './schema';
+import { TABLES, type TableMeta } from './schema';
 
 /**
  * The typed comparator. Every distinction corresponds to a real round-trip bug:
@@ -124,10 +124,15 @@ export function assertIsolatedDelta(
   ).toBe(true);
 }
 
-/** Structural invariants any healthy database satisfies. */
-export function assertInvariants(db: Db, label: string): void {
+/**
+ * Structural invariants any healthy database satisfies. `tables` defaults to
+ * the app schema; the sabotage suite passes a synthetic schema so the oracle's
+ * detection proofs run even while the real schema lacks the shape under test
+ * (e.g. no foreign keys yet).
+ */
+export function assertInvariants(db: Db, label: string, tables: TableMeta[] = TABLES): void {
   const live = (store: string) => (db[store] ?? []).filter((r) => !r.deleted_at);
-  for (const table of TABLES) {
+  for (const table of tables) {
     const rows = db[table.name] ?? [];
     const ids = rows.map((r) => String(r.id));
     expect(new Set(ids).size, label + ': duplicate ids in ' + table.name).toBe(ids.length);

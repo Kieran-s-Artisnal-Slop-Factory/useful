@@ -4,9 +4,15 @@
  * MIGRATIONS is an ordered list of upgrade functions, one per version, run in
  * sequence from the client's current version. Never edit an existing
  * migration once shipped — append a new one.
+ *
+ * CONVENTION for every store-creating migration: name stores with string
+ * LITERALS and guard with `db.objectStoreNames.contains(...)`. A migration
+ * that iterates the live STORES map changes behaviour every time the map
+ * grows — a fresh install would create tomorrow's stores in v1 and then crash
+ * when the later migration creates them again. Migrations must describe what
+ * the schema looked like AT THAT VERSION, forever.
  */
 import { openDB, type IDBPDatabase, type IDBPTransaction } from 'idb';
-import { STORES } from './types';
 
 export const DB_NAME = 'useful';
 
@@ -16,20 +22,21 @@ type Migration = (
 ) => void;
 
 const MIGRATIONS: Migration[] = [
-  // v1 — create every object store and its indexes from the STORES map.
+  // v1 — the schema as generated: one placeholder store. (Frozen to literals;
+  // this used to iterate STORES, which breaks fresh installs the moment a
+  // later migration adds a store — see the convention note above.)
   (db) => {
-    for (const [name, def] of Object.entries(STORES)) {
-      const store = db.createObjectStore(name, { keyPath: 'id' });
-      for (const idx of def.indexes) {
-        store.createIndex(idx.name, idx.name, { multiEntry: idx.multiEntry ?? false });
-      }
+    if (!db.objectStoreNames.contains('preferences')) {
+      db.createObjectStore('preferences', { keyPath: 'id' });
     }
   },
   // v2 — local-only change queue. NOT in STORES (never exported/synced). This
   // app has no server today; the queue exists so adding one later is a drop-in
   // change instead of a data migration.
   (db) => {
-    db.createObjectStore('sync_outbox', { keyPath: 'key' });
+    if (!db.objectStoreNames.contains('sync_outbox')) {
+      db.createObjectStore('sync_outbox', { keyPath: 'key' });
+    }
   },
 ];
 

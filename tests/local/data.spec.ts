@@ -154,16 +154,34 @@ test.describe('sabotage: the oracle can go red', () => {
     expect(() => assertSameDb(before, after, 'x')).toThrow();
   });
 
-  test('sabotage: an orphaned child row is detected', async ({ app }) => {
-    const child = TABLES.find((t) => t.columns.some((c) => c.references));
-    test.skip(!child, 'schema has no foreign keys');
-    const fk = child!.columns.find((c) => c.references)!;
-    await app.call('rawPut', child!.name, {
-      ...buildRow(child!, 'sb5', {}, 1),
-      [fk.name]: 'no-such-parent',
-    });
-    const db = await app.dumpAll();
-    expect(() => assertInvariants(db, 'app')).toThrow();
+  test('sabotage: an orphaned child row is detected', () => {
+    // Synthetic schema, so this proof runs even while the app schema has no
+    // foreign keys — the oracle's FK check must be shown to catch orphans
+    // BEFORE the first real child table ships, not after.
+    const parent: (typeof TABLES)[number] = {
+      name: 'sb_parents',
+      fieldMerge: false,
+      singleton: false,
+      columns: [{ name: 'title', type: 'text', nullable: false, references: null }],
+    };
+    const child: (typeof TABLES)[number] = {
+      name: 'sb_children',
+      fieldMerge: false,
+      singleton: false,
+      columns: [{ name: 'parent_id', type: 'text', nullable: false, references: 'sb_parents' }],
+    };
+    const db = {
+      sb_parents: [],
+      sb_children: [{ ...buildRow(child, 'sb5', {}), parent_id: 'no-such-parent' }],
+    };
+    expect(() => assertInvariants(db, 'synthetic', [parent, child])).toThrow();
+    // And the same snapshot with the parent present passes — the check reacts
+    // to the orphan, not to the mere presence of an FK column.
+    const okDb = {
+      sb_parents: [buildRow(parent, 'no-such-parent', {})],
+      sb_children: db.sb_children,
+    };
+    assertInvariants(okDb, 'synthetic-ok', [parent, child]);
   });
 
   test('sabotage: the comparator separates types', () => {

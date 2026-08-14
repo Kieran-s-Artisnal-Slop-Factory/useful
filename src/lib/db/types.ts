@@ -14,15 +14,23 @@ export interface SyncFields {
   server_seq: number | null; // server sync cursor (null = never synced)
   /**
    * Per-field last-write-wins timestamps (column -> UTC ISO 8601). Present
-   * only on stores flagged `fieldMerge` below; written by repo.patch/put and
-   * merged field-by-field on both the client and the server, so two devices
-   * editing different fields of the same row both keep their edit.
+   * only on stores flagged `fieldMerge` below; written by repo.patch/put.
+   * NOTE: the stamps are only WRITTEN today — no merge path consumes them yet.
+   * Backup merge-import (export.ts) is still whole-row LWW; per-field folding
+   * lands with the first phase that puts real fields on a fieldMerge store
+   * (see plan-phases.md Phase 1). Until then this is groundwork, not a
+   * guarantee.
    */
   field_updated_at?: Record<string, string>;
 }
 
+/**
+ * THE single settings-style row: per-tool defaults and remembered values
+ * (timer completion defaults, last-used timezone pair, …) land here as fields
+ * when their tools ship. Read/write ONLY via repo's getSingleton/putSingleton.
+ */
 export interface Preferences extends SyncFields {
-  // (only sync fields)
+  // (only sync fields — tool phases add concrete fields here)
 }
 
 export interface StoreIndex {
@@ -39,7 +47,12 @@ export interface StoreDef {
 }
 
 export const STORES: Record<string, StoreDef> = {
-  preferences: { indexes: [] },
+  // singleton: one logical row under repo.SINGLETON_ID, so every device
+  // converges on the same row if sync ever lands. fieldMerge: per-field stamps
+  // are recorded so that, once a per-field merge path ships (plan-phases.md
+  // Phase 1), two devices changing DIFFERENT preference fields both keep
+  // their edit.
+  preferences: { indexes: [], singleton: true, fieldMerge: true },
 };
 
 export type StoreName = keyof typeof STORES;

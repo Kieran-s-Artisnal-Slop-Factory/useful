@@ -7,7 +7,8 @@ their own browser.
 
 ## Tables
 
-- `preferences` — 0 columns (Preferences page)
+- `preferences` — singleton, field-merged; per-tool defaults land here as
+  tools ship (Preferences page shows what has been remembered)
 
 Every table also carries bookkeeping fields (`id`, `updated_at`,
 `deleted_at`, `server_seq`) that power soft deletes and keep the door open
