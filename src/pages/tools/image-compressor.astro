@@ -1,0 +1,8 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import ImageCompressorApp from '../../components/apps/ImageCompressorApp.svelte';
+---
+
+<Layout title="Image compressor">
+  <ImageCompressorApp client:only="svelte" />
+</Layout>

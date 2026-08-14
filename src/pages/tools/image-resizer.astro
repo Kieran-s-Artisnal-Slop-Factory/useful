@@ -1,0 +1,8 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import ImageResizerApp from '../../components/apps/ImageResizerApp.svelte';
+---
+
+<Layout title="Image resizer">
+  <ImageResizerApp client:only="svelte" />
+</Layout>

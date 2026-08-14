@@ -48,6 +48,8 @@ export interface Preferences extends SyncFields {
   tz_last_to?: string;
   /** Last-used sensor format on the photography calculators. */
   photo_last_format?: 'mft' | 'apsc' | 'apsc-canon' | 'ff';
+  /** JPG quality default (1-100) shared by the image converter/resizer/compressor. */
+  convert_jpg_quality?: number;
 }
 
 /** A countdown timer. While running, `end_at` is the absolute deadline —

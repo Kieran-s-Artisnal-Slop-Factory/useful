@@ -26,7 +26,8 @@
     "qr-scanner": "^1.4.2",
     "qrcode": "^1.5.4",
     "svelte": "^5.56.4",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "utif2": "^4.1.0"
   },
   "devDependencies": {
     "@playwright/test": "^1.56.0",

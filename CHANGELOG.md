@@ -78,6 +78,25 @@
   are never auto-opened.
 - Sidebar/palette gained the Generators category (five tools above); service
   worker shell extended and cache bumped.
+- **Image converter** (`/tools/image-converter/`): SVG, AVIF, WebP, TIFF, PNG
+  or JPG in — PNG or JPG out (deliberately no WebP/AVIF outputs; canvas
+  encoding for them isn't broadly supported). PNG↔JPG are constrained to the
+  sensible direction, SVG rasterizes at a chosen width (aspect preserved),
+  TIFF decodes via the bundled `utif2` (~50KB) and fails gracefully on exotic
+  variants, JPG output flattens transparency onto white and has a quality
+  control, and everything happens on-device. Download plus copy — clipboard
+  images are always PNG and the button says so.
+- **Image resizer** (`/tools/image-resizer/`): exact dimensions (with aspect
+  lock deriving the other edge) or percentage scaling, PNG/JPG export with the
+  shared conventions.
+- **Image compressor** (`/tools/image-compressor/`): recompress JPG (quality)
+  and PNG (re-encode), optional longest-edge cap, with before/after file sizes
+  and the percentage saved.
+- The three image tools share a remembered JPG-quality default
+  (`convert_jpg_quality` on the preferences singleton — their only database
+  write; the images themselves never touch IndexedDB by design).
+- Sidebar/palette gained the Images category; service worker shell extended
+  and cache bumped to v8.
 - QR creator: code and background colors are now customizable (color pickers
   wired through to both the SVG preview and the PNG/SVG exports), with a
   scannability warning when the pair is inverted (light-on-dark) or too low
@@ -110,6 +129,15 @@
   surface), and the builder audits every brand role against the theme's own
   background per scheme, listing WCAG 1.4.11 contrast warnings under the
   swatch.
+- Scheduler list view: drag-and-drop reordering (grab the ⠿ handle or the
+  row). The list now shows YOUR order — the same fractional rank the board
+  columns use, so rearranging either view rearranges both; completed todos
+  sink to the bottom, one row written per drop, no-op drops write nothing,
+  and a drop strip below the table moves an item to the end. (The list
+  previously auto-sorted by due date; the manual order replaces that.)
+- Theme builder roles (primary/secondary/accent/neutral/base) each render as
+  their own card, so the five color pairs read as separate objects instead of
+  a run-together grid.
 - Regex tester: capturing groups are color-coded — group N wears the same
   color in the highlighted sample text (sub-spans inside each match, computed
   from real group indices via the `d` flag, lookahead spans clamped) and in
@@ -123,7 +151,11 @@
   (markdown rendering and the regex tool) imported them, Rollup could split the
   grammars into a shared chunk that executes before the Prism core, crashing
   hydration with `Prism is not defined`. All Prism imports now flow through a
-  single `src/lib/prism.ts` whose import order is guaranteed.
+  single `src/lib/prism.ts` whose import order is guaranteed. (This crash is
+  also what briefly broke every scheduler interaction — including calendar
+  drag-and-drop — since the scheduler island imports the markdown renderer;
+  the drag suite now additionally covers the realistic hover-preview-then-drag
+  sequence and true list-reorder interactions as regression guards.)
 
 - The Playwright suite could never run under Astro 7: `astro preview` daemonizes itself when stdin is not a TTY, so Playwright's webServer saw the process exit and aborted every run. Replaced with a dependency-free foreground static server (`tools/preview-server.mjs`).
 - The test hook 404'd in production builds: the layout's unbundled inline script dynamically imported `../lib/testHook.ts`, which resolves against the page URL and does not exist in `dist/`. The loader is now a bundled module script (`installTestHookIfEnabled` in `src/lib/testMode.ts`); the hook chunk is still only fetched when test mode is enabled.

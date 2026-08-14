@@ -8,8 +8,9 @@ their own browser.
 ## Tables
 
 - `preferences` — singleton, field-merged; per-tool defaults (timer completion
-  defaults, last-used timezone pair, last-used photography sensor format; the
-  Preferences page shows what has been remembered)
+  defaults, last-used timezone pair, last-used photography sensor format, the
+  image tools' JPG quality; the Preferences page shows what has been
+  remembered)
 - `timers` — countdown timers; running timers store an absolute `end_at`
   deadline, so nothing writes per tick
 - `stopwatch` — singleton; start epoch + accumulated elapsed + lap list

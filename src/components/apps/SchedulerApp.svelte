@@ -453,16 +453,60 @@
   }
 
   // ---- list helpers
-  const PRIORITY_ORDER: Record<TodoPriority, number> = { urgent: 0, high: 1, medium: 2, low: 3 };
+  // The list is YOUR order: the same fractional rank the board columns use
+  // (drag rows to rearrange), with completed todos sinking to the bottom.
   let listTodos = $derived(
     [...todos].sort((a, b) => {
-      if (a.status !== b.status) return a.status === 'completed' ? 1 : b.status === 'completed' ? -1 : 0;
-      const ad = a.due_date ?? '9999-99-99';
-      const bd = b.due_date ?? '9999-99-99';
-      if (ad !== bd) return ad < bd ? -1 : 1;
-      return PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority];
+      if ((a.status === 'completed') !== (b.status === 'completed')) {
+        return a.status === 'completed' ? 1 : -1;
+      }
+      if (a.rank !== b.rank) return a.rank < b.rank ? -1 : 1;
+      return a.id < b.id ? -1 : 1;
     })
   );
+
+  // ---- list drag-and-drop (reorder by rank; ONE write per drop, no-op
+  // drops write nothing — same contract as the board)
+  let listDropId: string | null = $state(null);
+  let listDropEnd = $state(false);
+
+  async function dropOnRow(e: DragEvent, target: Todo) {
+    e.preventDefault();
+    e.stopPropagation();
+    listDropId = null;
+    listDropEnd = false;
+    const id = e.dataTransfer?.getData('application/x-useful-todo');
+    const t = id ? todos.find((x) => x.id === id) : undefined;
+    if (!t || t.id === target.id) return;
+    const seq = listTodos;
+    if (seq.findIndex((x) => x.id === t.id) === seq.findIndex((x) => x.id === target.id) - 1) {
+      return; // already directly above the target — write nothing
+    }
+    const rest = seq.filter((x) => x.id !== t.id);
+    const idx = rest.findIndex((x) => x.id === target.id);
+    const prev = idx > 0 ? rest[idx - 1]!.rank : null;
+    // Crossing the completed divider can invert display order vs rank order —
+    // fall back to "just below everything above the target" in that case.
+    const rank =
+      prev !== null && prev >= target.rank
+        ? rankBetween(null, target.rank)
+        : rankBetween(prev, target.rank);
+    await patch<Todo>('todos', t.id, { rank });
+    await refresh();
+  }
+
+  async function dropAtListEnd(e: DragEvent) {
+    e.preventDefault();
+    listDropId = null;
+    listDropEnd = false;
+    const id = e.dataTransfer?.getData('application/x-useful-todo');
+    const t = id ? todos.find((x) => x.id === id) : undefined;
+    if (!t) return;
+    if (listTodos[listTodos.length - 1]?.id === t.id) return; // already last
+    const last = listTodos.filter((x) => x.id !== t.id).at(-1);
+    await patch<Todo>('todos', t.id, { rank: rankAfter(last?.rank ?? null) });
+    await refresh();
+  }
 
   function isOverdue(t: Todo): boolean {
     if (t.status === 'completed' || !t.due_date) return false;
@@ -748,14 +792,41 @@
   {#if listTodos.length === 0}
     <p class="muted">No TODOs yet.</p>
   {:else}
-    <div class="table-wrap">
+    <div
+      class="table-wrap"
+      class:drop-end={listDropEnd}
+      ondragover={(e) => {
+        e.preventDefault();
+        listDropEnd = true;
+      }}
+      ondragleave={() => (listDropEnd = false)}
+      ondrop={(e) => void dropAtListEnd(e)}
+    >
       <table class="data-table">
         <thead>
-          <tr><th>Status</th><th>Title</th><th>Due</th><th>Priority</th><th></th></tr>
+          <tr><th class="handle-col"><span class="visually-hidden">Drag to reorder</span></th><th>Status</th><th>Title</th><th>Due</th><th>Priority</th><th></th></tr>
         </thead>
         <tbody>
           {#each listTodos as t (t.id)}
-            <tr data-testid="todo-row" data-todo-id={t.id} class:done={t.status === 'completed'}>
+            <tr
+              data-testid="todo-row"
+              data-todo-id={t.id}
+              class:done={t.status === 'completed'}
+              class:drop-above={listDropId === t.id}
+              draggable="true"
+              ondragstart={(e) => onCardDragStart(e, t)}
+              ondragover={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                listDropEnd = false;
+                listDropId = t.id;
+              }}
+              ondragleave={() => {
+                if (listDropId === t.id) listDropId = null;
+              }}
+              ondrop={(e) => void dropOnRow(e, t)}
+            >
+              <td class="drag-handle" aria-hidden="true">⠿</td>
               <td>
                 <select
                   class="status-select"
@@ -785,6 +856,9 @@
           {/each}
         </tbody>
       </table>
+      <!-- Row drops insert ABOVE the target; this strip is the "make it
+           last" target (the wrap's drop handler appends). -->
+      <div class="end-strip" data-testid="list-end-drop" aria-hidden="true"></div>
     </div>
   {/if}
 {:else if view === 'board'}
@@ -942,6 +1016,41 @@
 
   .status-select {
     width: auto;
+  }
+
+  .visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+
+  /* List drag-reorder affordances. */
+  .handle-col {
+    width: 1.8rem;
+  }
+
+  .drag-handle {
+    color: var(--text-muted-color);
+    cursor: grab;
+    user-select: none;
+  }
+
+  tbody tr[draggable='true'] {
+    cursor: grab;
+  }
+
+  tbody tr.drop-above td {
+    border-top: 2px solid var(--color-stamp);
+  }
+
+  .end-strip {
+    height: var(--space-4);
+  }
+
+  .table-wrap.drop-end .end-strip {
+    background: repeating-linear-gradient(45deg, transparent 0 4px, var(--color-stamp) 4px 5px);
   }
 
   .linklike {

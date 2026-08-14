@@ -212,11 +212,9 @@
       </p>
       <div class="roles">
         {#each THEME_ROLES as role, i (role)}
-          <div class="role">
-            <span class="role-name">
-              {role}
-              <span class="muted hint">· {ROLE_HINTS[role]}</span>
-            </span>
+          <Card title={role}>
+            <div class="stack role-body" data-testid={'th-role-' + role}>
+            <p class="muted hint">{ROLE_HINTS[role]}</p>
             <div class="slot">
               <label class="slot-label" for={'th-color-' + role}>light</label>
               <ColorField
@@ -245,7 +243,8 @@
                 <span class="eyebrow" data-testid={'th-derived-dark-' + role}>auto</span>
               {/if}
             </div>
-          </div>
+            </div>
+          </Card>
         {/each}
       </div>
 
@@ -450,28 +449,19 @@
   }
 
   /* -------------------------------------------------------- theme builder */
+  /* One card per role, so the five roles read as separate objects. */
   .roles {
     display: grid;
     gap: var(--space-3);
-    grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr));
   }
 
-  .hint {
-    text-transform: none;
-    letter-spacing: normal;
-  }
-
-  .role {
-    display: flex;
-    flex-direction: column;
+  .role-body {
     gap: var(--space-2);
   }
 
-  .role-name {
+  .hint {
     font-size: var(--font-size-sm);
-    color: var(--text-muted-color);
-    text-transform: uppercase;
-    letter-spacing: var(--tracking-wide);
   }
 
   .slot {

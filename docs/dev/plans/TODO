@@ -70,7 +70,29 @@ UI refinement round (user request, 2026-08-14) — DONE:
 - [x] Regex: group color-coding via `d`-flag indices (marks + table chips,
       named groups merged with their numbers)
 
-Next: Phase 5 (Image converters/resizer/compressor) per plan-phases.md. Notes:
+Drag + role-cards round (user request, 2026-08-14) — DONE:
+- [x] Scheduler "drag broke" root-caused to the (already fixed) Prism
+      hydration crash; calendar drag verified green. List view had NO drag —
+      added rank-based drag-reorder (shared with board order, completed sink
+      to bottom, end-drop strip); list due-date auto-sort replaced by manual
+      order.
+- [x] 4 new real-interaction Playwright drag tests (list reorder / no-op /
+      end strip / board-order parity + calendar hover-preview-then-drag).
+- [x] Theme builder roles now render as individual cards.
+
+Phase 5 (Images, 2026-08-14) — DONE:
+- [x] Converter (matrix per plan §3.3: svg/avif/webp/tiff→png/jpg, png↔jpg;
+      utif2 TIFF w/ graceful failure; SVG raster width; JPG flatten-to-white)
+- [x] Resizer (dims + aspect lock, percent mode), Compressor (quality,
+      longest-edge cap, before/after sizes) — src/lib/img/convert.ts core
+- [x] `convert_jpg_quality` pref (types + schema mirror + README), Images
+      registry category + icons, SW shell + cache v8, CHANGELOG
+- [x] Unit tests (matrix/dims/quality/filename math) + images.spec.ts
+      (fixture uploads incl. generated TIFFs — tools/build-image-fixtures.mjs
+      — downloads verified by magic bytes; AVIF rides the WebP native-decode
+      branch, no in-browser AVIF encoder exists for a fixture)
+
+Next: Phase 6 (SVG editor) per plan-phases.md. Notes:
 - NOTHING IS COMMITTED YET — the whole run (phases 0-2 + redesign) is one
   dirty working tree; commit when the user asks.
 - Week/day calendar views deliberately deferred.

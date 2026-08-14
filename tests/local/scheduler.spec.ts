@@ -13,6 +13,85 @@ async function createTodo(app: import('./helpers/app').App, title: string) {
   await expect(page.getByTestId('todo-row').filter({ hasText: title })).toBeVisible();
 }
 
+test.describe('list view drag-reorder', () => {
+  const rowTitles = async (page: import('@playwright/test').Page): Promise<string[]> =>
+    (await page.getByTestId('todo-row').locator('[data-testid="todo-open"]').allTextContents()).map(
+      (s) => s.trim()
+    );
+
+  test('dragging a row above another moves it, rewriting only that row', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/scheduler/');
+    await createTodo(app, 'Alpha');
+    await createTodo(app, 'Beta');
+    await createTodo(app, 'Gamma');
+    expect(await rowTitles(page)).toEqual(['Alpha', 'Beta', 'Gamma']);
+    const before = await app.dumpAll();
+
+    // A REAL drag (mouse press → move → release through Playwright's HTML5
+    // DnD pipeline), starting on the row's drag handle.
+    await page
+      .getByTestId('todo-row')
+      .filter({ hasText: 'Gamma' })
+      .dragTo(page.getByTestId('todo-row').filter({ hasText: 'Alpha' }), {
+        sourcePosition: { x: 14, y: 10 },
+      });
+
+    await expect(page.getByTestId('todo-row').first()).toContainText('Gamma');
+    expect(await rowTitles(page)).toEqual(['Gamma', 'Alpha', 'Beta']);
+    const gamma = (await app.dump('todos')).find((t) => t.title === 'Gamma')!;
+    assertIsolatedDelta(before, await app.dumpAll(), [{ store: 'todos', id: String(gamma.id) }]);
+
+    // Dropping where it already sits (directly above the target) writes nothing.
+    const settled = await app.dumpAll();
+    await page
+      .getByTestId('todo-row')
+      .filter({ hasText: 'Gamma' })
+      .dragTo(page.getByTestId('todo-row').filter({ hasText: 'Alpha' }), {
+        sourcePosition: { x: 14, y: 10 },
+      });
+    expect(await rowTitles(page)).toEqual(['Gamma', 'Alpha', 'Beta']);
+    expect(await app.dumpAll()).toEqual(settled);
+  });
+
+  test('dragging a row to the end strip makes it last (one row)', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/scheduler/');
+    await createTodo(app, 'Alpha');
+    await createTodo(app, 'Beta');
+    await createTodo(app, 'Gamma');
+    const before = await app.dumpAll();
+
+    await page
+      .getByTestId('todo-row')
+      .filter({ hasText: 'Alpha' })
+      .dragTo(page.getByTestId('list-end-drop'), { sourcePosition: { x: 14, y: 10 } });
+
+    expect(await rowTitles(page)).toEqual(['Beta', 'Gamma', 'Alpha']);
+    const alpha = (await app.dump('todos')).find((t) => t.title === 'Alpha')!;
+    assertIsolatedDelta(before, await app.dumpAll(), [{ store: 'todos', id: String(alpha.id) }]);
+  });
+
+  test('the manual list order is the same order the board column shows', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/scheduler/');
+    await createTodo(app, 'Alpha');
+    await createTodo(app, 'Beta');
+    await page
+      .getByTestId('todo-row')
+      .filter({ hasText: 'Beta' })
+      .dragTo(page.getByTestId('todo-row').filter({ hasText: 'Alpha' }), {
+        sourcePosition: { x: 14, y: 10 },
+      });
+    expect(await rowTitles(page)).toEqual(['Beta', 'Alpha']);
+
+    await page.getByTestId('view-board').click();
+    const cards = page.getByTestId('board-col-todo').getByTestId('board-card');
+    await expect(cards.first()).toContainText('Beta');
+    await expect(cards.nth(1)).toContainText('Alpha');
+  });
+});
+
 test.describe('todos', () => {
   test('creating a todo writes exactly one row', async ({ app }) => {
     const { page } = app;
@@ -271,6 +350,33 @@ test.describe('modal read/update + calendar interactions', () => {
       .toBe('2024-06-21');
     const t = (await app.dump('todos'))[0]!;
     assertIsolatedDelta(before, await app.dumpAll(), [{ store: 'todos', id: String(t.id) }]);
+  });
+
+  test('calendar drag works even while the hover preview is showing', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/scheduler/');
+    await page.getByTestId('scheduler-new-todo').click();
+    await page.getByTestId('todo-title').fill('Hover then drag');
+    await page.getByTestId('todo-due').fill('2024-06-12');
+    await page.getByTestId('todo-save').click();
+
+    await page.getByTestId('view-calendar').click();
+    await gotoMonth(app, 'June 2024');
+
+    // The realistic sequence: linger long enough for the wiki preview to pop
+    // up UNDER the cursor, then start dragging from the same spot.
+    await page.getByTestId('cal-todo').hover();
+    await expect(page.getByTestId('cal-preview')).toBeVisible();
+    await page.dragAndDrop(
+      '[data-testid="cal-todo"]',
+      '[data-testid="cal-cell"][data-date="2024-06-18"]'
+    );
+
+    await expect
+      .poll(async () => ((await app.dump('todos'))[0] as Record<string, unknown>).due_date)
+      .toBe('2024-06-18');
+    // Starting the drag dismissed the preview.
+    await expect(page.getByTestId('cal-preview')).toHaveCount(0);
   });
 });
 

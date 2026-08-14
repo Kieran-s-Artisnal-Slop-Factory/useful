@@ -32,7 +32,7 @@ export interface ToolDef {
  * land here as their phases ship (Time, Scheduler, Images, Calculators,
  * Generators); 'App' stays last — it holds the app's own pages.
  */
-export const CATEGORY_ORDER: string[] = ['Time', 'Scheduler', 'Calculators', 'Generators', 'App'];
+export const CATEGORY_ORDER: string[] = ['Time', 'Scheduler', 'Images', 'Calculators', 'Generators', 'App'];
 
 export const REGISTRY: ToolDef[] = [
   {
@@ -97,6 +97,33 @@ export const REGISTRY: ToolDef[] = [
     category: 'Calculators',
     route: '/tools/file-transfer/',
     icon: 'hard-drive-download',
+  },
+  {
+    id: 'image-converter',
+    name: 'Image converter',
+    description: 'SVG, AVIF, WebP, TIFF, PNG or JPG in — PNG or JPG out',
+    aliases: ['convert image', 'svg to png', 'webp to png', 'avif to jpg', 'tiff', 'heic', 'png to jpg', 'jpg to png'],
+    category: 'Images',
+    route: '/tools/image-converter/',
+    icon: 'image',
+  },
+  {
+    id: 'image-resizer',
+    name: 'Image resizer',
+    description: 'Resize to exact dimensions or a percentage, aspect locked',
+    aliases: ['resize image', 'scale image', 'shrink image', 'dimensions', 'thumbnail'],
+    category: 'Images',
+    route: '/tools/image-resizer/',
+    icon: 'scaling',
+  },
+  {
+    id: 'image-compressor',
+    name: 'Image compressor',
+    description: 'Recompress JPG/PNG with quality and size caps, before/after sizes',
+    aliases: ['compress image', 'optimize image', 'smaller image', 'jpg quality', 'file size'],
+    category: 'Images',
+    route: '/tools/image-compressor/',
+    icon: 'shrink',
   },
   {
     id: 'colors',

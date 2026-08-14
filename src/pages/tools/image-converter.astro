@@ -1,0 +1,8 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import ImageConverterApp from '../../components/apps/ImageConverterApp.svelte';
+---
+
+<Layout title="Image converter">
+  <ImageConverterApp client:only="svelte" />
+</Layout>
