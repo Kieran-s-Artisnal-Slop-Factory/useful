@@ -9,8 +9,8 @@ their own browser.
 
 - `preferences` — singleton, field-merged; per-tool defaults (timer completion
   defaults, last-used timezone pair, last-used photography sensor format, the
-  image tools' JPG quality; the Preferences page shows what has been
-  remembered)
+  image tools' JPG quality, the last-open SVG-editor document; the Preferences
+  page shows what has been remembered)
 - `timers` — countdown timers; running timers store an absolute `end_at`
   deadline, so nothing writes per tick
 - `stopwatch` — singleton; start epoch + accumulated elapsed + lap list
@@ -19,6 +19,9 @@ their own browser.
   three-state workflow, recurrence rule (successor spawned on complete, never
   on render), fractional `rank` for kanban ordering
 - `todo_comments` — child rows with a foreign key to `todos`
+- `svg_documents` — named SVG-editor documents: canvas size, background, and
+  the layer stack as plain JSON (text-only, so documents round-trip backups
+  byte-identically)
 
 Every table also carries bookkeeping fields (`id`, `updated_at`,
 `deleted_at`, `server_seq`) that power soft deletes and keep the door open

@@ -1,0 +1,8 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import SvgEditorApp from '../../components/apps/SvgEditorApp.svelte';
+---
+
+<Layout title="SVG editor">
+  <SvgEditorApp client:only="svelte" />
+</Layout>

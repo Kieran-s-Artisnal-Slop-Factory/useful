@@ -92,7 +92,61 @@ Phase 5 (Images, 2026-08-14) — DONE:
       — downloads verified by magic bytes; AVIF rides the WebP native-decode
       branch, no in-browser AVIF encoder exists for a fixture)
 
-Next: Phase 6 (SVG editor) per plan-phases.md. Notes:
+Phase 6 (SVG editor, 2026-08-14) — DONE:
+- [x] src/lib/svg/ (model/build/history): generalized icon-editor seed —
+      arbitrary canvas, per-layer w/h + fill/stroke, bezier lines, editable
+      polygons, pasted-SVG hardening ported, pure undo/redo stack
+- [x] SvgEditorApp: doc browser, on-canvas select/drag/resize/vertex handles
+      (rotation-aware), keyboard (arrows/Delete/ctrl+z/y), debounced autosave
+      via patch, resume-last-doc (`svg_last_doc_id` pref), SVG/PNG/JPG export
+- [x] DB v5 `svg_documents` (types + migration + TABLES mirror + README),
+      registry + pen-tool icon, SW shell + cache v9, CHANGELOG
+- [x] Unit tests (build/model/history) + svg-editor.spec.ts (isolated deltas,
+      byte-identical reload via assertSameDb, zero-write exports, tombstone)
+
+Phase 7 (Raster image editor, 2026-08-14) — DONE:
+- [x] src/lib/raster/ (model/transform/render/exif): non-destructive
+      rotate/crop with pure layer remapping, stroke/arrow/text/adjust layers,
+      EXIF field mapping (exifr read; piexifjs JPEG write, lazy)
+- [x] ImageEditorApp: session-only (ZERO DB writes — no repo imports), brush/
+      eraser/arrow/text/darken/lighten/blur/crop/rotate tools, layer list,
+      EXIF viewer + strip-default + edited-tags-into-JPG (GPS never), PNG/JPG
+      export + copy-as-PNG
+- [x] Registry + brush icon, page in SW shell (v9 bump shared with Phase 6),
+      CHANGELOG, deps exifr + piexifjs (+ local .d.ts)
+- [x] Unit tests (transform/exif) + image-editor.spec.ts (dims after
+      draw/rotate/crop, EXIF re-parsed from exported bytes, strip-all,
+      whole-session zero-write invariant)
+
+Cleanup
+
+- [ ] Image converter
+  - [ ] The image converter does not resize the preview to the aspect ratio of the image correctly
+    - [ ] I tested this with `photo-1780071611689-55d7b5ace40a.avif` and saw it being broken
+    - [ ] adapt the preview pane size or if not possible use `object-fit: contain;`
+- [ ] Image compressor
+  - [ ] The image compressor should support a target percentage or filesize (with a notice saying it may not be possible)
+- [ ] Image editor
+  - [ ] should support either upload to start (current) or starting from an empty canvas (set resolution)
+    - [ ] First uploaded image should be the base layer, and set the initial canvas size
+  - [ ] Canvas should be re-sizeable
+  - [ ] Should support image-based layers
+  - [ ] Tools should operate per-layer (e.g. I should be able to crop an image layer that does not crop the whole canvas)
+    - [ ] Should become sub-layers (e.g. an eraser layer only effeects the layer it's directly under in the heirarchy)
+      - [ ] Should be draggable under other layers, and deleteable
+      - [ ] If an eraser layer or crop is dragged to top layer it should effect layers below it
+  - [ ] Layers should have settings
+      - [ ] Opacity
+      - [ ] Blend modes
+        - [ ] Soft light
+        - [ ] Hard light
+        - [ ] color
+        - [ ] multiply
+        - [ ] Overlay; Combines Multiply and Screen for contrast enhancement.
+  - [ ] Should be able to set the image name and format when downloading
+
+
+Next: Phase 8 (Background remover) per plan-phases.md. Notes:
 - NOTHING IS COMMITTED YET — the whole run (phases 0-2 + redesign) is one
   dirty working tree; commit when the user asks.
 - Week/day calendar views deliberately deferred.

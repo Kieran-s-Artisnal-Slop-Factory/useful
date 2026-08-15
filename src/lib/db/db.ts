@@ -63,6 +63,12 @@ const MIGRATIONS: Migration[] = [
       comments.createIndex('todo_id', 'todo_id', { multiEntry: false });
     }
   },
+  // v5 — Phase 6 (SVG editor): named layer-based SVG documents.
+  (db) => {
+    if (!db.objectStoreNames.contains('svg_documents')) {
+      db.createObjectStore('svg_documents', { keyPath: 'id' });
+    }
+  },
 ];
 
 export const DB_VERSION = MIGRATIONS.length;

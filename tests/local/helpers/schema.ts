@@ -32,6 +32,7 @@ export const TABLES: TableMeta[] = [
       { name: 'tz_last_to', type: 'text', nullable: true, references: null },
       { name: 'photo_last_format', type: 'text', nullable: true, references: null },
       { name: 'convert_jpg_quality', type: 'integer', nullable: true, references: null },
+      { name: 'svg_last_doc_id', type: 'text', nullable: true, references: null },
     ],
   },
   {
@@ -100,6 +101,18 @@ export const TABLES: TableMeta[] = [
     columns: [
       { name: 'todo_id', type: 'text', nullable: false, references: 'todos' },
       { name: 'body_md', type: 'text', nullable: false, references: null },
+    ],
+  },
+  {
+    name: 'svg_documents',
+    fieldMerge: false,
+    singleton: false,
+    columns: [
+      { name: 'name', type: 'text', nullable: false, references: null },
+      { name: 'width', type: 'integer', nullable: false, references: null },
+      { name: 'height', type: 'integer', nullable: false, references: null },
+      { name: 'background', type: 'text', nullable: true, references: null },
+      { name: 'layers', type: 'json', nullable: false, references: null },
     ],
   },
 ];

@@ -144,6 +144,37 @@
   the match table, where named groups now merge with their number ("year:
   2024" instead of a duplicate "$1" chip) so each group reads as one color.
 - Syntax highlighting for fenced code blocks in all rendered markdown (Prism, statically bundled — TypeScript/JavaScript, Python, Go, Rust, Bash, JSON, SQL, YAML, HTML/CSS), colored with the blueprint ink palette in both themes.
+- **SVG editor** (`/tools/svg-editor/`): a layer-based vector editor grown from
+  the local-sync-template icon designer — arbitrary canvas size (16–4096, any
+  aspect), optional transparent background, and eight layer kinds: rect,
+  ellipse, triangle, star, text, pasted SVG markup (ids re-homed, root paint
+  preserved, scaled to fit), line segments with straight/quadratic/cubic
+  bezier options, and free-form polygons (start as a regular n-gon, then drag
+  vertices, add/remove points Illustrator-style). Layers have independent
+  width/height, rotation, and fill/stroke/stroke-width; the canvas offers
+  hit-test selection, drag positioning, rotation-aware corner resize handles,
+  and vertex/control-point handles; arrows nudge, Delete removes, and
+  undo/redo (buttons or ctrl+z / ctrl+shift+z / ctrl+y, 100 steps) walks
+  coalesced snapshots. Documents are named rows in the new `svg_documents`
+  store — layers stored as plain JSON, so they reopen fully editable, survive
+  backup round-trips byte-identically, and autosave (debounced, exactly one
+  row) with the last-open document resumed on return. Export as SVG (download
+  or copy-as-text), or PNG/JPG rasterized at a chosen width (aspect-derived
+  height, JPG quality slider, clipboard always PNG, labeled).
+- **Image editor** (`/tools/image-editor/`): a session-only layer-based raster
+  annotator (never touches the database by design — binary data cannot
+  round-trip the JSON data layer). Import anything the converter can decode
+  (PNG/JPG/WebP/AVIF/TIFF/SVG); crop (marquee + apply), rotate in 90° steps,
+  and reset both losslessly — annotations are remapped through pure transform
+  math, never baked. Tools: brush and eraser strokes (smoothed, eraser punches
+  transparency), arrows with sized heads, draggable/editable text layers, and
+  rectangular darken/lighten/blur region adjustments — every mark is a layer
+  that can be selected, edited, or deleted. Metadata: an EXIF viewer (exifr),
+  strip-all-by-default exports, and optional embedding of edited
+  artist/copyright/description/date tags into JPG exports via piexifjs — GPS
+  and all other original tags can never pass through, and the UI states
+  exactly which exports carry metadata. Export PNG or JPG (quality slider,
+  before-size feedback); clipboard copies are always PNG, labeled.
 
 ## Bug Fixes
 
@@ -166,6 +197,17 @@
 
 ## Other
 
+- Database schema v5: new `svg_documents` store (name, canvas size, background,
+  layers as JSON); `preferences` gains `svg_last_doc_id` (last-open SVG-editor
+  document, resumed on reopen). Test schema mirror and README Tables updated;
+  the store rides backup export/import automatically.
+- Service worker: `tools/svg-editor/` and `tools/image-editor/` added to the
+  precached shell; cache bumped to v9. Registry gains both tools (Images
+  category) with new hand-inlined Lucide `pen-tool` and `brush` icons.
+- New dependencies: `exifr` (EXIF read) and `piexifjs` (JPEG EXIF write,
+  loaded lazily at export time); pure SVG/raster geometry libs
+  (`src/lib/svg/`, `src/lib/raster/`) unit-tested in node, with the seed's
+  paste-hardening regression tests ported alongside.
 - View transitions: Astro `<ClientRouter />` in the shared layout; the chrome island is persisted across navigations and tracks the active page via `astro:page-load`.
 - `preferences` is now flagged `singleton` + `fieldMerge` in both `src/lib/db/types.ts` and the test mirror `tests/local/helpers/schema.ts`; the Preferences page is a read-only view of remembered per-tool defaults (writes go through `putSingleton` only). No IndexedDB migration needed (flags are app-level metadata).
 - Unit test runner added: Vitest via `npm run test:unit`, with tests for the fuzzy matcher and registry; Playwright specs added for sidebar/drawer/palette navigation (including "client-side navigation writes nothing").

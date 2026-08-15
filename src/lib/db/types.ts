@@ -1,6 +1,7 @@
 /**
  * Entity types + object-store map. GENERATED from your schema.
  */
+import type { SvgLayer } from '../svg/model';
 
 /**
  * Bookkeeping fields on every entity. This app is offline-only, but the
@@ -50,6 +51,8 @@ export interface Preferences extends SyncFields {
   photo_last_format?: 'mft' | 'apsc' | 'apsc-canon' | 'ff';
   /** JPG quality default (1-100) shared by the image converter/resizer/compressor. */
   convert_jpg_quality?: number;
+  /** Last-open SVG-editor document, resumed on reopen. */
+  svg_last_doc_id?: string;
 }
 
 /** A countdown timer. While running, `end_at` is the absolute deadline —
@@ -132,6 +135,19 @@ export interface TodoComment extends SyncFields {
   body_md: string;
 }
 
+/** A named SVG-editor document. Layers are plain JSON structures (see
+ * src/lib/svg/model.ts) — text-only, so they round-trip the JSON data layer
+ * and backup export/import byte-identically. */
+export interface SvgDocument extends SyncFields {
+  name: string;
+  /** Canvas size in SVG user units (also the viewBox). */
+  width: number;
+  height: number;
+  /** Canvas background color; null = transparent. */
+  background: string | null;
+  layers: SvgLayer[];
+}
+
 export interface StoreIndex {
   name: string;
   multiEntry?: boolean;
@@ -158,6 +174,7 @@ export const STORES: Record<string, StoreDef> = {
   // both survive a future sync/merge.
   todos: { indexes: [{ name: 'status' }, { name: 'due_date' }], fieldMerge: true },
   todo_comments: { indexes: [{ name: 'todo_id' }] },
+  svg_documents: { indexes: [] },
 };
 
 export type StoreName = keyof typeof STORES;

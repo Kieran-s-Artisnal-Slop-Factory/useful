@@ -1,0 +1,8 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import ImageEditorApp from '../../components/apps/ImageEditorApp.svelte';
+---
+
+<Layout title="Image editor">
+  <ImageEditorApp client:only="svelte" />
+</Layout>
