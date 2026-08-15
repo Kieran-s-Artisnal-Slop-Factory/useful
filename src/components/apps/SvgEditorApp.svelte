@@ -5,7 +5,7 @@
   import Explainer from '../Explainer.svelte';
   import { all, get, getSingleton, patch, put, putSingleton, softDelete, withSyncFields } from '../../lib/db/repo';
   import type { Preferences, SvgDocument } from '../../lib/db/types';
-  import { buildSvg, looksLikeSvg, svgDataUri } from '../../lib/svg/build';
+  import { buildSvg, looksLikeSvg, subtractLayers, svgDataUri } from '../../lib/svg/build';
   import {
     MAX_CANVAS,
     MIN_CANVAS,
@@ -17,6 +17,7 @@
     type SvgDocumentContent,
     type SvgLayer,
     type SvgLayerKind,
+    type SvgPoint,
   } from '../../lib/svg/model';
   import {
     canRedo,
@@ -70,25 +71,47 @@
   /** Handle radius in canvas units, so handles stay grabbable at any zoom. */
   const handleR = $derived(content ? Math.max(3, Math.max(content.width, content.height) / 56) : 4);
 
-  onMount(async () => {
-    await refreshDocs();
-    // Resume the last-open document (reads only — no writes on load).
-    const prefs = await getSingleton<Preferences>('preferences');
-    if (typeof prefs?.svg_last_doc_id === 'string' && !current) {
-      const doc = await get<SvgDocument>('svg_documents', prefs.svg_last_doc_id);
-      if (doc) openDoc(doc, { remember: false });
-    }
-    loading = false;
+  // Set synchronously at teardown so the async mount continuation below can't
+  // resurrect state (or register listeners) into a destroyed island — with
+  // ClientRouter the window outlives every page.
+  let destroyed = false;
+
+  onMount(() => {
+    // Listeners go on BEFORE any await, so onDestroy always has something to
+    // remove; a hard unload (F5, tab close, PWA window close) skips onDestroy,
+    // so pagehide/visibilitychange flush the debounced save too.
     window.addEventListener('keydown', onKeydown);
+    window.addEventListener('pagehide', flushSave);
+    document.addEventListener('visibilitychange', onVisibility);
+    void (async () => {
+      await refreshDocs();
+      // Resume the last-open document (reads only — no writes on load).
+      const prefs = await getSingleton<Preferences>('preferences');
+      if (destroyed) return;
+      if (typeof prefs?.svg_last_doc_id === 'string' && !current) {
+        const doc = await get<SvgDocument>('svg_documents', prefs.svg_last_doc_id);
+        if (destroyed) return;
+        if (doc) openDoc(doc, { remember: false });
+      }
+      loading = false;
+    })();
   });
 
   onDestroy(() => {
+    destroyed = true;
     window.removeEventListener('keydown', onKeydown);
+    window.removeEventListener('pagehide', flushSave);
+    document.removeEventListener('visibilitychange', onVisibility);
     flushSave();
   });
 
+  function onVisibility() {
+    if (document.visibilityState === 'hidden') flushSave();
+  }
+
   async function refreshDocs() {
     const rows = await all<SvgDocument>('svg_documents');
+    if (destroyed) return;
     docs = rows.sort((a, b) => b.updated_at.localeCompare(a.updated_at));
   }
 
@@ -141,12 +164,28 @@
 
   // ---- history + persistence ------------------------------------------------
 
-  /** Record the current content as one undo step and schedule a save. */
+  /**
+   * Record the current content as one undo step and schedule a save. The
+   * content is sanitized first (an emptied number input binds `null`; a
+   * canvas size typed mid-way may be out of range) — invalid values revert to
+   * the last committed state, so history and the database only ever hold
+   * well-formed documents.
+   */
   function commit() {
     if (!content) return;
-    const next = push(history, content);
+    const clean = normalizeDocumentContent(content, history.present);
+    if (JSON.stringify(clean) !== JSON.stringify(content)) {
+      // Write the healed values back so the bound inputs show them.
+      content.width = clean.width;
+      content.height = clean.height;
+      content.layers.forEach((l, i) => Object.assign(l, clean.layers[i]));
+    }
+    const next = push(history, clean);
     if (next === history) return; // gesture changed nothing
     history = next;
+    if (selectedVertex !== null && selected && selectedVertex >= selected.points.length) {
+      selectedVertex = null;
+    }
     scheduleSave();
   }
 
@@ -154,6 +193,8 @@
     if (h === history || !content) return;
     history = h;
     content = JSON.parse(JSON.stringify(h.present)) as SvgDocumentContent;
+    // Vertex indices are meaningless across snapshots (a point may not exist).
+    selectedVertex = null;
     scheduleSave();
   }
 
@@ -173,14 +214,20 @@
   async function doSave() {
     saveTimer = undefined;
     if (!current || !content) return;
-    const c = JSON.parse(JSON.stringify(content)) as SvgDocumentContent;
-    const row = await patch<SvgDocument>('svg_documents', current.id, {
+    const id = current.id;
+    // Persist the last COMMITTED snapshot, never the live bound values — a
+    // field mid-edit (typed "2" on the way to "2048") must not be flushed.
+    const c = history.present;
+    const row = await patch<SvgDocument>('svg_documents', id, {
       name: c.name,
       width: c.width,
       height: c.height,
       background: c.background,
       layers: c.layers,
     });
+    // The user may have closed this document or opened another while the
+    // write was in flight — only touch state if it is still the open one.
+    if (destroyed || current?.id !== id) return;
     if (!row) {
       saveState = 'error';
       return;
@@ -247,10 +294,15 @@
     selected?.kind === 'line' ? (selected.c1 && selected.c2 ? 'cubic' : selected.c1 ? 'quadratic' : 'straight') : 'straight'
   );
 
+  /** The selected vertex index, or the last vertex when none/stale is selected. */
+  function vertexIndex(pts: { length: number }): number {
+    return selectedVertex !== null && selectedVertex < pts.length ? selectedVertex : pts.length - 1;
+  }
+
   function addVertex() {
-    if (!selected || selected.kind !== 'polygon') return;
+    if (!selected || selected.kind !== 'polygon' || selected.points.length === 0) return;
     const pts = selected.points;
-    const i = selectedVertex ?? pts.length - 1;
+    const i = vertexIndex(pts);
     const a = pts[i]!;
     const b = pts[(i + 1) % pts.length]!;
     pts.splice(i + 1, 0, { x: Math.round((a.x + b.x) / 2), y: Math.round((a.y + b.y) / 2) });
@@ -260,8 +312,50 @@
 
   function removeVertex() {
     if (!selected || selected.kind !== 'polygon' || selected.points.length <= 3) return;
-    const i = selectedVertex ?? selected.points.length - 1;
-    selected.points.splice(i, 1);
+    selected.points.splice(vertexIndex(selected.points), 1);
+    selectedVertex = null;
+    commit();
+  }
+
+  /** Toggle a bezier control on the edge leaving the selected vertex. */
+  function toggleVertexCurve() {
+    if (!selected || selected.kind !== 'polygon' || selected.points.length < 2) return;
+    const i = vertexIndex(selected.points);
+    const v = selected.points[i]!;
+    if (v.c) {
+      delete v.c;
+    } else {
+      // Start the control at the edge midpoint, pushed outward from the
+      // center so the curve is visibly bowed rather than a straight edge.
+      const n = selected.points[(i + 1) % selected.points.length]!;
+      const mx = (v.x + n.x) / 2;
+      const my = (v.y + n.y) / 2;
+      const len = Math.hypot(mx, my) || 1;
+      const push = Math.max(12, Math.min(selected.width, selected.height) * 0.25);
+      v.c = { x: Math.round(mx + (mx / len) * push), y: Math.round(my + (my / len) * push) };
+    }
+    selectedVertex = i;
+    commit();
+  }
+
+  const selectedVertexCurved = $derived(
+    selected?.kind === 'polygon' && selectedVertex !== null ? !!selected.points[selectedVertex]?.c : false
+  );
+
+  /**
+   * Boolean subtract: bake (selected − cutter) into a pasted-SVG layer that
+   * replaces the selected layer; the cutter is consumed (one undo step).
+   */
+  function subtractWith(cutterId: string) {
+    if (!content || !selected || !cutterId || cutterId === selected.id) return;
+    const cutter = content.layers.find((l) => l.id === cutterId);
+    if (!cutter) return;
+    const baked = subtractLayers(selected, cutter);
+    const bi = content.layers.findIndex((l) => l.id === selected!.id);
+    content.layers.splice(bi, 1, baked);
+    const ci = content.layers.findIndex((l) => l.id === cutterId);
+    if (ci >= 0) content.layers.splice(ci, 1);
+    selectedId = baked.id;
     selectedVertex = null;
     commit();
   }
@@ -294,6 +388,7 @@
     | { mode: 'move'; dx: number; dy: number }
     | { mode: 'resize'; cx: number; cy: number; rot: number; ox: number; oy: number }
     | { mode: 'vertex'; index: number }
+    | { mode: 'vctrl'; index: number }
     | { mode: 'ctrl'; which: 'c1' | 'c2' }
     | { mode: 'line-end'; index: number };
   let drag: Drag | null = null;
@@ -325,24 +420,27 @@
     for (let i = content.layers.length - 1; i >= 0; i--) {
       const l = content.layers[i]!;
       const p = rotatePt(x, y, l.x, l.y, -l.rotation);
-      let hw = l.width / 2;
-      let hh = l.height / 2;
+      // Box in the layer's unrotated frame, relative to its center.
+      let minX = -l.width / 2;
+      let maxX = l.width / 2;
+      let minY = -l.height / 2;
+      let maxY = l.height / 2;
       if (l.kind === 'line' || l.kind === 'polygon') {
-        const xs = l.points.map((pt) => pt.x);
-        const ys = l.points.map((pt) => pt.y);
-        for (const c of [l.c1, l.c2]) {
-          if (c) {
-            xs.push(c.x);
-            ys.push(c.y);
-          }
-        }
-        if (xs.length > 0) {
-          hw = Math.max(...xs.map(Math.abs));
-          hh = Math.max(...ys.map(Math.abs));
+        // Points/controls are one-sided after vertex drags — use the true
+        // bounding box, not a box mirrored around the center.
+        const pts: SvgPoint[] = [...l.points, ...[l.c1, l.c2].filter((c): c is SvgPoint => c !== null)];
+        for (const v of l.points) if (v.c) pts.push(v.c);
+        if (pts.length > 0) {
+          minX = Math.min(...pts.map((pt) => pt.x));
+          maxX = Math.max(...pts.map((pt) => pt.x));
+          minY = Math.min(...pts.map((pt) => pt.y));
+          maxY = Math.max(...pts.map((pt) => pt.y));
         }
       }
       const pad = Math.max(handleR, l.stroke !== 'none' ? l.stroke_width / 2 : 0);
-      if (Math.abs(p.x - l.x) <= hw + pad && Math.abs(p.y - l.y) <= hh + pad) return l;
+      const rx = p.x - l.x;
+      const ry = p.y - l.y;
+      if (rx >= minX - pad && rx <= maxX + pad && ry >= minY - pad && ry <= maxY + pad) return l;
     }
     return null;
   }
@@ -367,6 +465,9 @@
           ox: selected.x + (sx * selected.width) / 2,
           oy: selected.y + (sy * selected.height) / 2,
         };
+      } else if (kind === 'vctrl') {
+        drag = { mode: 'vctrl', index: Number(arg) };
+        selectedVertex = Number(arg);
       } else if (kind === 'vertex') {
         drag = { mode: 'vertex', index: Number(arg) };
         selectedVertex = Number(arg);
@@ -412,7 +513,13 @@
       // center, in its unrotated frame.
       const u = rotatePt(p.x, p.y, selected.x, selected.y, -selected.rotation);
       const rel = { x: round1(u.x - selected.x), y: round1(u.y - selected.y) };
-      if (drag.mode === 'vertex') selected.points[drag.index] = rel;
+      if (drag.mode === 'vertex') {
+        const prev = selected.points[drag.index];
+        selected.points[drag.index] = prev?.c ? { ...rel, c: prev.c } : rel;
+      } else if (drag.mode === 'vctrl') {
+        const v = selected.points[drag.index];
+        if (v) v.c = rel;
+      }
       else if (drag.mode === 'ctrl') selected[drag.which] = rel;
       else if (drag.mode === 'line-end') selected.points[drag.index] = rel;
     }
@@ -465,6 +572,9 @@
   }
 
   async function rasterize(): Promise<HTMLCanvasElement> {
+    // An emptied number input binds null — fall back to the canvas width.
+    if (!Number.isFinite(exportWidth) || exportWidth < 16) exportWidth = content?.width ?? 256;
+    exportWidth = Math.min(8192, Math.round(exportWidth));
     const file = new File([built], 'drawing.svg', { type: 'image/svg+xml' });
     // Rasterize AT the target width (crisp), then pin the exact height.
     const decoded = await decodeToCanvas(file, exportWidth);
@@ -632,10 +742,26 @@
                       height={selected.height}
                     />
                     {#each selected.points as pt, i (i)}
+                      {#if pt.c}
+                        {@const nx = selected.points[(i + 1) % selected.points.length]!}
+                        <line class="guide" x1={selected.x + pt.x} y1={selected.y + pt.y} x2={selected.x + pt.c.x} y2={selected.y + pt.c.y} />
+                        <line class="guide" x1={selected.x + nx.x} y1={selected.y + nx.y} x2={selected.x + pt.c.x} y2={selected.y + pt.c.y} />
+                        <circle
+                          class="handle ctrl"
+                          data-handle={`vctrl:${i}`}
+                          data-testid={`svg-vctrl-${i}`}
+                          cx={selected.x + pt.c.x}
+                          cy={selected.y + pt.c.y}
+                          r={handleR}
+                        />
+                      {/if}
+                    {/each}
+                    {#each selected.points as pt, i (i)}
                       <circle
                         class="handle"
                         class:active={selectedVertex === i}
                         data-handle={`vertex:${i}`}
+                        data-testid={`svg-vertex-${i}`}
                         cx={selected.x + pt.x}
                         cy={selected.y + pt.y}
                         r={handleR}
@@ -722,6 +848,7 @@
                   bind:value={content.background}
                   ariaLabel="Canvas background color"
                   fallback="#ffffff"
+                  oncommit={commit}
                 />
               </div>
             {/if}
@@ -815,6 +942,7 @@
                   <button
                     class="layer-name"
                     data-testid="svg-layer-select"
+                    aria-pressed={layer.id === selectedId}
                     onclick={() => {
                       selectedId = layer.id;
                       selectedVertex = null;
@@ -880,7 +1008,7 @@
                   Fill
                 </label>
                 {#if selected.fill !== 'none'}
-                  <ColorField testid="svg-fill" bind:value={selected.fill} ariaLabel="Fill color" fallback="#f59e0b" />
+                  <ColorField testid="svg-fill" bind:value={selected.fill} ariaLabel="Fill color" fallback="#f59e0b" oncommit={commit} />
                 {/if}
               </div>
             {/if}
@@ -897,7 +1025,7 @@
                   Stroke
                 </label>
                 {#if selected.stroke !== 'none'}
-                  <ColorField testid="svg-stroke" bind:value={selected.stroke} ariaLabel="Stroke color" fallback="#f59e0b" />
+                  <ColorField testid="svg-stroke" bind:value={selected.stroke} ariaLabel="Stroke color" fallback="#f59e0b" oncommit={commit} />
                   <div>
                     <label for="svg-stroke-width">Stroke width</label>
                     <input id="svg-stroke-width" data-testid="svg-stroke-width" class="num" type="number" min="0.5" max="200" step="0.5" bind:value={selected.stroke_width} onchange={commit} />
@@ -951,6 +1079,15 @@
                 <button class="btn btn-sm" data-testid="svg-remove-point" disabled={selected.points.length <= 3} onclick={removeVertex}>
                   Remove point
                 </button>
+                <button
+                  class="btn btn-sm"
+                  data-testid="svg-curve-edge"
+                  aria-pressed={selectedVertexCurved}
+                  title="Bend the edge from the selected point to the next one with a draggable bezier handle"
+                  onclick={toggleVertexCurve}
+                >
+                  {selectedVertexCurved ? 'Straighten edge' : 'Curve edge'}
+                </button>
                 <div>
                   <label for="svg-sides">Reset as regular</label>
                   <select
@@ -969,7 +1106,37 @@
                   </select>
                 </div>
               </div>
-              <p class="muted small">{selected.points.length} points — drag them on the canvas to reshape.</p>
+              <p class="muted small">
+                {selected.points.length} points — drag them on the canvas to reshape.
+                {selectedVertex === null
+                  ? 'Click a point to select it; “Curve edge” bends the edge leaving it.'
+                  : `Point ${selectedVertex + 1} selected${selectedVertexCurved ? ' — drag the orange handle to shape the curve.' : '.'}`}
+              </p>
+            {/if}
+
+            {#if content.layers.length > 1}
+              <div class="row wrap">
+                <div>
+                  <label for="svg-subtract">Subtract another layer from this one</label>
+                  <select
+                    id="svg-subtract"
+                    data-testid="svg-subtract"
+                    onchange={(e) => {
+                      subtractWith(e.currentTarget.value);
+                      e.currentTarget.value = '';
+                    }}
+                  >
+                    <option value="">Choose the cutter…</option>
+                    {#each content.layers.filter((l) => l.id !== selected!.id) as l (l.id)}
+                      <option value={l.id}>{layerLabel(l)}</option>
+                    {/each}
+                  </select>
+                </div>
+                <p class="muted small self-end">
+                  Cuts the cutter's silhouette out of this layer and bakes the result into a
+                  pasted-SVG layer (both originals are consumed — undo restores them).
+                </p>
+              </div>
             {/if}
 
             {#if selected.kind === 'svg'}

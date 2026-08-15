@@ -115,6 +115,44 @@ test.describe('image converter', () => {
     expect(isPng(bytes)).toBe(true);
   });
 
+  test('a real AVIF decodes, and the preview keeps the image aspect ratio', async ({ app }) => {
+    // Regression: the preview <img> was a stretched flex child — a portrait
+    // photo rendered squashed to the preview box's own ratio.
+    const { page } = app;
+    await app.goto('/tools/image-converter/');
+    await page.getByTestId('ic-file').setInputFiles(join(FIXTURES, 'photo-1780071611689-55d7b5ace40a.avif'));
+    await expect(page.getByTestId('ic-input-info')).toContainText('px');
+    const preview = page.locator('img.preview');
+    await expect(preview).toBeVisible();
+    const ratios = await preview.evaluate((el) => {
+      const img = el as HTMLImageElement;
+      const r = img.getBoundingClientRect();
+      return { natural: img.naturalWidth / img.naturalHeight, rendered: r.width / r.height };
+    });
+    expect(ratios.natural).toBeGreaterThan(0);
+    expect(Math.abs(ratios.rendered - ratios.natural)).toBeLessThan(0.05);
+    const { name, bytes } = await downloadBytes(page, () => page.getByTestId('ic-download').click());
+    expect(name).toBe('photo-1780071611689-55d7b5ace40a.png');
+    expect(isPng(bytes)).toBe(true);
+  });
+
+  test('a tall image previews at its own aspect ratio (not the box ratio)', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/image-converter/');
+    await page.getByTestId('ic-file').setInputFiles({
+      name: 'tall.png',
+      mimeType: 'image/png',
+      buffer: await makeImage(page, 'image/png', 100, 300),
+    });
+    await expect(page.getByTestId('ic-input-info')).toContainText('100 × 300px');
+    const rendered = await page.locator('img.preview').evaluate((el) => {
+      const r = el.getBoundingClientRect();
+      return r.width / r.height;
+    });
+    expect(rendered).toBeGreaterThan(0.3);
+    expect(rendered).toBeLessThan(0.37);
+  });
+
   test('SVG rasterizes at the chosen width, keeping its aspect', async ({ app }) => {
     const { page } = app;
     await app.goto('/tools/image-converter/');
@@ -256,6 +294,51 @@ test.describe('image compressor', () => {
     await expect(page.getByTestId('cp-after')).toContainText('60 × 20px');
     const { name, bytes } = await downloadBytes(page, () => page.getByTestId('cp-download').click());
     expect(name).toBe('wide.png');
+    expect(isPng(bytes)).toBe(true);
+  });
+
+  test('target percent: JPG hits the budget by lowering quality, output under target', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/image-compressor/');
+    const before = await app.dumpAll();
+    const original = await makeImage(page, 'image/jpeg', 200, 150, true);
+    await page.getByTestId('cp-file').setInputFiles({ name: 'noise.jpg', mimeType: 'image/jpeg', buffer: original });
+    await expect(page.getByTestId('cp-input-info')).toContainText('200 × 150px');
+
+    await page.getByTestId('cp-target-mode').selectOption('percent');
+    await expect(page.getByTestId('cp-target-note')).toContainText('may not be reachable');
+    await page.getByTestId('cp-target-percent').fill('40');
+    await expect(page.getByTestId('cp-target-outcome')).toContainText('Target reached');
+    await expect(page.getByTestId('cp-target-outcome')).toContainText('quality');
+
+    const { bytes } = await downloadBytes(page, () => page.getByTestId('cp-download').click());
+    expect(isJpeg(bytes)).toBe(true);
+    expect(bytes.length).toBeLessThanOrEqual(Math.floor(original.length * 0.4));
+    // Search + export are session-only: no writes at all (no quality edit).
+    expect(await app.dumpAll()).toEqual(before);
+  });
+
+  test('target size: PNG can only shrink dimensions; impossible targets are reported', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/image-compressor/');
+    await page.getByTestId('cp-file').setInputFiles({
+      name: 'flat.png',
+      mimeType: 'image/png',
+      buffer: await makeImage(page, 'image/png', 200, 200),
+    });
+    await page.getByTestId('cp-target-mode').selectOption('size');
+    await expect(page.getByTestId('cp-target-note')).toContainText('PNG is lossless');
+    // 1 KB is below what any allowed PNG encode of this image produces… or
+    // is reached by shrinking — either way the outcome is stated honestly and
+    // the output dimensions are smaller than the input.
+    await page.getByTestId('cp-target-kb').fill('1');
+    await expect(page.getByTestId('cp-target-outcome')).toBeVisible();
+    const outcome = await page.getByTestId('cp-target-outcome').textContent();
+    expect(outcome).toMatch(/Target reached|Target NOT reachable/);
+    expect(outcome).toContain('scaled to');
+    const after = await page.getByTestId('cp-after').textContent();
+    expect(after).not.toContain('200 × 200px');
+    const { bytes } = await downloadBytes(page, () => page.getByTestId('cp-download').click());
     expect(isPng(bytes)).toBe(true);
   });
 });

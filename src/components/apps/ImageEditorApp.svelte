@@ -4,26 +4,40 @@
   import ColorField from '../ColorField.svelte';
   import Explainer from '../Explainer.svelte';
   import { copyPng, downloadBlob } from '../../lib/exportFile';
+  import { DecodeError, decodeToCanvas, encodeCanvas, formatBytes, type TargetFormat } from '../../lib/img/convert';
   import {
-    DecodeError,
-    decodeToCanvas,
-    encodeCanvas,
-    formatBytes,
-    outputFilename,
-    type TargetFormat,
-  } from '../../lib/img/convert';
-  import type { RasterLayer, RasterPoint, Rect, StrokeLayer, TextLayer } from '../../lib/raster/model';
-  import { layerLabel } from '../../lib/raster/model';
+    BLEND_MODES,
+    canNest,
+    clampCanvas,
+    findLayer,
+    flattenLayers,
+    isEffectLayer,
+    layerDefaults,
+    layerLabel,
+    locateLayer,
+    moveLayer,
+    removeLayer,
+    type ArrowLayer,
+    type CropLayer,
+    type ImageLayer,
+    type RasterDocument,
+    type RasterLayer,
+    type RasterPoint,
+    type Rect,
+    type StrokeLayer,
+    type TextLayer,
+  } from '../../lib/raster/model';
   import {
     arrowLongEnough,
     clampRect,
+    layerBounds,
     normalizeRect,
-    rotateLayerCW,
-    rotateRectCW,
-    rotatedSize,
+    rectContains,
+    rotateImageLayerCW,
     shiftLayer,
+    shiftLayerTree,
   } from '../../lib/raster/transform';
-  import { renderComposite } from '../../lib/raster/render';
+  import { renderDocument } from '../../lib/raster/render';
   import {
     hasEditedFields,
     encodeJpegWithExif,
@@ -52,13 +66,19 @@
   ];
 
   // ---- session ----
-  let file = $state<File | null>(null);
-  let original = $state<HTMLCanvasElement | null>(null);
-  let decodeErr = $state<string | null>(null);
-  let quarter = $state(0);
-  let crop = $state<Rect | null>(null);
+  let doc = $state<RasterDocument | null>(null);
   let layers = $state<RasterLayer[]>([]);
   let selectedId = $state<string | null>(null);
+  let decodeErr = $state<string | null>(null);
+  let busy = $state(false);
+  /** The first imported file's name (export default + metadata source). */
+  let sourceName = $state<string>('');
+
+  // ---- start screen ----
+  let blankW = $state(1024);
+  let blankH = $state(768);
+  let blankBg = $state<string>('#ffffff');
+  let blankTransparent = $state(false);
 
   // ---- tools ----
   let tool = $state<Tool>('brush');
@@ -69,6 +89,20 @@
   let adjustAmount = $state(50);
   let pendingCrop = $state<Rect | null>(null);
   let marquee = $state<{ a: RasterPoint; b: RasterPoint } | null>(null);
+  /** Numeric crop entry (keyboard path — the marquee is pointer-only). */
+  let cropForm = $state({ x: 0, y: 0, w: 0, h: 0 });
+
+  // ---- view ----
+  let zoom = $state(1);
+  let displayEl = $state<HTMLCanvasElement>();
+  let scrollEl = $state<HTMLDivElement>();
+  let cssWidth = $state(0);
+  /** Canvas-resize form (applied on submit, not per keystroke). */
+  let canvasForm = $state({ w: 0, h: 0 });
+
+  // ---- layer drag/drop (tree) ----
+  let dragLayerId = $state<string | null>(null);
+  let dropHint = $state<string | null>(null);
 
   // ---- metadata ----
   let exifRows = $state<{ tag: string; value: string }[]>([]);
@@ -76,24 +110,45 @@
   let exifFields = $state<ExifEditFields>({ artist: '', copyright: '', description: '', date: '' });
 
   // ---- export ----
+  let exportName = $state('image');
   let exportFormat = $state<TargetFormat>('png');
   let quality = $state(85);
   let feedback = $state<string | null>(null);
   let feedbackTimer: ReturnType<typeof setTimeout> | undefined;
-  let busy = $state(false);
 
-  let displayEl = $state<HTMLCanvasElement>();
+  const selected = $derived(selectedId ? findLayer(layers, selectedId) : null);
+  const selectedLoc = $derived(selectedId ? locateLayer(layers, selectedId) : null);
+  const flat = $derived(flattenLayers(layers));
+  const imageCount = $derived(layers.filter((l) => l.kind === 'image').length);
+  const embedActive = $derived(exportFormat === 'jpg' && metaMode === 'edit' && hasEditedFields(exifFields));
+  /** Where a new mark goes: under the selected top-level layer, as a
+   * sibling of a selected child, or top level when nothing is selected. */
+  const targetLabel = $derived(
+    !selected
+      ? 'the whole canvas (top level)'
+      : selectedLoc?.parent
+        ? `“${layerLabel(selectedLoc.parent)}” (beside the selected effect)`
+        : isEffectLayer(selected)
+          ? 'the whole canvas (top level, above the selected effect)'
+          : `“${layerLabel(selected)}” only`
+  );
 
-  const docW = $derived(crop ? crop.w : original ? rotatedSize(original.width, original.height, quarter).w : 0);
-  const docH = $derived(crop ? crop.h : original ? rotatedSize(original.width, original.height, quarter).h : 0);
-  const selected = $derived(layers.find((l) => l.id === selectedId) ?? null);
+  $effect(() => {
+    const el = displayEl;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver((entries) => {
+      cssWidth = entries[0]?.contentRect.width ?? 0;
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  });
 
   // Re-render the visible canvas whenever anything about the session changes.
   $effect(() => {
     const el = displayEl;
-    const src = original;
-    if (!el || !src) return;
-    const comp = renderComposite(src, quarter, crop, layers);
+    const d = doc;
+    if (!el || !d) return;
+    const comp = renderDocument(d, layers);
     el.width = comp.width;
     el.height = comp.height;
     const ctx = el.getContext('2d')!;
@@ -102,14 +157,13 @@
     const rect = marquee ? normalizeRect(marquee.a, marquee.b) : pendingCrop;
     if (rect) {
       if (tool === 'crop' || pendingCrop) {
-        // Dim everything outside the candidate crop.
         ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
         ctx.fillRect(0, 0, el.width, rect.y);
         ctx.fillRect(0, rect.y, rect.x, rect.h);
         ctx.fillRect(rect.x + rect.w, rect.y, el.width - rect.x - rect.w, rect.h);
         ctx.fillRect(0, rect.y + rect.h, el.width, el.height - rect.y - rect.h);
       }
-      const px = Math.max(1, el.width / (el.getBoundingClientRect().width || el.width));
+      const px = Math.max(1, el.width / (cssWidth || el.width));
       ctx.strokeStyle = 'rgba(0,0,0,0.8)';
       ctx.lineWidth = 3 * px;
       ctx.setLineDash([6 * px, 4 * px]);
@@ -119,30 +173,75 @@
       ctx.strokeRect(rect.x, rect.y, rect.w, rect.h);
       ctx.setLineDash([]);
     }
+    // Selection outline for the selected layer's bounds.
+    if (selected) {
+      const b = layerBounds(selected);
+      if (b) {
+        const px = Math.max(1, el.width / (cssWidth || el.width));
+        ctx.save();
+        ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+        ctx.lineWidth = 2 * px;
+        ctx.setLineDash([5 * px, 3 * px]);
+        ctx.strokeRect(b.x, b.y, b.w, b.h);
+        ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+        ctx.lineWidth = px;
+        ctx.strokeRect(b.x, b.y, b.w, b.h);
+        ctx.restore();
+      }
+    }
   });
 
   onMount(() => () => clearTimeout(feedbackTimer));
 
-  // ---- import ---------------------------------------------------------------
+  // ---- start / import ---------------------------------------------------------
+
+  function startBlank(e: Event) {
+    e.preventDefault();
+    doc = { width: clampCanvas(blankW), height: clampCanvas(blankH), background: blankTransparent ? null : blankBg || '#ffffff' };
+    layers = [];
+    selectedId = null;
+    sourceName = '';
+    exportName = 'image';
+    canvasForm = { w: doc.width, h: doc.height };
+    fitZoom();
+  }
 
   async function onPick(e: Event) {
     const input = e.currentTarget as HTMLInputElement;
     const f = input.files?.[0] ?? null;
     input.value = '';
     if (!f) return;
+    await addImageFile(f);
+  }
+
+  /** Decode a file into an image layer. The FIRST image sets the canvas. */
+  async function addImageFile(f: File) {
     busy = true;
     decodeErr = null;
     try {
       const decoded = await decodeToCanvas(f);
-      file = f;
-      original = decoded.canvas;
-      quarter = 0;
-      crop = null;
-      layers = [];
-      selectedId = null;
-      pendingCrop = null;
-      marquee = null;
-      await readExif(f);
+      const first = !doc;
+      if (first) {
+        doc = { width: decoded.width, height: decoded.height, background: null };
+        sourceName = f.name;
+        exportName = f.name.replace(/\.[^.]+$/, '') || 'image';
+        canvasForm = { w: doc.width, h: doc.height };
+        await readExif(f);
+      }
+      const layer: ImageLayer = {
+        ...layerDefaults(f.name),
+        kind: 'image',
+        source: decoded.canvas,
+        fileName: f.name,
+        x: 0,
+        y: 0,
+        width: decoded.width,
+        height: decoded.height,
+        quarter: 0,
+      };
+      layers.push(layer);
+      selectedId = layer.id;
+      if (first) fitZoom();
     } catch (err) {
       decodeErr = err instanceof DecodeError ? err.message : 'Decoding failed.';
     } finally {
@@ -169,63 +268,196 @@
   }
 
   function clearSession() {
-    if (layers.length > 0 && !confirm('Discard the current edits?')) return;
-    file = null;
-    original = null;
+    if (layers.length > 0 && !confirm('Discard the current session?')) return;
+    doc = null;
     layers = [];
-    crop = null;
-    quarter = 0;
     selectedId = null;
     pendingCrop = null;
+    marquee = null;
     exifRows = [];
     decodeErr = null;
+    sourceName = '';
+    zoom = 1;
   }
 
-  // ---- rotate / crop --------------------------------------------------------
+  // ---- canvas + view ------------------------------------------------------------
 
-  function rotateView(cwTurns: 1 | 3) {
-    if (!original) return;
-    pendingCrop = null;
-    marquee = null;
-    for (let k = 0; k < cwTurns; k++) {
-      const rotSpace = rotatedSize(original.width, original.height, quarter);
-      const dims = crop ? { w: crop.w, h: crop.h } : rotSpace;
-      layers = layers.map((l) => rotateLayerCW(l, dims.w, dims.h));
-      if (crop) crop = rotateRectCW(crop, rotSpace.w, rotSpace.h);
-      quarter = (quarter + 1) % 4;
+  function applyCanvasSize(e: Event) {
+    e.preventDefault();
+    if (!doc) return;
+    doc.width = clampCanvas(canvasForm.w);
+    doc.height = clampCanvas(canvasForm.h);
+    canvasForm = { w: doc.width, h: doc.height };
+    fitZoom();
+  }
+
+  function fitZoom() {
+    if (!doc) return;
+    const avail = (scrollEl?.clientWidth ?? 800) - 4;
+    zoom = Math.max(0.05, Math.min(1, avail / doc.width));
+    zoom = Math.round(zoom * 100) / 100;
+  }
+
+  function zoomBy(factor: number) {
+    zoom = Math.max(0.05, Math.min(16, Math.round(zoom * factor * 100) / 100));
+  }
+
+  // ---- layer tree operations ----------------------------------------------------
+
+  /** Insert a new layer where new marks go (see targetLabel). */
+  function addLayer(layer: RasterLayer) {
+    const loc = selectedLoc;
+    if (!loc) {
+      layers.push(layer);
+    } else if (loc.parent) {
+      loc.parent.children.push(layer);
+    } else if (canNest(layer) && !isEffectLayer(loc.list[loc.index]!)) {
+      loc.list[loc.index]!.children.push(layer);
+    } else {
+      // Selected is a top-level effect (or the new layer is an image): place
+      // it just above the selection at top level.
+      layers.splice(loc.index + 1, 0, layer);
     }
   }
+
+  function deleteLayer(id: string) {
+    removeLayer(layers, id);
+    if (selectedId === id) selectedId = null;
+  }
+
+  function nudgeLayer(id: string, delta: 1 | -1) {
+    const loc = locateLayer(layers, id);
+    if (!loc) return;
+    const j = loc.index + delta;
+    if (j < 0 || j >= loc.list.length) return;
+    const [l] = loc.list.splice(loc.index, 1);
+    loc.list.splice(j, 0, l!);
+  }
+
+  /** Nest under the top-level layer directly below (or promote to top level). */
+  function nestLayer(id: string) {
+    const loc = locateLayer(layers, id);
+    if (!loc || loc.parent) return;
+    const below = layers[loc.index - 1];
+    if (!below || isEffectLayer(below) || !canNest(loc.list[loc.index]!)) return;
+    moveLayer(layers, id, { parentId: below.id, index: below.children.length });
+  }
+
+  function unnestLayer(id: string) {
+    const loc = locateLayer(layers, id);
+    if (!loc?.parent) return;
+    const pi = layers.indexOf(loc.parent);
+    moveLayer(layers, id, { parentId: null, index: pi + 1 });
+  }
+
+  function toggleVisible(layer: RasterLayer) {
+    layer.visible = !layer.visible;
+  }
+
+  function rotateSelected() {
+    const loc = selectedLoc;
+    if (!loc || !selected || selected.kind !== 'image') return;
+    loc.list[loc.index] = rotateImageLayerCW(selected);
+  }
+
+  function clearLayers() {
+    if (layers.length > 0 && !confirm('Remove ALL layers?')) return;
+    layers = [];
+    selectedId = null;
+  }
+
+  // ---- drag/drop reordering in the tree -----------------------------------------
+
+  function onDragStart(e: DragEvent, id: string) {
+    dragLayerId = id;
+    e.dataTransfer?.setData('text/plain', id);
+    if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
+  }
+
+  function onDragOver(e: DragEvent, hint: string) {
+    if (!dragLayerId) return;
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+    dropHint = hint;
+  }
+
+  /** Drop BEFORE (visually above) `targetId` in its own list. */
+  function dropBefore(e: DragEvent, targetId: string) {
+    e.preventDefault();
+    const id = dragLayerId;
+    dragLayerId = null;
+    dropHint = null;
+    if (!id || id === targetId) return;
+    const target = locateLayer(layers, targetId);
+    if (!target) return;
+    // The list is rendered top-first, so "above" = a higher index.
+    const dragged = locateLayer(layers, id);
+    if (!dragged) return;
+    let index = target.index + 1;
+    if (dragged.list === target.list && dragged.index < target.index) index -= 1;
+    moveLayer(layers, id, { parentId: target.parent?.id ?? null, index });
+  }
+
+  /** Drop INTO a top-level layer (as its bottom-most child). */
+  function dropInto(e: DragEvent, parentId: string) {
+    e.preventDefault();
+    const id = dragLayerId;
+    dragLayerId = null;
+    dropHint = null;
+    if (!id || id === parentId) return;
+    moveLayer(layers, id, { parentId, index: 0 });
+  }
+
+  /** Drop at the very bottom of the top level. */
+  function dropBottom(e: DragEvent) {
+    e.preventDefault();
+    const id = dragLayerId;
+    dragLayerId = null;
+    dropHint = null;
+    if (!id) return;
+    moveLayer(layers, id, { parentId: null, index: 0 });
+  }
+
+  function onDragEnd() {
+    dragLayerId = null;
+    dropHint = null;
+  }
+
+  // ---- crop --------------------------------------------------------------------
 
   function applyCrop() {
-    if (!pendingCrop || !original) return;
-    const r = clampRect(pendingCrop, docW, docH);
-    crop = crop ? { x: crop.x + r.x, y: crop.y + r.y, w: r.w, h: r.h } : r;
-    layers = layers.map((l) => shiftLayer(l, -r.x, -r.y));
+    if (!pendingCrop || !doc) return;
+    const r = clampRect(pendingCrop, doc.width, doc.height);
+    const crop: CropLayer = { ...layerDefaults('crop'), kind: 'crop', rect: r };
+    addLayer(crop);
     pendingCrop = null;
   }
 
-  /** Undo crop + rotation without losing annotations. */
-  function resetView() {
-    if (!original) return;
-    pendingCrop = null;
+  /** Keyboard path for crop: type a rect, then Apply. */
+  function stageNumericCrop(e: Event) {
+    e.preventDefault();
+    if (!doc) return;
+    const n = (v: unknown, d: number): number => (typeof v === 'number' && Number.isFinite(v) ? v : d);
+    const r = clampRect(
+      { x: n(cropForm.x, 0), y: n(cropForm.y, 0), w: n(cropForm.w, doc.width), h: n(cropForm.h, doc.height) },
+      doc.width,
+      doc.height
+    );
     marquee = null;
-    if (crop) {
-      const c = crop;
-      layers = layers.map((l) => shiftLayer(l, c.x, c.y));
-      crop = null;
-    }
-    let { w, h } = rotatedSize(original.width, original.height, quarter);
-    const back = (4 - quarter) % 4;
-    for (let k = 0; k < back; k++) {
-      layers = layers.map((l) => rotateLayerCW(l, w, h));
-      [w, h] = [h, w];
-    }
-    quarter = 0;
+    pendingCrop = r;
+    cropForm = { ...r };
   }
 
-  // ---- canvas pointer interactions ------------------------------------------
+  // ---- canvas pointer interactions ---------------------------------------------
 
-  let drawing: { mode: 'stroke' | 'arrow' | 'marquee' | 'move'; layerId?: string; last?: RasterPoint } | null = null;
+  /** The in-flight gesture. `pointerId` pins it to ONE pointer: on touch
+   * screens a second finger must not hijack or interleave into the stroke. */
+  let drawing: {
+    pointerId: number;
+    mode: 'stroke' | 'arrow' | 'marquee' | 'move';
+    layerId?: string;
+    last?: RasterPoint;
+  } | null = null;
 
   function toDoc(e: PointerEvent): RasterPoint {
     const el = displayEl!;
@@ -236,61 +468,44 @@
     };
   }
 
-  /** Hit test for the move tool: text (estimated box) and arrows (near line). */
+  /** Topmost layer (children before parents) whose bounds contain the point. */
   function hitTest(p: RasterPoint): RasterLayer | null {
-    for (let i = layers.length - 1; i >= 0; i--) {
-      const l = layers[i]!;
-      if (l.kind === 'text') {
-        const hw = Math.max(20, (l.text.length * l.size * 0.6) / 2);
-        const hh = l.size / 2 + 6;
-        if (Math.abs(p.x - l.x) <= hw && Math.abs(p.y - l.y) <= hh) return l;
-      } else if (l.kind === 'arrow') {
-        const { from, to } = l;
-        const len2 = (to.x - from.x) ** 2 + (to.y - from.y) ** 2;
-        const t = len2 === 0 ? 0 : Math.max(0, Math.min(1, ((p.x - from.x) * (to.x - from.x) + (p.y - from.y) * (to.y - from.y)) / len2));
-        const cx = from.x + t * (to.x - from.x);
-        const cy = from.y + t * (to.y - from.y);
-        if (Math.hypot(p.x - cx, p.y - cy) <= Math.max(10, l.size)) return l;
-      }
+    for (const { layer } of flat) {
+      if (!layer.visible) continue;
+      const b = layerBounds(layer);
+      if (b && rectContains(b, p)) return layer;
     }
     return null;
   }
 
   function onPointerDown(e: PointerEvent) {
-    if (!original || !displayEl) return;
+    if (!doc || !displayEl) return;
+    if (drawing) return;
     const p = toDoc(e);
-    // Capture keeps fast drags delivering moves once the pointer leaves the
-    // canvas; a pointer that can't be captured (stale touch id) still draws.
+    const pointerId = e.pointerId;
     try {
-      displayEl.setPointerCapture(e.pointerId);
+      displayEl.setPointerCapture(pointerId);
     } catch {
       /* uncapturable pointer — drag still works while over the canvas */
     }
     if (tool === 'brush' || tool === 'eraser') {
       const stroke: StrokeLayer = {
-        id: crypto.randomUUID(),
+        ...layerDefaults(tool),
         kind: 'stroke',
         mode: tool === 'eraser' ? 'erase' : 'paint',
         color: toolColor,
         size: toolSize,
         points: [p],
       };
-      layers.push(stroke);
-      drawing = { mode: 'stroke', layerId: stroke.id, last: p };
+      addLayer(stroke);
+      drawing = { pointerId, mode: 'stroke', layerId: stroke.id, last: p };
     } else if (tool === 'arrow') {
-      const arrow: RasterLayer = {
-        id: crypto.randomUUID(),
-        kind: 'arrow',
-        from: p,
-        to: p,
-        color: toolColor,
-        size: toolSize,
-      };
-      layers.push(arrow);
-      drawing = { mode: 'arrow', layerId: arrow.id };
+      const arrow: ArrowLayer = { ...layerDefaults('arrow'), kind: 'arrow', from: p, to: p, color: toolColor, size: toolSize };
+      addLayer(arrow);
+      drawing = { pointerId, mode: 'arrow', layerId: arrow.id };
     } else if (tool === 'text') {
       const text: TextLayer = {
-        id: crypto.randomUUID(),
+        ...layerDefaults('text'),
         kind: 'text',
         text: textDraft.trim() || 'Text',
         x: p.x,
@@ -299,24 +514,24 @@
         color: toolColor,
         bold: true,
       };
-      layers.push(text);
+      addLayer(text);
       selectedId = text.id;
     } else if (tool === 'crop' || tool === 'darken' || tool === 'lighten' || tool === 'blur') {
       pendingCrop = null;
       marquee = { a: p, b: p };
-      drawing = { mode: 'marquee' };
+      drawing = { pointerId, mode: 'marquee' };
     } else if (tool === 'move') {
       const hit = hitTest(p);
       selectedId = hit?.id ?? null;
-      if (hit) drawing = { mode: 'move', layerId: hit.id, last: p };
+      if (hit) drawing = { pointerId, mode: 'move', layerId: hit.id, last: p };
     }
   }
 
   function onPointerMove(e: PointerEvent) {
-    if (!drawing) return;
+    if (!drawing || e.pointerId !== drawing.pointerId) return;
     const p = toDoc(e);
     if (drawing.mode === 'stroke') {
-      const stroke = layers.find((l) => l.id === drawing!.layerId) as StrokeLayer | undefined;
+      const stroke = findLayer(layers, drawing.layerId!) as StrokeLayer | null;
       if (!stroke) return;
       const last = drawing.last!;
       if (Math.hypot(p.x - last.x, p.y - last.y) >= 2) {
@@ -324,61 +539,42 @@
         drawing.last = p;
       }
     } else if (drawing.mode === 'arrow') {
-      const arrow = layers.find((l) => l.id === drawing!.layerId);
+      const arrow = findLayer(layers, drawing.layerId!);
       if (arrow?.kind === 'arrow') arrow.to = p;
     } else if (drawing.mode === 'marquee') {
       if (marquee) marquee.b = p;
     } else if (drawing.mode === 'move') {
-      const layer = layers.find((l) => l.id === drawing!.layerId);
-      if (!layer) return;
+      const loc = locateLayer(layers, drawing.layerId!);
+      if (!loc) return;
       const dx = p.x - drawing.last!.x;
       const dy = p.y - drawing.last!.y;
       drawing.last = p;
-      const i = layers.indexOf(layer);
-      layers[i] = shiftLayer(layer, dx, dy);
+      const layer = loc.list[loc.index]!;
+      // A parent carries its children; a child moves alone.
+      loc.list[loc.index] = loc.parent ? shiftLayer(layer, dx, dy) : shiftLayerTree(layer, dx, dy);
     }
   }
 
-  function onPointerUp() {
-    if (!drawing) return;
+  function onPointerUp(e: PointerEvent) {
+    if (!drawing || e.pointerId !== drawing.pointerId) return;
     if (drawing.mode === 'arrow') {
-      const arrow = layers.find((l) => l.id === drawing!.layerId);
-      if (arrow?.kind === 'arrow' && !arrowLongEnough(arrow)) {
-        layers.splice(layers.indexOf(arrow), 1);
-      }
-    } else if (drawing.mode === 'marquee' && marquee) {
-      const rect = clampRect(normalizeRect(marquee.a, marquee.b), docW, docH);
+      const arrow = findLayer(layers, drawing.layerId!);
+      if (arrow?.kind === 'arrow' && !arrowLongEnough(arrow)) removeLayer(layers, arrow.id);
+    } else if (drawing.mode === 'marquee' && marquee && doc) {
+      const rect = clampRect(normalizeRect(marquee.a, marquee.b), doc.width, doc.height);
       marquee = null;
       if (rect.w >= 4 && rect.h >= 4) {
         if (tool === 'crop') {
           pendingCrop = rect;
         } else if (tool === 'darken' || tool === 'lighten' || tool === 'blur') {
-          layers.push({
-            id: crypto.randomUUID(),
-            kind: 'adjust',
-            mode: tool,
-            rect,
-            amount: adjustAmount,
-          });
+          addLayer({ ...layerDefaults(tool), kind: 'adjust', mode: tool, rect, amount: adjustAmount });
         }
       }
     }
     drawing = null;
   }
 
-  function removeLayer(id: string) {
-    const i = layers.findIndex((l) => l.id === id);
-    if (i >= 0) layers.splice(i, 1);
-    if (selectedId === id) selectedId = null;
-  }
-
-  function clearLayers() {
-    if (layers.length > 0 && !confirm('Remove all annotation layers?')) return;
-    layers = [];
-    selectedId = null;
-  }
-
-  // ---- export ---------------------------------------------------------------
+  // ---- export --------------------------------------------------------------------
 
   function flash(msg: string) {
     feedback = msg;
@@ -386,19 +582,20 @@
     feedbackTimer = setTimeout(() => (feedback = null), 2000);
   }
 
-  const embedActive = $derived(
-    exportFormat === 'jpg' && metaMode === 'edit' && hasEditedFields(exifFields)
-  );
+  function exportFileName(): string {
+    const stem = (exportName || 'image').trim().replace(/[\\/:*?"<>|]/g, '_') || 'image';
+    return `${stem}.${exportFormat}`;
+  }
 
   async function doExport() {
-    if (!original || !file) return;
+    if (!doc) return;
     busy = true;
     try {
-      const composite = renderComposite(original, quarter, crop, layers);
+      const composite = renderDocument(doc, layers);
       const blob = embedActive
         ? await encodeJpegWithExif(composite, quality, exifFields)
         : await encodeCanvas(composite, exportFormat, quality);
-      downloadBlob(blob, outputFilename(file.name, exportFormat));
+      downloadBlob(blob, exportFileName());
       flash(`Downloaded (${formatBytes(blob.size)})`);
     } catch {
       flash('Export failed');
@@ -408,10 +605,9 @@
   }
 
   async function copyAsPng() {
-    if (!original) return;
+    if (!doc) return;
     try {
-      const composite = renderComposite(original, quarter, crop, layers);
-      // Clipboard images are ALWAYS PNG (async clipboard API limitation).
+      const composite = renderDocument(doc, layers);
       const png = await encodeCanvas(composite, 'png', 100);
       flash((await copyPng(png)) ? 'Copied as PNG' : 'Copy failed — try downloading instead');
     } catch {
@@ -422,47 +618,88 @@
 
 <div class="page-header">
   <h1>Image editor</h1>
-  {#if original}
-    <button class="btn" data-testid="ie-new" onclick={clearSession}>New image</button>
+  {#if doc}
+    <button class="btn" data-testid="ie-new" onclick={clearSession}>New session</button>
   {/if}
 </div>
 
 <div class="stack">
-  {#if !original}
-    <Card title="Import">
-      <div class="stack">
-        <div>
-          <label for="ie-file">PNG, JPG, WebP, AVIF, TIFF or SVG</label>
-          <input
-            id="ie-file"
-            data-testid="ie-file"
-            type="file"
-            accept=".svg,.avif,.webp,.tif,.tiff,.png,.jpg,.jpeg,image/svg+xml,image/avif,image/webp,image/tiff,image/png,image/jpeg"
-            onchange={onPick}
-          />
+  {#if !doc}
+    <div class="grid-2">
+      <Card title="Start from an image">
+        <div class="stack">
+          <div>
+            <label for="ie-file">PNG, JPG, WebP, AVIF, TIFF or SVG</label>
+            <input
+              id="ie-file"
+              data-testid="ie-file"
+              type="file"
+              accept=".svg,.avif,.webp,.tif,.tiff,.png,.jpg,.jpeg,image/svg+xml,image/avif,image/webp,image/tiff,image/png,image/jpeg"
+              onchange={onPick}
+            />
+          </div>
+          {#if decodeErr}
+            <p class="error" data-testid="ie-error" role="alert">{decodeErr}</p>
+          {:else if busy}
+            <p class="muted" aria-live="polite">Decoding…</p>
+          {/if}
+          <p class="muted small">The first image becomes the base layer and sets the canvas size.</p>
         </div>
-        {#if decodeErr}
-          <p class="error" data-testid="ie-error" role="alert">{decodeErr}</p>
-        {:else if busy}
-          <p class="muted" aria-live="polite">Decoding…</p>
-        {/if}
-        <p class="muted small">
-          Session-only: edits live in this tab and are discarded when you leave —
-          export what you want to keep. Nothing is uploaded or stored.
-        </p>
-      </div>
-    </Card>
+      </Card>
+      <Card title="Start from a blank canvas">
+        <form class="stack" onsubmit={startBlank}>
+          <div class="row wrap">
+            <div>
+              <label for="ie-blank-w">Width (px)</label>
+              <input id="ie-blank-w" data-testid="ie-blank-w" class="num" type="number" min="1" max="8192" bind:value={blankW} />
+            </div>
+            <div>
+              <label for="ie-blank-h">Height (px)</label>
+              <input id="ie-blank-h" data-testid="ie-blank-h" class="num" type="number" min="1" max="8192" bind:value={blankH} />
+            </div>
+          </div>
+          <div class="row wrap">
+            <label class="check">
+              <input type="checkbox" data-testid="ie-blank-transparent" bind:checked={blankTransparent} />
+              Transparent
+            </label>
+            {#if !blankTransparent}
+              <ColorField testid="ie-blank-bg" bind:value={blankBg} ariaLabel="Canvas background color" fallback="#ffffff" />
+            {/if}
+          </div>
+          <div>
+            <button class="btn btn-primary" type="submit" data-testid="ie-blank-create">Create canvas</button>
+          </div>
+        </form>
+      </Card>
+    </div>
+    <p class="muted small">
+      Session-only: edits live in this tab and are discarded when you leave —
+      export what you want to keep. Nothing is uploaded or stored.
+    </p>
   {:else}
     <div class="editor-grid">
       <div class="stack">
         <Card title="Canvas">
           <div class="stack">
-            <div class="canvas-scroll checkerboard">
+            <div class="row wrap toolbar">
+              <span class="muted small" data-testid="ie-info">
+                {doc.width} × {doc.height}px · {Math.round(zoom * 100)}%
+              </span>
+              <span class="row">
+                <button class="btn btn-sm" data-testid="ie-zoom-out" aria-label="Zoom out" onclick={() => zoomBy(1 / 1.25)}>−</button>
+                <button class="btn btn-sm" data-testid="ie-zoom-in" aria-label="Zoom in" onclick={() => zoomBy(1.25)}>+</button>
+                <button class="btn btn-sm" data-testid="ie-zoom-fit" onclick={fitZoom}>Fit</button>
+                <button class="btn btn-sm" data-testid="ie-zoom-100" onclick={() => (zoom = 1)}>100%</button>
+              </span>
+            </div>
+            <div class="canvas-scroll checkerboard" bind:this={scrollEl}>
               <canvas
                 bind:this={displayEl}
                 data-testid="ie-canvas"
                 class="display"
                 class:crosshair={tool !== 'move'}
+                style={`width: ${doc.width * zoom}px; height: ${doc.height * zoom}px;`}
                 onpointerdown={onPointerDown}
                 onpointermove={onPointerMove}
                 onpointerup={onPointerUp}
@@ -470,28 +707,45 @@
                 aria-label="Image editing canvas"
               ></canvas>
             </div>
-            <p class="muted small" data-testid="ie-info">
-              {file?.name} · {docW} × {docH}px
-              {#if quarter !== 0}&nbsp;· rotated {quarter * 90}°{/if}
-              {#if crop}&nbsp;· cropped{/if}
-            </p>
             <div class="row wrap">
-              <button class="btn btn-sm" data-testid="ie-rotate-ccw" onclick={() => rotateView(3)}>⟲ Rotate left</button>
-              <button class="btn btn-sm" data-testid="ie-rotate-cw" onclick={() => rotateView(1)}>⟳ Rotate right</button>
-              <button class="btn btn-sm" data-testid="ie-reset-view" disabled={quarter === 0 && !crop} onclick={resetView}>
-                Reset crop &amp; rotation
-              </button>
+              <form class="row wrap" onsubmit={applyCanvasSize} aria-label="Canvas size">
+                <div>
+                  <label for="ie-canvas-w">Canvas width</label>
+                  <input id="ie-canvas-w" data-testid="ie-canvas-w" class="num" type="number" min="1" max="8192" bind:value={canvasForm.w} />
+                </div>
+                <div>
+                  <label for="ie-canvas-h">Canvas height</label>
+                  <input id="ie-canvas-h" data-testid="ie-canvas-h" class="num" type="number" min="1" max="8192" bind:value={canvasForm.h} />
+                </div>
+                <button class="btn btn-sm" type="submit" data-testid="ie-canvas-resize">Resize canvas</button>
+              </form>
+              <label class="add-image btn btn-sm">
+                Add image layer
+                <input
+                  data-testid="ie-add-image"
+                  type="file"
+                  accept=".svg,.avif,.webp,.tif,.tiff,.png,.jpg,.jpeg,image/svg+xml,image/avif,image/webp,image/tiff,image/png,image/jpeg"
+                  onchange={onPick}
+                />
+              </label>
               {#if pendingCrop}
                 <button class="btn btn-sm btn-primary" data-testid="ie-apply-crop" onclick={applyCrop}>Apply crop</button>
                 <button class="btn btn-sm" data-testid="ie-cancel-crop" onclick={() => (pendingCrop = null)}>Cancel</button>
               {/if}
             </div>
+            {#if decodeErr}
+              <p class="error" data-testid="ie-error" role="alert">{decodeErr}</p>
+            {/if}
           </div>
         </Card>
 
         <Card title="Export">
           <div class="stack">
             <div class="row wrap">
+              <div class="grow">
+                <label for="ie-export-name">File name</label>
+                <input id="ie-export-name" data-testid="ie-export-name" bind:value={exportName} />
+              </div>
               <div>
                 <label for="ie-format">Format</label>
                 <select id="ie-format" data-testid="ie-format" bind:value={exportFormat}>
@@ -507,7 +761,9 @@
               {/if}
             </div>
             <div class="row">
-              <button class="btn btn-primary" data-testid="ie-download" disabled={busy} onclick={doExport}>Download</button>
+              <button class="btn btn-primary" data-testid="ie-download" disabled={busy} onclick={doExport}>
+                Download {exportFileName()}
+              </button>
               <button class="btn" data-testid="ie-copy" onclick={copyAsPng}>Copy (always PNG)</button>
             </div>
             <p class="muted small" aria-live="polite" data-testid="ie-feedback">{feedback ?? ''}</p>
@@ -538,12 +794,19 @@
                   onclick={() => {
                     tool = t.id;
                     if (t.id !== 'crop') pendingCrop = null;
+                    else cropForm = pendingCrop ? { ...pendingCrop } : { x: 0, y: 0, w: doc!.width, h: doc!.height };
                   }}
                 >
                   {t.label}
                 </button>
               {/each}
             </div>
+            <p class="muted small" data-testid="ie-target">
+              New marks apply to {targetLabel}.
+              {#if selected}
+                <button class="link" data-testid="ie-deselect" onclick={() => (selectedId = null)}>Deselect</button>
+              {/if}
+            </p>
 
             {#if tool === 'brush' || tool === 'arrow' || tool === 'text'}
               <div class="row wrap">
@@ -566,7 +829,7 @@
                   <label for="ie-size-e">Size</label>
                   <input id="ie-size-e" data-testid="ie-size" class="num" type="number" min="1" max="200" bind:value={toolSize} />
                 </div>
-                <p class="muted small self-end">Erased areas become transparent (white in JPG exports).</p>
+                <p class="muted small self-end">Under a layer it erases just that layer; at top level it erases everything below.</p>
               </div>
             {:else if tool === 'darken' || tool === 'lighten' || tool === 'blur'}
               <div class="grow">
@@ -575,9 +838,28 @@
                 <p class="muted small">Drag a rectangle on the image to apply.</p>
               </div>
             {:else if tool === 'crop'}
-              <p class="muted small">Drag a rectangle, then “Apply crop”. Reset undoes it any time.</p>
+              <p class="muted small">Drag a rectangle (or type one below), then “Apply crop”. A crop is a layer: under an image it crops just that image; at top level it crops everything below. Delete it to un-crop.</p>
+              <form class="row wrap" onsubmit={stageNumericCrop} aria-label="Crop rectangle">
+                <div>
+                  <label for="ie-crop-x">X</label>
+                  <input id="ie-crop-x" data-testid="ie-crop-x" class="num" type="number" min="0" max={doc.width} bind:value={cropForm.x} />
+                </div>
+                <div>
+                  <label for="ie-crop-y">Y</label>
+                  <input id="ie-crop-y" data-testid="ie-crop-y" class="num" type="number" min="0" max={doc.height} bind:value={cropForm.y} />
+                </div>
+                <div>
+                  <label for="ie-crop-w">Width</label>
+                  <input id="ie-crop-w" data-testid="ie-crop-w" class="num" type="number" min="1" max={doc.width} bind:value={cropForm.w} />
+                </div>
+                <div>
+                  <label for="ie-crop-h">Height</label>
+                  <input id="ie-crop-h" data-testid="ie-crop-h" class="num" type="number" min="1" max={doc.height} bind:value={cropForm.h} />
+                </div>
+                <button class="btn btn-sm" type="submit" data-testid="ie-crop-stage">Set</button>
+              </form>
             {:else if tool === 'move'}
-              <p class="muted small">Click text or an arrow to select it; drag to move.</p>
+              <p class="muted small">Click a layer on the canvas to select it; drag to move (an image carries its sub-layers).</p>
             {/if}
 
             {#if tool === 'text'}
@@ -586,78 +868,255 @@
                 <input id="ie-text" data-testid="ie-text" maxlength="120" bind:value={textDraft} />
               </div>
             {/if}
-
-            {#if selected}
-              <div class="selected-box" data-testid="ie-selected">
-                <p class="muted small">Selected: {layerLabel(selected)}</p>
-                {#if selected.kind === 'text'}
-                  <div class="row wrap">
-                    <div class="grow">
-                      <label for="ie-sel-text">Text</label>
-                      <input id="ie-sel-text" data-testid="ie-sel-text" maxlength="120" bind:value={selected.text} />
-                    </div>
-                    <div>
-                      <label for="ie-sel-size">Size</label>
-                      <input id="ie-sel-size" data-testid="ie-sel-size" class="num" type="number" min="8" max="400" bind:value={selected.size} />
-                    </div>
-                    <ColorField testid="ie-sel-color" bind:value={selected.color} ariaLabel="Text color" fallback="#e11d48" />
-                    <label class="check">
-                      <input type="checkbox" bind:checked={selected.bold} />
-                      Bold
-                    </label>
-                  </div>
-                {:else if selected.kind === 'arrow'}
-                  <div class="row wrap">
-                    <ColorField testid="ie-sel-color" bind:value={selected.color} ariaLabel="Arrow color" fallback="#e11d48" />
-                    <div>
-                      <label for="ie-sel-asize">Size</label>
-                      <input id="ie-sel-asize" data-testid="ie-sel-size" class="num" type="number" min="1" max="200" bind:value={selected.size} />
-                    </div>
-                  </div>
-                {/if}
-                <button class="btn btn-sm btn-danger" data-testid="ie-sel-delete" onclick={() => removeLayer(selected.id)}>
-                  Delete layer
-                </button>
-              </div>
-            {/if}
           </div>
         </Card>
 
         <Card title="Layers">
           <div class="stack">
             {#if layers.length === 0}
-              <p class="muted small">No annotation layers yet — draw, drop an arrow, place text, or select a region.</p>
+              <p class="muted small">No layers yet — add an image, draw, drop an arrow, place text, or select a region.</p>
             {:else}
-              <ul class="layers">
+              <ul class="layers" data-testid="ie-layers">
+                <!-- Top-first, children listed under (and indented from) their parent. -->
                 {#each [...layers].reverse() as layer (layer.id)}
-                  <li class:active={layer.id === selectedId} data-testid="ie-layer">
-                    <button
-                      class="layer-name"
-                      data-testid="ie-layer-select"
-                      onclick={() => (selectedId = layer.id)}
-                    >
-                      <span
-                        class="dot"
-                        style={`background:${layer.kind === 'stroke' || layer.kind === 'arrow' || layer.kind === 'text' ? layer.color : 'transparent'}`}
-                      ></span>
+                  <li
+                    class="layer-row"
+                    class:active={layer.id === selectedId}
+                    class:drop-target={dropHint === 'before:' + layer.id}
+                    class:hidden-layer={!layer.visible}
+                    data-testid="ie-layer"
+                    data-layer-id={layer.id}
+                    draggable="true"
+                    ondragstart={(e) => onDragStart(e, layer.id)}
+                    ondragover={(e) => onDragOver(e, 'before:' + layer.id)}
+                    ondrop={(e) => dropBefore(e, layer.id)}
+                    ondragend={onDragEnd}
+                  >
+                    <button class="layer-name" data-testid="ie-layer-select" aria-pressed={layer.id === selectedId} onclick={() => (selectedId = layer.id)}>
+                      <span class="dot" style={`background:${'color' in layer ? layer.color : 'transparent'}`}></span>
                       {layerLabel(layer)}
+                      {#if layer.opacity < 100 || layer.blend !== 'normal'}
+                        <span class="muted small">· {layer.opacity}%{layer.blend !== 'normal' ? ' ' + layer.blend : ''}</span>
+                      {/if}
                     </button>
-                    <button class="mini" title="Delete layer" aria-label="Delete layer" data-testid="ie-layer-delete" onclick={() => removeLayer(layer.id)}>✕</button>
+                    <span class="row layer-actions">
+                      <button class="mini" title={layer.visible ? 'Hide' : 'Show'} aria-label={layer.visible ? 'Hide layer' : 'Show layer'} aria-pressed={!layer.visible} data-testid="ie-layer-vis" onclick={() => toggleVisible(layer)}>{layer.visible ? '👁' : '—'}</button>
+                      <button class="mini" title="Move up" aria-label="Move layer up" data-testid="ie-layer-up" onclick={() => nudgeLayer(layer.id, 1)}>▲</button>
+                      <button class="mini" title="Move down" aria-label="Move layer down" data-testid="ie-layer-down" onclick={() => nudgeLayer(layer.id, -1)}>▼</button>
+                      {#if canNest(layer)}
+                        <button class="mini" title="Nest under the layer below" aria-label="Nest under the layer below" data-testid="ie-layer-nest" onclick={() => nestLayer(layer.id)}>⤵</button>
+                      {/if}
+                      <button class="mini" title="Delete layer" aria-label="Delete layer" data-testid="ie-layer-delete" onclick={() => deleteLayer(layer.id)}>✕</button>
+                    </span>
                   </li>
+                  {#if !isEffectLayer(layer)}
+                    <!-- svelte-ignore a11y_no_static_element_interactions -->
+                    <li
+                      class="drop-into"
+                      class:visible={dragLayerId !== null && dragLayerId !== layer.id}
+                      class:drop-target={dropHint === 'into:' + layer.id}
+                      data-testid="ie-drop-into"
+                      ondragover={(e) => onDragOver(e, 'into:' + layer.id)}
+                      ondrop={(e) => dropInto(e, layer.id)}
+                    >
+                      ↳ drop here to apply only to “{layerLabel(layer)}”
+                    </li>
+                  {/if}
+                  {#each [...layer.children].reverse() as child (child.id)}
+                    <li
+                      class="layer-row child"
+                      class:active={child.id === selectedId}
+                      class:drop-target={dropHint === 'before:' + child.id}
+                      class:hidden-layer={!child.visible}
+                      data-testid="ie-layer"
+                      data-layer-id={child.id}
+                      data-parent-id={layer.id}
+                      draggable="true"
+                      ondragstart={(e) => onDragStart(e, child.id)}
+                      ondragover={(e) => onDragOver(e, 'before:' + child.id)}
+                      ondrop={(e) => dropBefore(e, child.id)}
+                      ondragend={onDragEnd}
+                    >
+                      <button class="layer-name" data-testid="ie-layer-select" aria-pressed={child.id === selectedId} onclick={() => (selectedId = child.id)}>
+                        <span class="dot" style={`background:${'color' in child ? child.color : 'transparent'}`}></span>
+                        {layerLabel(child)}
+                        {#if child.opacity < 100 || child.blend !== 'normal'}
+                          <span class="muted small">· {child.opacity}%{child.blend !== 'normal' ? ' ' + child.blend : ''}</span>
+                        {/if}
+                      </button>
+                      <span class="row layer-actions">
+                        <button class="mini" title={child.visible ? 'Hide' : 'Show'} aria-label={child.visible ? 'Hide layer' : 'Show layer'} aria-pressed={!child.visible} data-testid="ie-layer-vis" onclick={() => toggleVisible(child)}>{child.visible ? '👁' : '—'}</button>
+                        <button class="mini" title="Move up" aria-label="Move layer up" data-testid="ie-layer-up" onclick={() => nudgeLayer(child.id, 1)}>▲</button>
+                        <button class="mini" title="Move down" aria-label="Move layer down" data-testid="ie-layer-down" onclick={() => nudgeLayer(child.id, -1)}>▼</button>
+                        <button class="mini" title="Move to top level" aria-label="Move to top level" data-testid="ie-layer-unnest" onclick={() => unnestLayer(child.id)}>⤴</button>
+                        <button class="mini" title="Delete layer" aria-label="Delete layer" data-testid="ie-layer-delete" onclick={() => deleteLayer(child.id)}>✕</button>
+                      </span>
+                    </li>
+                  {/each}
                 {/each}
+                <!-- svelte-ignore a11y_no_static_element_interactions -->
+                <li
+                  class="drop-into bottom"
+                  class:visible={dragLayerId !== null}
+                  class:drop-target={dropHint === 'bottom'}
+                  data-testid="ie-drop-bottom"
+                  ondragover={(e) => onDragOver(e, 'bottom')}
+                  ondrop={dropBottom}
+                >
+                  ↳ drop here to send to the bottom
+                </li>
               </ul>
+              <p class="muted small">Drag rows to reorder or nest; ⤵/⤴ nest and un-nest from the keyboard. Effects (eraser, crop, blur…) under a layer apply only to it; at top level they apply to everything below.</p>
               <button class="btn btn-sm" data-testid="ie-clear-layers" onclick={clearLayers}>Remove all</button>
             {/if}
           </div>
         </Card>
 
+        {#if selected}
+          <Card title="Layer settings">
+            <div class="stack" data-testid="ie-selected">
+              <div class="row wrap">
+                <div class="grow">
+                  <label for="ie-sel-name">Name</label>
+                  <input id="ie-sel-name" data-testid="ie-sel-name" bind:value={selected.name} />
+                </div>
+                <div class="grow">
+                  <label for="ie-sel-opacity">Opacity ({selected.opacity}%)</label>
+                  <input id="ie-sel-opacity" data-testid="ie-sel-opacity" type="range" min="0" max="100" bind:value={selected.opacity} />
+                </div>
+                <div>
+                  <label for="ie-sel-blend">Blend mode</label>
+                  <select id="ie-sel-blend" data-testid="ie-sel-blend" bind:value={selected.blend}>
+                    {#each BLEND_MODES as m (m.id)}
+                      <option value={m.id} title={m.hint}>{m.label}</option>
+                    {/each}
+                  </select>
+                </div>
+              </div>
+              <p class="muted small">{BLEND_MODES.find((m) => m.id === selected!.blend)?.hint}</p>
+
+              {#if selected.kind === 'image'}
+                <div class="row wrap">
+                  <div>
+                    <label for="ie-sel-x">X</label>
+                    <input id="ie-sel-x" data-testid="ie-sel-x" class="num" type="number" bind:value={selected.x} />
+                  </div>
+                  <div>
+                    <label for="ie-sel-y">Y</label>
+                    <input id="ie-sel-y" data-testid="ie-sel-y" class="num" type="number" bind:value={selected.y} />
+                  </div>
+                  <div>
+                    <label for="ie-sel-w">Width</label>
+                    <input id="ie-sel-w" data-testid="ie-sel-w" class="num" type="number" min="1" bind:value={selected.width} />
+                  </div>
+                  <div>
+                    <label for="ie-sel-h">Height</label>
+                    <input id="ie-sel-h" data-testid="ie-sel-h" class="num" type="number" min="1" bind:value={selected.height} />
+                  </div>
+                  <button class="btn btn-sm" data-testid="ie-rotate-cw" onclick={rotateSelected}>⟳ Rotate 90°</button>
+                </div>
+              {:else if selected.kind === 'text'}
+                <div class="row wrap">
+                  <div>
+                    <label for="ie-sel-x">X</label>
+                    <input id="ie-sel-x" data-testid="ie-sel-x" class="num" type="number" bind:value={selected.x} />
+                  </div>
+                  <div>
+                    <label for="ie-sel-y">Y</label>
+                    <input id="ie-sel-y" data-testid="ie-sel-y" class="num" type="number" bind:value={selected.y} />
+                  </div>
+                  <div class="grow">
+                    <label for="ie-sel-text">Text</label>
+                    <input id="ie-sel-text" data-testid="ie-sel-text" maxlength="120" bind:value={selected.text} />
+                  </div>
+                  <div>
+                    <label for="ie-sel-size">Size</label>
+                    <input id="ie-sel-size" data-testid="ie-sel-size" class="num" type="number" min="8" max="400" bind:value={selected.size} />
+                  </div>
+                  <ColorField testid="ie-sel-color" bind:value={selected.color} ariaLabel="Text color" fallback="#e11d48" />
+                  <label class="check">
+                    <input type="checkbox" bind:checked={selected.bold} />
+                    Bold
+                  </label>
+                </div>
+              {:else if selected.kind === 'arrow'}
+                <div class="row wrap">
+                  <div>
+                    <label for="ie-sel-x1">From X</label>
+                    <input id="ie-sel-x1" data-testid="ie-sel-x1" class="num" type="number" bind:value={selected.from.x} />
+                  </div>
+                  <div>
+                    <label for="ie-sel-y1">From Y</label>
+                    <input id="ie-sel-y1" data-testid="ie-sel-y1" class="num" type="number" bind:value={selected.from.y} />
+                  </div>
+                  <div>
+                    <label for="ie-sel-x2">To X</label>
+                    <input id="ie-sel-x2" data-testid="ie-sel-x2" class="num" type="number" bind:value={selected.to.x} />
+                  </div>
+                  <div>
+                    <label for="ie-sel-y2">To Y</label>
+                    <input id="ie-sel-y2" data-testid="ie-sel-y2" class="num" type="number" bind:value={selected.to.y} />
+                  </div>
+                  <ColorField testid="ie-sel-color" bind:value={selected.color} ariaLabel="Arrow color" fallback="#e11d48" />
+                  <div>
+                    <label for="ie-sel-asize">Size</label>
+                    <input id="ie-sel-asize" data-testid="ie-sel-size" class="num" type="number" min="1" max="200" bind:value={selected.size} />
+                  </div>
+                </div>
+              {:else if selected.kind === 'stroke'}
+                <div class="row wrap">
+                  {#if selected.mode === 'paint'}
+                    <ColorField testid="ie-sel-color" bind:value={selected.color} ariaLabel="Stroke color" fallback="#e11d48" />
+                  {/if}
+                  <div>
+                    <label for="ie-sel-ssize">Size</label>
+                    <input id="ie-sel-ssize" data-testid="ie-sel-size" class="num" type="number" min="1" max="200" bind:value={selected.size} />
+                  </div>
+                </div>
+              {:else if selected.kind === 'adjust'}
+                <div class="row wrap">
+                  <div class="grow">
+                    <label for="ie-sel-amount">Strength ({selected.amount})</label>
+                    <input id="ie-sel-amount" data-testid="ie-sel-amount" type="range" min="1" max="100" bind:value={selected.amount} />
+                  </div>
+                </div>
+              {/if}
+              {#if selected.kind === 'adjust' || selected.kind === 'crop'}
+                <div class="row wrap">
+                  <div>
+                    <label for="ie-sel-rx">X</label>
+                    <input id="ie-sel-rx" data-testid="ie-sel-rx" class="num" type="number" bind:value={selected.rect.x} />
+                  </div>
+                  <div>
+                    <label for="ie-sel-ry">Y</label>
+                    <input id="ie-sel-ry" data-testid="ie-sel-ry" class="num" type="number" bind:value={selected.rect.y} />
+                  </div>
+                  <div>
+                    <label for="ie-sel-rw">Width</label>
+                    <input id="ie-sel-rw" data-testid="ie-sel-rw" class="num" type="number" min="1" bind:value={selected.rect.w} />
+                  </div>
+                  <div>
+                    <label for="ie-sel-rh">Height</label>
+                    <input id="ie-sel-rh" data-testid="ie-sel-rh" class="num" type="number" min="1" bind:value={selected.rect.h} />
+                  </div>
+                </div>
+              {/if}
+              <button class="btn btn-sm btn-danger" data-testid="ie-sel-delete" onclick={() => deleteLayer(selected!.id)}>
+                Delete layer
+              </button>
+            </div>
+          </Card>
+        {/if}
+
         <Card title="Metadata (EXIF)">
           <div class="stack">
             {#if exifRows.length === 0}
-              <p class="muted small" data-testid="ie-exif-empty">No readable metadata in this image.</p>
+              <p class="muted small" data-testid="ie-exif-empty">
+                {sourceName ? 'No readable metadata in the base image.' : 'A blank canvas has no source metadata.'}
+              </p>
             {:else}
               <details data-testid="ie-exif-details">
-                <summary>{exifRows.length} metadata fields</summary>
+                <summary>{exifRows.length} metadata fields ({sourceName})</summary>
                 <div class="table-wrap">
                   <table class="data-table">
                     <tbody>
@@ -716,12 +1175,14 @@
 
   <Explainer summary="What happens to my image and its metadata?" testid="explainer-image-editor">
     <p>
-      Everything runs on this device — the image is never uploaded, and this
-      editor never stores it: the session lives only in this tab. Re-encoding on
-      export strips all original metadata by default; the EXIF panel can embed
-      the four common tags (artist, copyright, description, date) into JPG
-      exports, and GPS data can never pass through. PNG exports always carry no
-      metadata.
+      Everything runs on this device — images are never uploaded, and this editor
+      never stores them: the session lives only in this tab. Layers stack bottom to
+      top; an effect layer (eraser, crop, darken/lighten/blur) nested under a layer
+      changes only that layer, while the same effect at top level changes everything
+      below it. Re-encoding on export strips all original metadata by default; the
+      EXIF panel can embed the four common tags (artist, copyright, description,
+      date) into JPG exports, and GPS data can never pass through. PNG exports always
+      carry no metadata.
     </p>
   </Explainer>
 </div>
@@ -729,7 +1190,7 @@
 <style>
   .editor-grid {
     display: grid;
-    grid-template-columns: minmax(0, 3fr) minmax(16rem, 2fr);
+    grid-template-columns: minmax(0, 3fr) minmax(18rem, 2fr);
     gap: var(--space-4);
     align-items: start;
   }
@@ -738,6 +1199,11 @@
     .editor-grid {
       grid-template-columns: 1fr;
     }
+  }
+
+  .toolbar {
+    justify-content: space-between;
+    align-items: center;
   }
 
   .canvas-scroll {
@@ -755,11 +1221,11 @@
   }
 
   .display {
-    max-width: 100%;
-    height: auto;
+    display: block;
     touch-action: none;
     user-select: none;
     cursor: default;
+    image-rendering: auto;
   }
 
   .display.crosshair {
@@ -771,13 +1237,29 @@
     color: var(--color-primary);
   }
 
-  .selected-box {
-    border-top: 1px solid var(--border-color);
-    padding-top: var(--space-2);
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
-    align-items: flex-start;
+  .add-image {
+    position: relative;
+    overflow: hidden;
+    cursor: pointer;
+    text-transform: none;
+    letter-spacing: normal;
+  }
+
+  .add-image input {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer;
+  }
+
+  .link {
+    background: none;
+    border: none;
+    padding: 0;
+    color: var(--color-primary);
+    cursor: pointer;
+    text-decoration: underline;
+    font-size: inherit;
   }
 
   .layers {
@@ -787,21 +1269,57 @@
     display: flex;
     flex-direction: column;
     gap: 2px;
-    max-height: 12rem;
+    max-height: 18rem;
     overflow-y: auto;
   }
 
-  .layers li {
+  .layer-row {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: var(--space-2);
     border: 1px solid var(--border-color);
     padding: 2px var(--space-2);
+    cursor: grab;
   }
 
-  .layers li.active {
+  .layer-row.child {
+    margin-left: var(--space-5);
+    border-left: 3px solid var(--border-strong-color);
+  }
+
+  .layer-row.active {
     border-color: var(--color-primary);
+  }
+
+  .layer-row.hidden-layer .layer-name {
+    opacity: 0.5;
+  }
+
+  .layer-row.drop-target {
+    box-shadow: inset 0 3px 0 var(--color-primary);
+  }
+
+  .drop-into {
+    display: none;
+    margin-left: var(--space-5);
+    padding: 1px var(--space-2);
+    font-size: var(--font-size-sm);
+    color: var(--text-muted-color);
+    border: 1px dashed var(--border-color);
+  }
+
+  .drop-into.bottom {
+    margin-left: 0;
+  }
+
+  .drop-into.visible {
+    display: block;
+  }
+
+  .drop-into.drop-target {
+    border-color: var(--color-primary);
+    color: var(--color-primary);
   }
 
   .layer-name {
@@ -815,6 +1333,7 @@
     padding: var(--space-1) 0;
     flex: 1;
     text-align: left;
+    min-width: 0;
   }
 
   .dot {
@@ -822,6 +1341,11 @@
     height: 0.85rem;
     border-radius: var(--radius-full);
     border: 1px solid var(--border-color);
+    flex: none;
+  }
+
+  .layer-actions {
+    gap: 2px;
     flex: none;
   }
 

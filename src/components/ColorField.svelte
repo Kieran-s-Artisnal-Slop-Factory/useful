@@ -17,6 +17,12 @@
     ariaLabel,
     /** Picker color when the text doesn't resolve (derived/auto values). */
     fallback = '#000000',
+    /**
+     * Fired when an edit is FINALIZED (text `change`, picker closed) — not on
+     * every keystroke/drag. Editors with undo/save stacks hook this; plain
+     * live previews can ignore it and just bind `value`.
+     */
+    oncommit,
   }: {
     value?: string;
     id?: string;
@@ -24,6 +30,7 @@
     placeholder?: string;
     ariaLabel?: string;
     fallback?: string;
+    oncommit?: () => void;
   } = $props();
 
   let parsed = $derived(parseCssColor(value));
@@ -43,6 +50,7 @@
     aria-label={ariaLabel}
     aria-invalid={invalid}
     bind:value
+    onchange={() => oncommit?.()}
   />
   <input
     type="color"
@@ -50,6 +58,7 @@
     value={pickerValue}
     aria-label={(ariaLabel ?? 'Color') + ' picker'}
     oninput={(e) => (value = e.currentTarget.value)}
+    onchange={() => oncommit?.()}
   />
 </div>
 

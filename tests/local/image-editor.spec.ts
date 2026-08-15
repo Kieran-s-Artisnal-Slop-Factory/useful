@@ -4,128 +4,312 @@
  * IndexedDB. Every test here therefore pins the strongest invariant this app
  * has: an entire import → edit → export session leaves the database
  * byte-identical. EXIF behavior is verified by re-parsing the actual
- * exported bytes with exifr (the same parser the app uses).
+ * exported bytes with exifr (the same parser the app uses); compositing is
+ * verified by decoding exported PNGs and probing pixels.
+ *
+ * Layer semantics under test (docs/dev/plans/TODO cleanup): the first image
+ * sets the canvas; blank canvases; per-layer effects (a crop/eraser nested
+ * under an image touches only that image, at top level everything below);
+ * opacity + blend modes; drag/nest in the layer tree; zoom; canvas resize;
+ * export name + format.
  */
 import { readFileSync } from 'node:fs';
 import exifr from 'exifr';
 import piexif from 'piexifjs';
 import { test, expect } from './helpers/app';
 
-async function makeImage(
-  page: import('@playwright/test').Page,
-  mime: 'image/png' | 'image/jpeg',
-  width: number,
-  height: number
-): Promise<Buffer> {
+type P = import('@playwright/test').Page;
+
+async function makeImage(page: P, mime: 'image/png' | 'image/jpeg', width: number, height: number, color = '#2266aa'): Promise<Buffer> {
   const dataUrl = await page.evaluate(
-    ([m, w, h]) => {
+    ([m, w, h, c]) => {
       const canvas = document.createElement('canvas');
       canvas.width = w as number;
       canvas.height = h as number;
       const ctx = canvas.getContext('2d')!;
-      ctx.fillStyle = '#2266aa';
+      ctx.fillStyle = c as string;
       ctx.fillRect(0, 0, canvas.width, canvas.height);
-      ctx.fillStyle = '#eebb33';
-      ctx.fillRect(2, 2, (w as number) / 2, (h as number) / 2);
       return canvas.toDataURL(m as string, 0.95);
     },
-    [mime, width, height] as const
+    [mime, width, height, color] as const
   );
   return Buffer.from(dataUrl.split(',')[1]!, 'base64');
 }
 
-/** A JPEG fixture that actually CARRIES metadata, built with piexifjs. */
+/**
+ * A JPEG fixture that actually CARRIES metadata, built with piexifjs — an
+ * Artist tag AND a GPS position, so the "GPS never survives" assertions have
+ * something real to catch (an export that copied the source EXIF through
+ * would fail them).
+ */
 function withExif(jpeg: Buffer, artist: string): Buffer {
-  const exifBytes = piexif.dump({ '0th': { [piexif.ImageIFD.Artist]: artist } });
+  const exifBytes = piexif.dump({
+    '0th': { [piexif.ImageIFD.Artist]: artist },
+    GPS: {
+      [piexif.GPSIFD.GPSLatitudeRef]: 'N',
+      [piexif.GPSIFD.GPSLatitude]: [[51, 1], [3, 1], [0, 1]],
+      [piexif.GPSIFD.GPSLongitudeRef]: 'W',
+      [piexif.GPSIFD.GPSLongitude]: [[114, 1], [4, 1], [0, 1]],
+    },
+  });
   return Buffer.from(piexif.insert(exifBytes, jpeg.toString('binary')), 'binary');
 }
 
-const isPng = (buf: Buffer): boolean =>
-  buf.subarray(0, 4).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+const isPng = (buf: Buffer): boolean => buf.subarray(0, 4).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47]));
 const isJpeg = (buf: Buffer): boolean => buf[0] === 0xff && buf[1] === 0xd8;
-const pngSize = (buf: Buffer): { w: number; h: number } => ({
-  w: buf.readUInt32BE(16),
-  h: buf.readUInt32BE(20),
-});
+const pngSize = (buf: Buffer): { w: number; h: number } => ({ w: buf.readUInt32BE(16), h: buf.readUInt32BE(20) });
 
-async function downloadBytes(
-  page: import('@playwright/test').Page,
-  trigger: () => Promise<void>
-): Promise<{ name: string; bytes: Buffer }> {
+async function downloadBytes(page: P, trigger: () => Promise<void>): Promise<{ name: string; bytes: Buffer }> {
   const downloadPromise = page.waitForEvent('download');
   await trigger();
   const download = await downloadPromise;
   return { name: download.suggestedFilename(), bytes: readFileSync(await download.path()) };
 }
 
-async function importImage(
-  app: { page: import('@playwright/test').Page },
-  name: string,
-  mimeType: string,
-  buffer: Buffer
-) {
+/** Decode an exported PNG in-page and sample pixels at the given points. */
+async function probePixels(page: P, png: Buffer, points: [number, number][]): Promise<number[][]> {
+  return page.evaluate(
+    async ([b64, pts]) => {
+      const im = new Image();
+      im.src = 'data:image/png;base64,' + (b64 as string);
+      await im.decode();
+      const c = document.createElement('canvas');
+      c.width = im.width;
+      c.height = im.height;
+      const ctx = c.getContext('2d')!;
+      ctx.drawImage(im, 0, 0);
+      return (pts as [number, number][]).map(([x, y]) => [...ctx.getImageData(x, y, 1, 1).data]);
+    },
+    [png.toString('base64'), points] as const
+  );
+}
+
+async function importImage(app: { page: P }, name: string, mimeType: string, buffer: Buffer) {
   await app.page.getByTestId('ie-file').setInputFiles({ name, mimeType, buffer });
   await expect(app.page.getByTestId('ie-canvas')).toBeVisible();
 }
 
+/** Real pointer drag across the canvas in fractions of its box. */
+async function dragOnCanvas(page: P, from: [number, number], to: [number, number]) {
+  // Earlier clicks (download, tool buttons) may have scrolled the canvas out
+  // of the viewport — mouse events at off-screen coordinates hit nothing.
+  await page.getByTestId('ie-canvas').scrollIntoViewIfNeeded();
+  const box = (await page.getByTestId('ie-canvas').boundingBox())!;
+  const at = (fx: number, fy: number): [number, number] => [box.x + box.width * fx, box.y + box.height * fy];
+  await page.mouse.move(...at(...from));
+  await page.mouse.down();
+  await page.mouse.move(...at((from[0] + to[0]) / 2, (from[1] + to[1]) / 2), { steps: 3 });
+  await page.mouse.move(...at(...to), { steps: 3 });
+  await page.mouse.up();
+}
+
+const layerRows = (page: P) => page.getByTestId('ie-layer');
+const rowNamed = (page: P, text: string) => page.getByTestId('ie-layer').filter({ hasText: text });
+
 test.describe('image editor', () => {
-  test('import → draw → rotate → crop → export: dimensions right, ZERO writes all session', async ({
-    app,
-  }) => {
+  test('first image sets the canvas; effects nest under it; export dims + ZERO writes all session', async ({ app }) => {
     const { page } = app;
-    await app.goto('/tools/image-editor/');
+    // Snapshot BEFORE navigating so loading the editor page itself is inside
+    // the zero-write window.
     const before = await app.dumpAll();
+    await app.goto('/tools/image-editor/');
 
     await importImage(app, 'sample.png', 'image/png', await makeImage(page, 'image/png', 40, 30));
     await expect(page.getByTestId('ie-info')).toContainText('40 × 30px');
+    await expect(layerRows(page)).toHaveCount(1);
+    // The imported image is selected, so new marks nest under it.
+    await expect(page.getByTestId('ie-target')).toContainText('“sample.png” only');
 
-    // Draw a brush stroke with a real pointer drag (brush is the default tool).
-    const box = (await page.getByTestId('ie-canvas').boundingBox())!;
-    const at = (fx: number, fy: number): [number, number] => [
-      box.x + box.width * fx,
-      box.y + box.height * fy,
-    ];
-    await page.mouse.move(...at(0.2, 0.2));
-    await page.mouse.down();
-    await page.mouse.move(...at(0.5, 0.5), { steps: 4 });
-    await page.mouse.move(...at(0.8, 0.6), { steps: 4 });
-    await page.mouse.up();
-    await expect(page.getByTestId('ie-layer')).toHaveCount(1);
-    await expect(page.getByTestId('ie-layer')).toContainText('brush');
+    // Brush stroke → child of the image.
+    await dragOnCanvas(page, [0.2, 0.2], [0.8, 0.6]);
+    await expect(layerRows(page)).toHaveCount(2);
+    await expect(rowNamed(page, 'brush')).toHaveClass(/child/);
 
-    // Export carries the source name and the document dimensions.
+    // Export carries the source name (stem) and the canvas dimensions.
     const first = await downloadBytes(page, () => page.getByTestId('ie-download').click());
     expect(first.name).toBe('sample.png');
     expect(isPng(first.bytes)).toBe(true);
     expect(pngSize(first.bytes)).toEqual({ w: 40, h: 30 });
 
-    // Rotate: dimensions swap, annotations ride along (still 1 layer).
-    await page.getByTestId('ie-rotate-cw').click();
-    await expect(page.getByTestId('ie-info')).toContainText('30 × 40px');
-    await expect(page.getByTestId('ie-layer')).toHaveCount(1);
-    const rotated = await downloadBytes(page, () => page.getByTestId('ie-download').click());
-    expect(pngSize(rotated.bytes)).toEqual({ w: 30, h: 40 });
-
-    // Crop to the top-left quadrant.
-    await page.getByTestId('ie-tool-crop').click();
-    const box2 = (await page.getByTestId('ie-canvas').boundingBox())!;
-    await page.mouse.move(box2.x + 1, box2.y + 1);
-    await page.mouse.down();
-    await page.mouse.move(box2.x + box2.width / 2, box2.y + box2.height / 2, { steps: 3 });
-    await page.mouse.up();
-    await page.getByTestId('ie-apply-crop').click();
-    await expect(page.getByTestId('ie-info')).toContainText('cropped');
-    const cropped = await downloadBytes(page, () => page.getByTestId('ie-download').click());
-    const size = pngSize(cropped.bytes);
-    expect(size.w).toBeLessThanOrEqual(16);
-    expect(size.h).toBeLessThanOrEqual(21);
-
-    // Reset undoes crop + rotation losslessly.
-    await page.getByTestId('ie-reset-view').click();
-    await expect(page.getByTestId('ie-info')).toContainText('40 × 30px');
-    await expect(page.getByTestId('ie-layer')).toHaveCount(1);
+    // Export name + format are user-set.
+    await page.getByTestId('ie-export-name').fill('annotated');
+    await page.getByTestId('ie-format').selectOption('jpg');
+    const jpg = await downloadBytes(page, () => page.getByTestId('ie-download').click());
+    expect(jpg.name).toBe('annotated.jpg');
+    expect(isJpeg(jpg.bytes)).toBe(true);
 
     // THE invariant: the entire session wrote nothing.
+    expect(await app.dumpAll()).toEqual(before);
+  });
+
+  test('blank canvas start, canvas resize, zoom', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/image-editor/');
+    const before = await app.dumpAll();
+
+    await page.getByTestId('ie-blank-w').fill('64');
+    await page.getByTestId('ie-blank-h').fill('48');
+    await page.getByTestId('ie-blank-create').click();
+    await expect(page.getByTestId('ie-info')).toContainText('64 × 48px');
+    await expect(page.getByTestId('ie-exif-empty')).toContainText('blank canvas');
+
+    // Zoom changes the on-screen size, never the document.
+    await page.getByTestId('ie-zoom-100').click();
+    const w100 = (await page.getByTestId('ie-canvas').boundingBox())!.width;
+    await page.getByTestId('ie-zoom-in').click();
+    await expect.poll(async () => (await page.getByTestId('ie-canvas').boundingBox())!.width).toBeGreaterThan(w100 * 1.2);
+    await expect(page.getByTestId('ie-info')).toContainText('64 × 48px');
+
+    // Resize the canvas: exported dims follow.
+    await page.getByTestId('ie-canvas-w').fill('100');
+    await page.getByTestId('ie-canvas-h').fill('20');
+    await page.getByTestId('ie-canvas-resize').click();
+    await expect(page.getByTestId('ie-info')).toContainText('100 × 20px');
+    const png = await downloadBytes(page, () => page.getByTestId('ie-download').click());
+    expect(png.name).toBe('image.png');
+    expect(pngSize(png.bytes)).toEqual({ w: 100, h: 20 });
+    // Blank white background exported opaque white.
+    const [px] = await probePixels(page, png.bytes, [[50, 10]]);
+    expect(px).toEqual([255, 255, 255, 255]);
+
+    expect(await app.dumpAll()).toEqual(before);
+  });
+
+  test('a crop under an image crops only that image; at top level it crops everything below', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/image-editor/');
+    const before = await app.dumpAll();
+
+    // Base 60×40 blue; a second red 60×40 image layer on top.
+    await importImage(app, 'blue.png', 'image/png', await makeImage(page, 'image/png', 60, 40, '#0000ff'));
+    await page.getByTestId('ie-add-image').setInputFiles({
+      name: 'red.png',
+      mimeType: 'image/png',
+      buffer: await makeImage(page, 'image/png', 60, 40, '#ff0000'),
+    });
+    await expect(layerRows(page)).toHaveCount(2);
+
+    // Select the RED image and crop it to its left half (numeric path).
+    await rowNamed(page, 'red.png').getByTestId('ie-layer-select').click();
+    await page.getByTestId('ie-tool-crop').click();
+    await page.getByTestId('ie-crop-x').fill('0');
+    await page.getByTestId('ie-crop-y').fill('0');
+    await page.getByTestId('ie-crop-w').fill('30');
+    await page.getByTestId('ie-crop-h').fill('40');
+    await page.getByTestId('ie-crop-stage').click();
+    await page.getByTestId('ie-apply-crop').click();
+    await expect(rowNamed(page, 'crop')).toHaveClass(/child/);
+    // Canvas is untouched (60×40); left shows red, right shows the blue below.
+    await expect(page.getByTestId('ie-info')).toContainText('60 × 40px');
+    let png = await downloadBytes(page, () => page.getByTestId('ie-download').click());
+    expect(pngSize(png.bytes)).toEqual({ w: 60, h: 40 });
+    let [left, right] = await probePixels(page, png.bytes, [
+      [15, 20],
+      [45, 20],
+    ]);
+    expect(left!.slice(0, 3)).toEqual([255, 0, 0]);
+    expect(right!.slice(0, 3)).toEqual([0, 0, 255]);
+
+    // Move the crop to top level (⤴): now it clips everything below → the
+    // right half becomes transparent (checkerboard, alpha 0 in the PNG).
+    await rowNamed(page, 'crop').getByTestId('ie-layer-unnest').click();
+    await expect(rowNamed(page, 'crop')).not.toHaveClass(/child/);
+    png = await downloadBytes(page, () => page.getByTestId('ie-download').click());
+    [left, right] = await probePixels(page, png.bytes, [
+      [15, 20],
+      [45, 20],
+    ]);
+    expect(left!.slice(0, 3)).toEqual([255, 0, 0]);
+    expect(right![3]).toBe(0);
+
+    // Deleting the crop layer un-crops (non-destructive).
+    await rowNamed(page, 'crop').getByTestId('ie-layer-delete').click();
+    png = await downloadBytes(page, () => page.getByTestId('ie-download').click());
+    [right] = await probePixels(page, png.bytes, [[45, 20]]);
+    expect(right!.slice(0, 3)).toEqual([255, 0, 0]);
+
+    expect(await app.dumpAll()).toEqual(before);
+  });
+
+  test('eraser scoping and drag-to-nest in the layer tree', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/image-editor/');
+    const before = await app.dumpAll();
+    await importImage(app, 'blue.png', 'image/png', await makeImage(page, 'image/png', 60, 40, '#0000ff'));
+    await page.getByTestId('ie-add-image').setInputFiles({
+      name: 'red.png',
+      mimeType: 'image/png',
+      buffer: await makeImage(page, 'image/png', 60, 40, '#ff0000'),
+    });
+    // Deselect → the eraser goes to TOP level and erases through both images.
+    await page.getByTestId('ie-deselect').click();
+    await expect(page.getByTestId('ie-target')).toContainText('top level');
+    await page.getByTestId('ie-tool-eraser').click();
+    await page.getByTestId('ie-size').fill('10');
+    await dragOnCanvas(page, [0.1, 0.5], [0.9, 0.5]);
+    await expect(rowNamed(page, 'eraser')).not.toHaveClass(/child/);
+    let png = await downloadBytes(page, () => page.getByTestId('ie-download').click());
+    let [onStroke] = await probePixels(page, png.bytes, [[30, 20]]);
+    expect(onStroke![3]).toBe(0); // fully transparent: both images punched
+
+    // Drag the eraser row into red.png → it now erases only the red layer,
+    // so the blue below shows through the hole. (Manual mouse steps: the
+    // "drop into" strips only appear once a drag is in flight, so a plain
+    // dragTo would time out on the target's visibility check.)
+    await rowNamed(page, 'eraser').scrollIntoViewIfNeeded();
+    const src = (await rowNamed(page, 'eraser').boundingBox())!;
+    await page.mouse.move(src.x + 12, src.y + src.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(src.x + 16, src.y + src.height / 2 + 3);
+    await page.mouse.move(src.x + 20, src.y + src.height / 2 + 6);
+    const intoRed = page.getByTestId('ie-drop-into').first(); // strip under the topmost content layer (red)
+    await expect(intoRed).toBeVisible();
+    const tb = (await intoRed.boundingBox())!;
+    await page.mouse.move(tb.x + tb.width / 2, tb.y + tb.height / 2, { steps: 6 });
+    await page.mouse.up();
+    await expect(rowNamed(page, 'eraser')).toHaveClass(/child/);
+    png = await downloadBytes(page, () => page.getByTestId('ie-download').click());
+    [onStroke] = await probePixels(page, png.bytes, [[30, 20]]);
+    expect(onStroke!.slice(0, 3)).toEqual([0, 0, 255]);
+    expect(onStroke![3]).toBe(255);
+
+    expect(await app.dumpAll()).toEqual(before);
+  });
+
+  test('opacity and blend modes composite as expected', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/image-editor/');
+    const before = await app.dumpAll();
+    await importImage(app, 'grey.png', 'image/png', await makeImage(page, 'image/png', 40, 40, '#808080'));
+    await page.getByTestId('ie-add-image').setInputFiles({
+      name: 'white.png',
+      mimeType: 'image/png',
+      buffer: await makeImage(page, 'image/png', 40, 40, '#ffffff'),
+    });
+    // The white layer is selected (last added). 50% opacity over grey → ~192.
+    await page.getByTestId('ie-sel-opacity').fill('50');
+    let png = await downloadBytes(page, () => page.getByTestId('ie-download').click());
+    let [px] = await probePixels(page, png.bytes, [[20, 20]]);
+    expect(px![0]).toBeGreaterThan(180);
+    expect(px![0]).toBeLessThan(205);
+
+    // Multiply with white leaves the grey unchanged; back to 100% first.
+    await page.getByTestId('ie-sel-opacity').fill('100');
+    await page.getByTestId('ie-sel-blend').selectOption('multiply');
+    await expect(rowNamed(page, 'white.png')).toContainText('multiply');
+    png = await downloadBytes(page, () => page.getByTestId('ie-download').click());
+    [px] = await probePixels(page, png.bytes, [[20, 20]]);
+    expect(px![0]).toBeGreaterThan(120);
+    expect(px![0]).toBeLessThan(136);
+
+    // Every mode in the list is selectable and renders without errors.
+    for (const mode of ['overlay', 'soft-light', 'hard-light', 'color', 'normal']) {
+      await page.getByTestId('ie-sel-blend').selectOption(mode);
+    }
+    png = await downloadBytes(page, () => page.getByTestId('ie-download').click());
+    [px] = await probePixels(page, png.bytes, [[20, 20]]);
+    expect(px![0]).toBe(255); // normal again: white on top
+
     expect(await app.dumpAll()).toEqual(before);
   });
 
@@ -135,19 +319,22 @@ test.describe('image editor', () => {
     const before = await app.dumpAll();
 
     const jpegWithExif = withExif(await makeImage(page, 'image/jpeg', 32, 24), 'Original Author');
+    // Prove the fixture really carries GPS, so the null assertions below bite.
+    const source = (await exifr.parse(jpegWithExif)) as Record<string, unknown>;
+    expect(source.Artist).toBe('Original Author');
+    expect(typeof source.latitude).toBe('number');
     await importImage(app, 'photo.jpg', 'image/jpeg', jpegWithExif);
 
-    // The viewer surfaces the source's metadata…
     await expect(page.getByTestId('ie-exif-details')).toBeVisible();
     await page.getByTestId('ie-exif-details').locator('summary').click();
     await expect(page.getByTestId('ie-exif-details')).toContainText('Original Author');
 
-    // …but a default (strip) JPG export carries none of it.
     await page.getByTestId('ie-format').selectOption('jpg');
     const { bytes } = await downloadBytes(page, () => page.getByTestId('ie-download').click());
     expect(isJpeg(bytes)).toBe(true);
     const parsed = (await exifr.parse(bytes).catch(() => null)) as Record<string, unknown> | null;
     expect(parsed?.Artist ?? null).toBeNull();
+    expect(parsed?.latitude ?? null).toBeNull();
 
     expect(await app.dumpAll()).toEqual(before);
   });
@@ -161,7 +348,6 @@ test.describe('image editor', () => {
     await importImage(app, 'photo.jpg', 'image/jpeg', jpeg);
 
     await page.getByTestId('ie-meta-edit').check();
-    // The artist field is prefilled from the source EXIF.
     await expect(page.getByTestId('ie-exif-artist')).toHaveValue('Original Author');
     await page.getByTestId('ie-exif-artist').fill('Edited Author');
     await page.getByTestId('ie-exif-copyright').fill('© 2026 useful');
@@ -178,7 +364,6 @@ test.describe('image editor', () => {
     expect(parsed.ImageDescription).toBe('Edited in the raster editor');
     expect(parsed.DateTimeOriginal).toBeInstanceOf(Date);
     expect((parsed.DateTimeOriginal as Date).getFullYear()).toBe(2026);
-    // GPS can never pass through — neither raw tags nor parsed coordinates.
     expect(parsed.latitude ?? null).toBeNull();
     expect(parsed.GPSLatitude ?? null).toBeNull();
 
@@ -186,53 +371,49 @@ test.describe('image editor', () => {
     await page.getByTestId('ie-format').selectOption('png');
     const png = await downloadBytes(page, () => page.getByTestId('ie-download').click());
     expect(isPng(png.bytes)).toBe(true);
-    const pngParsed = (await exifr.parse(png.bytes).catch(() => null)) as Record<
-      string,
-      unknown
-    > | null;
+    const pngParsed = (await exifr.parse(png.bytes).catch(() => null)) as Record<string, unknown> | null;
     expect(pngParsed?.Artist ?? null).toBeNull();
 
     expect(await app.dumpAll()).toEqual(before);
   });
 
-  test('arrows, text, region adjustments and the eraser become layers; delete removes them', async ({
-    app,
-  }) => {
+  test('arrows, text, region adjustments, image rotation; deleting layers', async ({ app }) => {
     const { page } = app;
     await app.goto('/tools/image-editor/');
     const before = await app.dumpAll();
     await importImage(app, 'base.png', 'image/png', await makeImage(page, 'image/png', 60, 40));
 
-    const box = (await page.getByTestId('ie-canvas').boundingBox())!;
-    const at = (fx: number, fy: number): [number, number] => [
-      box.x + box.width * fx,
-      box.y + box.height * fy,
-    ];
-    const drag = async (a: [number, number], b: [number, number]) => {
-      await page.mouse.move(...a);
-      await page.mouse.down();
-      await page.mouse.move(...b, { steps: 3 });
-      await page.mouse.up();
-    };
+    // Rotate the selected image layer: its bounds swap; the canvas does not.
+    await page.getByTestId('ie-rotate-cw').click();
+    await expect(page.getByTestId('ie-sel-w')).toHaveValue('40');
+    await expect(page.getByTestId('ie-sel-h')).toHaveValue('60');
+    await expect(page.getByTestId('ie-info')).toContainText('60 × 40px');
 
+    await page.getByTestId('ie-deselect').click();
     await page.getByTestId('ie-tool-arrow').click();
-    await drag(at(0.1, 0.1), at(0.8, 0.8));
+    await dragOnCanvas(page, [0.1, 0.1], [0.8, 0.8]);
     await page.getByTestId('ie-tool-text').click();
     await page.getByTestId('ie-text').fill('Note!');
-    await page.mouse.click(...at(0.5, 0.5));
+    await page.getByTestId('ie-canvas').scrollIntoViewIfNeeded();
+    const box = (await page.getByTestId('ie-canvas').boundingBox())!;
+    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+    // Placing text selects it; deselect so the blur goes to top level.
+    await page.getByTestId('ie-deselect').click();
     await page.getByTestId('ie-tool-blur').click();
-    await drag(at(0.2, 0.2), at(0.6, 0.6));
-    await page.getByTestId('ie-tool-eraser').click();
-    await drag(at(0.3, 0.7), at(0.7, 0.7));
+    await dragOnCanvas(page, [0.2, 0.2], [0.6, 0.6]);
 
-    await expect(page.getByTestId('ie-layer')).toHaveCount(4);
-    await expect(page.getByTestId('ie-layer').nth(0)).toContainText('eraser');
-    await expect(page.getByTestId('ie-layer').nth(1)).toContainText('blur');
-    await expect(page.getByTestId('ie-layer').nth(2)).toContainText('“Note!”');
-    await expect(page.getByTestId('ie-layer').nth(3)).toContainText('arrow');
+    await expect(layerRows(page)).toHaveCount(4);
+    await expect(layerRows(page).nth(0)).toContainText('blur');
+    await expect(layerRows(page).nth(1)).toContainText('“Note!”');
+    await expect(layerRows(page).nth(2)).toContainText('arrow');
+    await expect(layerRows(page).nth(3)).toContainText('base.png');
 
-    await page.getByTestId('ie-layer').nth(0).getByTestId('ie-layer-delete').click();
-    await expect(page.getByTestId('ie-layer')).toHaveCount(3);
+    await layerRows(page).nth(0).getByTestId('ie-layer-delete').click();
+    await expect(layerRows(page)).toHaveCount(3);
+    // Keyboard path: text layer coordinates are editable fields.
+    await rowNamed(page, 'Note!').getByTestId('ie-layer-select').click();
+    await page.getByTestId('ie-sel-x').fill('10');
+    await expect(page.getByTestId('ie-sel-x')).toHaveValue('10');
 
     expect(await app.dumpAll()).toEqual(before);
   });

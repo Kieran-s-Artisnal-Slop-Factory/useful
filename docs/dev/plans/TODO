@@ -111,47 +111,73 @@ Phase 7 (Raster image editor, 2026-08-14) — DONE:
 - [x] ImageEditorApp: session-only (ZERO DB writes — no repo imports), brush/
       eraser/arrow/text/darken/lighten/blur/crop/rotate tools, layer list,
       EXIF viewer + strip-default + edited-tags-into-JPG (GPS never), PNG/JPG
-      export + copy-as-PNG
+      export + copy-as-PNG (superseded by the Cleanup redesign below —
+      layer tree, per-layer effects, blend/opacity, zoom, blank canvas)
 - [x] Registry + brush icon, page in SW shell (v9 bump shared with Phase 6),
       CHANGELOG, deps exifr + piexifjs (+ local .d.ts)
 - [x] Unit tests (transform/exif) + image-editor.spec.ts (dims after
       draw/rotate/crop, EXIF re-parsed from exported bytes, strip-all,
       whole-session zero-write invariant)
 
-Cleanup
+Cleanup (2026-08-14) — DONE:
 
-- [ ] for image based testing I added a bunch of test files to `/tests/local/fixtures`
-- [ ] Image converter
-  - [ ] The image converter does not resize the preview to the aspect ratio of the image correctly
-    - [ ] I tested this with `photo-1780071611689-55d7b5ace40a.avif` and saw it being broken
-    - [ ] adapt the preview pane size or if not possible use `object-fit: contain;`
-- [ ] Image compressor
-  - [ ] The image compressor should support a target percentage or filesize (with a notice saying it may not be possible)
-- [ ] Image editor
-  - [ ] should support either upload to start (current) or starting from an empty canvas (set resolution)
-    - [ ] First uploaded image should be the base layer, and set the initial canvas size
-  - [ ] Canvas should be re-sizeable
-  - [ ] Should support image-based layers
-  - [ ] Tools should operate per-layer (e.g. I should be able to crop an image layer that does not crop the whole canvas)
-    - [ ] Should become sub-layers (e.g. an eraser layer only effeects the layer it's directly under in the heirarchy)
-      - [ ] Should be draggable under other layers, and deleteable
-      - [ ] If an eraser layer or crop is dragged to top layer it should effect layers below it
-  - [ ] Layers should have settings
-      - [ ] Opacity
-      - [ ] Blend modes
-        - [ ] Soft light
-        - [ ] Hard light
-        - [ ] color
-        - [ ] multiply
-        - [ ] Overlay; Combines Multiply and Screen for contrast enhancement.
-  - [ ] Add ability to zoom in and out of the canvas for more accurate brush work
-  - [ ] Should be able to set the image name and format when downloading
-- [ ] SVG Editor
-  - [ ] In polygon mode, add the ability for each point to also support bezier interpolation with handles between it and the next point
-  - [ ] Add the ability to take one shape and use it to subtract from another shape (e.g. a horizontal line through a square would result in a layer that is two rectangles (top and bottom) split where the line went through the square)
-    - [ ] If simpler, the shape can be converted to a pasted SVG layer that doesn't need the same parametric controls as a normal shape does (meaning after the split instead of a layer with two rectangles and the same square controls it's just a pasted svg with the split baked into it)
+- [x] for image based testing I added a bunch of test files to `/tests/local/fixtures`
+      (the AVIF now drives a real converter test; the others are available
+      for future specs — the multi-MB PNGs are deliberately unused in the
+      suite to keep runs fast)
+- [x] Image converter
+  - [x] The image converter does not resize the preview to the aspect ratio of the image correctly
+    - [x] I tested this with `photo-1780071611689-55d7b5ace40a.avif` and saw it being broken
+    - [x] adapt the preview pane size or if not possible use `object-fit: contain;`
+      (root cause: flex `align-items: stretch` on the `<img>` — fixed with
+      `align-self: flex-start` + `object-fit: contain`)
+- [x] Image compressor
+  - [x] The image compressor should support a target percentage or filesize (with a notice saying it may not be possible)
+      (src/lib/img/targetSize.ts — quality-then-dimensions search, honest
+      "NOT reachable" outcome)
+- [x] Image editor (redesigned: src/lib/raster/model.ts two-level layer tree,
+      render.ts per-layer buffers)
+  - [x] should support either upload to start (current) or starting from an empty canvas (set resolution)
+    - [x] First uploaded image should be the base layer, and set the initial canvas size
+  - [x] Canvas should be re-sizeable
+  - [x] Should support image-based layers
+  - [x] Tools should operate per-layer (e.g. I should be able to crop an image layer that does not crop the whole canvas)
+    - [x] Should become sub-layers (e.g. an eraser layer only effeects the layer it's directly under in the heirarchy)
+      - [x] Should be draggable under other layers, and deleteable
+      - [x] If an eraser layer or crop is dragged to top layer it should effect layers below it
+  - [x] Layers should have settings
+      - [x] Opacity
+      - [x] Blend modes
+        - [x] Soft light
+        - [x] Hard light
+        - [x] color
+        - [x] multiply
+        - [x] Overlay; Combines Multiply and Screen for contrast enhancement.
+  - [x] Add ability to zoom in and out of the canvas for more accurate brush work
+  - [x] Should be able to set the image name and format when downloading
+- [x] SVG Editor
+  - [x] In polygon mode, add the ability for each point to also support bezier interpolation with handles between it and the next point
+  - [x] Add the ability to take one shape and use it to subtract from another shape (e.g. a horizontal line through a square would result in a layer that is two rectangles (top and bottom) split where the line went through the square)
+    - [x] If simpler, the shape can be converted to a pasted SVG layer that doesn't need the same parametric controls as a normal shape does (meaning after the split instead of a layer with two rectangles and the same square controls it's just a pasted svg with the split baked into it)
+      (done this way: luminance mask + flood filter, baked into a pasted-SVG
+      layer — works for any cutter kind)
+
+Review-round fixes (adversarial review of phases 6/7, 2026-08-14) — DONE:
+- [x] SVG editor: ColorField edits now commit (new `oncommit` prop), null
+      numerics revert to last committed, colors XML-escaped, empty
+      background = transparent, pagehide/visibility save flush, doSave race
+      guard, sync keydown registration, stale vertex index, true-bbox hit
+      test, export width guard
+- [x] Image editor: clampRect edge-intersect, blur context padding,
+      pointerId-pinned gestures, discard-confirm covers crop/rotate,
+      ResizeObserver dash scale, keyboard paths (numeric crop, coord fields)
+- [x] Specs: GPS fixture really carries GPS, zero-write window starts before
+      page load, crop bounds two-sided
     
 
+
+Suite status after phases 6+7 + cleanup + review round: 270 unit + 127
+Playwright, trust gate 5/5 — all green.
 
 Next: Phase 8 (Background remover) per plan-phases.md. Notes:
 - NOTHING IS COMMITTED YET — the whole run (phases 0-2 + redesign) is one

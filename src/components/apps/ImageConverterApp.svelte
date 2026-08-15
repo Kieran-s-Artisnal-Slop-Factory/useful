@@ -248,6 +248,14 @@
     max-width: min(20rem, 100%);
     max-height: 14rem;
     width: auto;
+    height: auto;
+    /* The parent .stack is a column flexbox whose default `align-items:
+       stretch` forces the image's width to the container's, then max-height
+       clips it — the picture squashes to the box's ratio. Opting out of the
+       stretch lets the intrinsic ratio drive both dimensions; object-fit is
+       belt-and-braces for any remaining box mismatch. */
+    align-self: flex-start;
+    object-fit: contain;
     border: 1.5px solid var(--border-strong-color);
     /* Checkerboard so transparency is visible. */
     background:

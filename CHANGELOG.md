@@ -162,22 +162,85 @@
   or copy-as-text), or PNG/JPG rasterized at a chosen width (aspect-derived
   height, JPG quality slider, clipboard always PNG, labeled).
 - **Image editor** (`/tools/image-editor/`): a session-only layer-based raster
-  annotator (never touches the database by design — binary data cannot
-  round-trip the JSON data layer). Import anything the converter can decode
-  (PNG/JPG/WebP/AVIF/TIFF/SVG); crop (marquee + apply), rotate in 90° steps,
-  and reset both losslessly — annotations are remapped through pure transform
-  math, never baked. Tools: brush and eraser strokes (smoothed, eraser punches
-  transparency), arrows with sized heads, draggable/editable text layers, and
-  rectangular darken/lighten/blur region adjustments — every mark is a layer
-  that can be selected, edited, or deleted. Metadata: an EXIF viewer (exifr),
-  strip-all-by-default exports, and optional embedding of edited
-  artist/copyright/description/date tags into JPG exports via piexifjs — GPS
-  and all other original tags can never pass through, and the UI states
-  exactly which exports carry metadata. Export PNG or JPG (quality slider,
-  before-size feedback); clipboard copies are always PNG, labeled.
+  editor (never touches the database by design — binary data cannot
+  round-trip the JSON data layer). Start from an image (the first import
+  becomes the base layer and sets the canvas size) or from a blank canvas
+  (any size, colored or transparent); add further image layers; resize the
+  canvas any time; zoom in/out for precise brush work. Layers form a
+  two-level tree: every top-level layer has its own opacity and blend mode
+  (normal, multiply, overlay, soft light, hard light, color), and effect
+  layers — eraser strokes, crops, darken/lighten/blur regions — nest UNDER a
+  layer to affect only it (crop one photo without cropping the canvas) or sit
+  at top level to affect everything below. Layers drag-and-drop to reorder or
+  nest (⤵/⤴ from the keyboard), toggle visibility, and delete non-destructively
+  (deleting a crop un-crops). Image layers rotate in 90° steps about their
+  own center, carrying their sub-layers. Marks: smoothed brush strokes, arrows
+  with sized heads, editable text, and rectangular region adjustments — each
+  with numeric fields for keyboard editing. Metadata: an EXIF viewer (exifr)
+  for the base image, strip-all-by-default exports, and optional embedding of
+  edited artist/copyright/description/date tags into JPG exports via
+  piexifjs — GPS and all other original tags can never pass through, and the
+  UI states exactly which exports carry metadata. Export with a chosen file
+  name as PNG or JPG (quality slider); clipboard copies are always PNG,
+  labeled.
+- SVG editor polygons: each vertex can bend the edge to the next vertex with a
+  draggable bezier control ("Curve edge" on the selected point) — the layer
+  renders as a closed `<path>` while any edge is curved and stays a plain
+  `<polygon>` (byte-identical to before) otherwise.
+- SVG editor boolean subtract: "Subtract another layer from this one" cuts the
+  chosen cutter's silhouette out of the selected layer — a stroked line splits
+  a square into two rectangles, text punches letters, a pasted icon stamps its
+  shape — using SVG's own compositing (luminance mask + a flood filter that
+  blackens any cutter regardless of its colors), baked into a pasted-SVG layer
+  positioned exactly over the original (both originals consumed; one undo).
+- Image compressor targets: besides manual quality/cap, aim for a percentage
+  of the original size or a max file size in KB. The tool searches for
+  settings that meet the budget (JPG: quality first, never below 20, then
+  dimensions; PNG: dimensions only, being lossless) and reports the outcome
+  honestly — including "target NOT reachable" with the smallest allowed
+  encode — with a standing notice that a target may not be possible.
 
 ## Bug Fixes
 
+- Image converter preview squashed tall/wide images to the preview box's own
+  ratio: the `<img>` was a stretched flex child (`align-items: stretch`) with a
+  `max-height`, so its width came from the container and only the height was
+  clipped. It now opts out of the stretch (`align-self: flex-start`) with
+  `object-fit: contain` as belt-and-braces; regression-tested with a real
+  portrait AVIF fixture and a canvas-generated tall PNG.
+- SVG editor: color edits made through the shared color field never
+  committed — not saved, not undoable, while the status still read "Saved"
+  (`ColorField` gained an `oncommit` hook that fires when an edit is
+  finalized). Clearing a numeric layer/canvas field no longer persists `null`
+  (an emptied number input): commits revert invalid numerics to the last
+  committed value and heal sizes to ≥ 1, load-time normalization coerces
+  stored bad numerics too. User-typed colors are attribute-escaped when the
+  document is built (a stray quote used to blank the whole preview and could
+  inject markup into an exported file), and an emptied background reads as
+  transparent instead of rendering black. The debounced autosave now flushes
+  on `pagehide`/`visibilitychange` (a hard reload within 400ms of an edit lost
+  it), persists the last committed snapshot rather than live bound values,
+  ignores results for a document that was closed or swapped while the write
+  was in flight, and the keyboard listener is registered synchronously so a
+  fast navigation away can no longer leak it. Adding a polygon point after
+  undo with a stale vertex index crashed; vertex indices reset on
+  undo/redo and are bounds-checked. Line/polygon hit-testing uses the true
+  bounding box (points become one-sided after vertex drags; the old
+  mirrored box stole clicks from neighbours). Export width tolerates an
+  emptied field.
+- Image editor: an off-canvas marquee drag committed an inflated region
+  (`clampRect` slid the rect inward keeping its size; it now intersects
+  edge-by-edge, so a drag past the edge keeps exactly the on-canvas span);
+  blur regions bled the sharp original back in near their edges (the
+  snapshot now includes surrounding context so the filter has real pixels
+  to blur); a second touch pointer no longer hijacks an in-flight stroke
+  (gestures are pinned to their pointer id); "New session" asks before
+  discarding crop/rotation-only work; the marquee overlay's dash scale is
+  driven by a ResizeObserver instead of a layout read inside the render
+  effect. Playwright specs tightened: the "GPS never survives" fixture now
+  actually carries GPS (the assertion was vacuous), the whole-session
+  zero-write window starts before the page loads, and crop dimensions are
+  bounded on both sides.
 - Prism grammar files are global-dependent side-effect scripts; once two modules
   (markdown rendering and the regex tool) imported them, Rollup could split the
   grammars into a shared chunk that executes before the Prism core, crashing
@@ -207,7 +270,17 @@
 - New dependencies: `exifr` (EXIF read) and `piexifjs` (JPEG EXIF write,
   loaded lazily at export time); pure SVG/raster geometry libs
   (`src/lib/svg/`, `src/lib/raster/`) unit-tested in node, with the seed's
-  paste-hardening regression tests ported alongside.
+  paste-hardening regression tests ported alongside. The compressor's
+  target-size search (`src/lib/img/targetSize.ts`) is pure over an injected
+  encoder and unit-tested with synthetic size curves. The raster layer tree
+  (`locateLayer`/`moveLayer`/`removeLayer`/`flattenLayers`) and the
+  about-center image rotation with children are unit-tested too.
+- Test fixtures: real sample files added under `tests/local/fixtures`
+  (portrait AVIF, large PNG/JPG/TIFF/WebP/SVG samples) for image-tool specs;
+  the AVIF one now exercises the converter's native-decode branch directly.
+- Accessibility: image-editor tools have keyboard paths (numeric crop entry,
+  coordinate fields for text/arrow/image/region layers, ⤵/⤴ nest buttons);
+  layer rows in both editors expose `aria-pressed` for the selection.
 - View transitions: Astro `<ClientRouter />` in the shared layout; the chrome island is persisted across navigations and tracks the active page via `astro:page-load`.
 - `preferences` is now flagged `singleton` + `fieldMerge` in both `src/lib/db/types.ts` and the test mirror `tests/local/helpers/schema.ts`; the Preferences page is a read-only view of remembered per-tool defaults (writes go through `putSingleton` only). No IndexedDB migration needed (flags are app-level metadata).
 - Unit test runner added: Vitest via `npm run test:unit`, with tests for the fuzzy matcher and registry; Playwright specs added for sidebar/drawer/palette navigation (including "client-side navigation writes nothing").

@@ -8,7 +8,7 @@
  * Previews render through svgDataUri + <img>, which never executes scripts —
  * safe even for pasted SVG markup.
  */
-import type { SvgDocumentContent, SvgLayer, SvgPoint } from './model';
+import type { SvgDocumentContent, SvgLayer, SvgPoint, SvgVertex } from './model';
 
 const XMLNS = 'http://www.w3.org/2000/svg';
 const XLINK = 'http://www.w3.org/1999/xlink';
@@ -134,11 +134,23 @@ export function svgRootAttrs(svg: string): string {
 
 // ---- geometry builders (pure, unit-tested) ----------------------------------
 
+/**
+ * A user-typed color, made safe for an attribute value. Colors come from a
+ * free-form text field, so they are escaped like any other user text — a
+ * stray quote must never break the document (or, in an exported file opened
+ * directly, inject markup). Empty/whitespace reads as "none".
+ */
+export function paintValue(color: string): string {
+  const c = (color ?? '').trim();
+  return c ? escapeXml(c) : 'none';
+}
+
 /** fill/stroke/stroke-width attribute string for a shape layer. */
 export function paintAttrs(layer: SvgLayer): string {
-  const parts = [`fill="${layer.fill || 'none'}"`];
-  if (layer.stroke && layer.stroke !== 'none' && layer.stroke_width > 0) {
-    parts.push(`stroke="${layer.stroke}"`, `stroke-width="${round(layer.stroke_width)}"`);
+  const parts = [`fill="${paintValue(layer.fill)}"`];
+  const stroke = paintValue(layer.stroke);
+  if (stroke !== 'none' && layer.stroke_width > 0) {
+    parts.push(`stroke="${stroke}"`, `stroke-width="${round(layer.stroke_width)}"`);
   }
   return parts.join(' ');
 }
@@ -166,6 +178,28 @@ export function trianglePoints(cx: number, cy: number, w: number, h: number): st
 /** Polygon `points` attribute from relative vertices around (cx, cy). */
 export function polygonPoints(cx: number, cy: number, points: SvgPoint[]): string {
   return points.map((p) => `${round(cx + p.x)},${round(cy + p.y)}`).join(' ');
+}
+
+/** True when any polygon edge carries a bezier control. */
+export function polygonIsCurved(points: SvgVertex[]): boolean {
+  return points.some((p) => !!p.c);
+}
+
+/**
+ * Closed path `d` for a polygon whose edges may be quadratic curves: edge i
+ * runs from vertex i to vertex i+1 (wrapping), bent by vertex i's control.
+ */
+export function polygonPath(cx: number, cy: number, points: SvgVertex[]): string {
+  if (points.length < 2) return '';
+  const at = (p: SvgPoint): string => `${round(cx + p.x)} ${round(cy + p.y)}`;
+  const parts = [`M ${at(points[0]!)}`];
+  for (let i = 0; i < points.length; i++) {
+    const from = points[i]!;
+    const to = points[(i + 1) % points.length]!;
+    parts.push(from.c ? `Q ${at(from.c)} ${at(to)}` : `L ${at(to)}`);
+  }
+  parts.push('Z');
+  return parts.join(' ');
 }
 
 /**
@@ -207,14 +241,17 @@ export function renderLayer(layer: SvgLayer): string {
       el = `<polygon points="${starPoints(x, y, w / 2, h / 2)}" ${paint}/>`;
       break;
     case 'polygon':
-      el = `<polygon points="${polygonPoints(x, y, layer.points)}" ${paint}/>`;
+      el = polygonIsCurved(layer.points)
+        ? `<path d="${polygonPath(x, y, layer.points)}" ${paint}/>`
+        : `<polygon points="${polygonPoints(x, y, layer.points)}" ${paint}/>`;
       break;
     case 'line': {
       const d = linePath(x, y, layer.points, layer.c1, layer.c2);
       if (!d) return '';
       // A line's stroke is the artwork: fall back to fill's default color so a
       // stroke of 'none' doesn't render an invisible path.
-      const strokeColor = layer.stroke && layer.stroke !== 'none' ? layer.stroke : '#f59e0b';
+      const strokeValue = paintValue(layer.stroke);
+      const strokeColor = strokeValue !== 'none' ? strokeValue : '#f59e0b';
       el = `<path d="${d}" fill="none" stroke="${strokeColor}" stroke-width="${round(Math.max(1, layer.stroke_width))}" stroke-linecap="round"/>`;
       break;
     }
@@ -243,6 +280,107 @@ export function renderLayer(layer: SvgLayer): string {
     : el;
 }
 
+// ---- bounds + boolean subtraction -------------------------------------------
+
+/**
+ * Axis-aligned canvas-space bounds of a layer, rotation-aware and padded by
+ * its stroke (text gets extra horizontal room — its width is only a hint).
+ */
+export function layerBounds(layer: SvgLayer): { x: number; y: number; w: number; h: number } {
+  let minX = -layer.width / 2;
+  let maxX = layer.width / 2;
+  let minY = -layer.height / 2;
+  let maxY = layer.height / 2;
+  if (layer.kind === 'line' || layer.kind === 'polygon') {
+    const pts: SvgPoint[] = [...layer.points];
+    for (const p of layer.points) if (p.c) pts.push(p.c);
+    if (layer.c1) pts.push(layer.c1);
+    if (layer.c2) pts.push(layer.c2);
+    if (pts.length > 0) {
+      minX = Math.min(...pts.map((p) => p.x));
+      maxX = Math.max(...pts.map((p) => p.x));
+      minY = Math.min(...pts.map((p) => p.y));
+      maxY = Math.max(...pts.map((p) => p.y));
+    }
+  }
+  let pad = 0;
+  if (layer.kind === 'line') pad = Math.max(1, layer.stroke_width) / 2;
+  else if (layer.stroke && layer.stroke !== 'none') pad = layer.stroke_width / 2;
+  if (layer.kind === 'text') {
+    minX -= layer.height;
+    maxX += layer.height;
+    pad += layer.height * 0.2;
+  }
+  minX -= pad;
+  maxX += pad;
+  minY -= pad;
+  maxY += pad;
+  const a = (layer.rotation * Math.PI) / 180;
+  const corners = [
+    [minX, minY],
+    [maxX, minY],
+    [maxX, maxY],
+    [minX, maxY],
+  ].map(([px, py]) => ({
+    x: layer.x + px! * Math.cos(a) - py! * Math.sin(a),
+    y: layer.y + px! * Math.sin(a) + py! * Math.cos(a),
+  }));
+  const bx = Math.min(...corners.map((c) => c.x));
+  const by = Math.min(...corners.map((c) => c.y));
+  const bw = Math.max(...corners.map((c) => c.x)) - bx;
+  const bh = Math.max(...corners.map((c) => c.y)) - by;
+  return { x: round(bx), y: round(by), w: round(Math.max(1, bw)), h: round(Math.max(1, bh)) };
+}
+
+/**
+ * `base` minus `cutter`, baked into a pasted-SVG layer (plan TODO: the
+ * split doesn't need parametric controls). Done with SVG's own compositing
+ * instead of polygon clipping, so ANY layer kind cuts any other — a stroked
+ * line slices a square into two rectangles, text punches letters, a pasted
+ * icon stamps its silhouette:
+ *   - a luminance <mask>: white over the base's bounds, then the cutter drawn
+ *     through an feFlood/feComposite filter that turns every opaque pixel of
+ *     it solid black regardless of its own colors;
+ *   - the base rendered under that mask.
+ * The result keeps the base's colors and sits exactly where the base was.
+ */
+export function subtractLayers(base: SvgLayer, cutter: SvgLayer): SvgLayer {
+  const b = layerBounds(base);
+  const region = `x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}"`;
+  const svg =
+    `<svg xmlns="${XMLNS}" viewBox="${b.x} ${b.y} ${b.w} ${b.h}">` +
+    `<defs>` +
+    `<filter id="blk" filterUnits="userSpaceOnUse" ${region}>` +
+    `<feFlood flood-color="#000"/><feComposite in2="SourceAlpha" operator="in"/>` +
+    `</filter>` +
+    `<mask id="cut" maskUnits="userSpaceOnUse" ${region}>` +
+    `<rect ${region} fill="#fff"/>` +
+    `<g filter="url(#blk)">${renderLayer(cutter)}</g>` +
+    `</mask>` +
+    `</defs>` +
+    `<g mask="url(#cut)">${renderLayer(base)}</g>` +
+    `</svg>`;
+  return {
+    id: crypto.randomUUID(),
+    kind: 'svg',
+    x: round(b.x + b.w / 2),
+    y: round(b.y + b.h / 2),
+    width: b.w,
+    height: b.h,
+    rotation: 0,
+    fill: 'none',
+    stroke: 'none',
+    stroke_width: 0,
+    radius: 0,
+    text: '',
+    bold: false,
+    svg,
+    points: [],
+    c1: null,
+    c2: null,
+  };
+}
+
 /**
  * Compose the document SVG: optional background rect + layers bottom-to-top.
  * width/height attributes are emitted alongside the viewBox so the file has
@@ -257,10 +395,13 @@ export function buildSvg(content: SvgDocumentContent): string {
   // A pasted layer's own root tag is stripped when it is embedded, so if its
   // markup uses xlink: the declaration has to be re-made out here.
   const xlink = /xlink:/i.test(layers) ? ` xmlns:xlink="${XLINK}"` : '';
+  // null AND an emptied text field both mean transparent — an empty `fill=""`
+  // would be ignored by renderers and paint the canvas black.
+  const bgColor = content.background === null ? 'none' : paintValue(content.background);
   const bg =
-    content.background === null
+    bgColor === 'none'
       ? ''
-      : `  <rect width="${round(content.width)}" height="${round(content.height)}" fill="${content.background}"/>\n`;
+      : `  <rect width="${round(content.width)}" height="${round(content.height)}" fill="${bgColor}"/>\n`;
   return `<svg xmlns="${XMLNS}"${xlink} width="${round(content.width)}" height="${round(content.height)}" viewBox="0 0 ${round(content.width)} ${round(content.height)}">
 ${bg}${layers}${layers ? '\n' : ''}</svg>
 `;

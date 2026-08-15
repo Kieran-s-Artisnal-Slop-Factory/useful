@@ -26,6 +26,16 @@ export interface SvgPoint {
 }
 
 /**
+ * A polygon vertex. `c` is an optional quadratic control point governing the
+ * edge from this vertex to the NEXT one (relative to the layer center like
+ * the vertex itself); null = straight edge. Any curved edge turns the
+ * polygon into a closed <path>.
+ */
+export interface SvgVertex extends SvgPoint {
+  c?: SvgPoint | null;
+}
+
+/**
  * One layer. (x, y) is the layer's center in canvas coordinates; width and
  * height are independent so shapes can be non-square. Kind-specific fields
  * are carried on every layer (flat shape, like the seed) so normalization
@@ -53,10 +63,11 @@ export interface SvgLayer {
   svg: string;
   /**
    * polygon: vertices relative to (x, y) — dragging the layer moves only
-   * (x, y), editing a vertex moves only its entry here.
+   * (x, y), editing a vertex moves only its entry here. Each vertex may carry
+   * a bezier control for the edge to the next vertex (see SvgVertex).
    * line: exactly two entries, the endpoints, also relative to (x, y).
    */
-  points: SvgPoint[];
+  points: SvgVertex[];
   /** line only: first bezier control point (relative). null = straight. */
   c1: SvgPoint | null;
   /** line only: second control point. Set only with c1 (cubic). */
@@ -130,15 +141,31 @@ export function newLayer(kind: SvgLayerKind, canvasWidth: number, canvasHeight: 
   return layer;
 }
 
+const NUMERIC_LAYER_FIELDS = ['x', 'y', 'width', 'height', 'rotation', 'stroke_width', 'radius'] as const;
+
 /**
  * Back-fill a stored/imported layer (older or partial shape) against the
  * defaults, so fields added after a document was saved never read undefined.
+ * Non-finite numerics (an emptied number input binds `null`) fall back to
+ * `fallback`'s value for that field when given — the last committed state —
+ * else to the kind's defaults; sizes are kept ≥ 1 so a layer can't vanish.
  */
-export function normalizeLayer(layer: Partial<SvgLayer>): SvgLayer {
-  const base = newLayer(layer.kind ?? 'rect', 256, 256);
+export function normalizeLayer(layer: Partial<SvgLayer>, fallback?: SvgLayer): SvgLayer {
+  const base = fallback ?? newLayer(layer.kind ?? 'rect', 256, 256);
   const merged: SvgLayer = { ...base, ...layer, id: layer.id ?? base.id };
+  for (const f of NUMERIC_LAYER_FIELDS) merged[f] = num(merged[f], base[f]);
+  merged.width = Math.max(1, merged.width);
+  merged.height = Math.max(1, merged.height);
+  merged.stroke_width = Math.max(0, merged.stroke_width);
+  merged.radius = Math.max(0, merged.radius);
   merged.points = Array.isArray(layer.points)
-    ? layer.points.map((p) => ({ x: num(p?.x, 0), y: num(p?.y, 0) }))
+    ? layer.points.map((p) => {
+        const v: SvgVertex = { x: num(p?.x, 0), y: num(p?.y, 0) };
+        // Only carry the key when a control exists — keeps straight-edged
+        // documents byte-identical to those saved before curves shipped.
+        if (p?.c) v.c = { x: num(p.c.x, 0), y: num(p.c.y, 0) };
+        return v;
+      })
     : base.points;
   merged.c1 = layer.c1 ? { x: num(layer.c1.x, 0), y: num(layer.c1.y, 0) } : null;
   merged.c2 = layer.c2 ? { x: num(layer.c2.x, 0), y: num(layer.c2.y, 0) } : null;
@@ -148,11 +175,20 @@ export function normalizeLayer(layer: Partial<SvgLayer>): SvgLayer {
   return merged;
 }
 
-/** Back-fill a whole stored document's content (see normalizeLayer). */
-export function normalizeDocumentContent(content: Partial<SvgDocumentContent>): SvgDocumentContent {
-  const d = defaultDocumentContent(typeof content.name === 'string' ? content.name : 'Untitled');
+/**
+ * Back-fill a whole stored document's content (see normalizeLayer). With
+ * `fallback` (the last committed content), invalid numerics revert to it
+ * instead of the defaults — the editor runs every commit through this so an
+ * emptied number field can never be persisted as null.
+ */
+export function normalizeDocumentContent(
+  content: Partial<SvgDocumentContent>,
+  fallback?: SvgDocumentContent
+): SvgDocumentContent {
+  const d = fallback ?? defaultDocumentContent(typeof content.name === 'string' ? content.name : 'Untitled');
+  const prevLayers = new Map((fallback?.layers ?? []).map((l) => [l.id, l]));
   return {
-    name: d.name,
+    name: typeof content.name === 'string' ? content.name : d.name,
     width: clampCanvas(num(content.width, d.width)),
     height: clampCanvas(num(content.height, d.height)),
     // null is a deliberate "transparent"; only an absent/invalid field falls
@@ -163,7 +199,9 @@ export function normalizeDocumentContent(content: Partial<SvgDocumentContent>): 
         : typeof content.background === 'string'
           ? content.background
           : d.background,
-    layers: Array.isArray(content.layers) ? content.layers.map(normalizeLayer) : [],
+    layers: Array.isArray(content.layers)
+      ? content.layers.map((l) => normalizeLayer(l, l.id ? prevLayers.get(l.id) : undefined))
+      : [],
   };
 }
 

@@ -3,13 +3,18 @@ import {
   buildSvg,
   ensureSvgNamespace,
   escapeXml,
+  layerBounds,
   linePath,
   looksLikeSvg,
   namespaceIds,
   paintAttrs,
+  paintValue,
+  polygonIsCurved,
+  polygonPath,
   polygonPoints,
   renderLayer,
   starPoints,
+  subtractLayers,
   svgInner,
   svgRootAttrs,
   svgViewBox,
@@ -71,6 +76,29 @@ describe('geometry builders', () => {
     }
   });
 
+  it('polygonPath curves only the edges whose vertex carries a control', () => {
+    const pts = [
+      { x: 0, y: -10, c: { x: 20, y: 0 } }, // curved edge 0→1
+      { x: 10, y: 10 },
+      { x: -10, y: 10 },
+    ];
+    expect(polygonIsCurved(pts)).toBe(true);
+    expect(polygonPath(50, 50, pts)).toBe('M 50 40 Q 70 50 60 60 L 40 60 L 50 40 Z');
+    expect(polygonIsCurved([{ x: 0, y: 0 }, { x: 1, y: 1 }])).toBe(false);
+    expect(polygonPath(0, 0, [{ x: 1, y: 1 }])).toBe('');
+  });
+
+  it('a curved polygon renders as a closed <path>, a straight one as <polygon>', () => {
+    const straight = layer('polygon');
+    expect(renderLayer(straight)).toContain('<polygon');
+    const curved = layer('polygon');
+    curved.points[0]!.c = { x: 0, y: -80 };
+    const svg = renderLayer(curved);
+    expect(svg).toContain('<path d="M');
+    expect(svg).toContain(' Q ');
+    expect(svg).toContain(' Z"');
+  });
+
   it('starPoints emits 10 alternating outer/inner vertices', () => {
     const star = starPoints(128, 128, 60, 60);
     expect(star.match(/[-\d.]+,[-\d.]+/g)).toHaveLength(10);
@@ -82,6 +110,41 @@ describe('geometry builders', () => {
 });
 
 // ---- paint ------------------------------------------------------------------
+
+describe('paintValue (user-typed colors are attribute-escaped)', () => {
+  it('escapes quotes and angle brackets so a typo cannot break the document', () => {
+    // A trailing quote typed into the Fill field would otherwise end the
+    // attribute early and blank the ENTIRE canvas preview.
+    expect(paintValue('#ff0000"')).toBe('#ff0000&quot;');
+    const injected = 'red"/><script>alert(1)</script><rect fill="red';
+    const out = paintValue(injected);
+    expect(out).not.toContain('<script>');
+    expect(out).not.toContain('"');
+    expect(paintValue('rgb(1, 2, 3)')).toBe('rgb(1, 2, 3)');
+  });
+
+  it('empty / whitespace reads as none', () => {
+    expect(paintValue('')).toBe('none');
+    expect(paintValue('   ')).toBe('none');
+  });
+
+  it('flows through renderLayer and buildSvg for fill, stroke, line, background', () => {
+    const l = layer('rect', { fill: 'a"b', stroke: 'c"d', stroke_width: 2 });
+    const rect = renderLayer(l);
+    expect(rect).toContain('fill="a&quot;b"');
+    expect(rect).toContain('stroke="c&quot;d"');
+    expect(renderLayer(layer('line', { stroke: 'e"f' }))).toContain('stroke="e&quot;f"');
+    const content = { ...defaultDocumentContent('x'), background: 'g"h' };
+    expect(buildSvg(content)).toContain('fill="g&quot;h"');
+  });
+
+  it('an emptied background text is transparent, not black', () => {
+    // fill="" is an invalid presentation attribute → renderers fall back to
+    // black; the editor treats an empty field like "transparent" instead.
+    const content = { ...defaultDocumentContent('x'), background: '' };
+    expect(buildSvg(content)).not.toContain('<rect');
+  });
+});
 
 describe('paintAttrs', () => {
   it('always emits fill; stroke only when set and wide enough', () => {
@@ -203,6 +266,85 @@ describe('buildSvg', () => {
   });
 });
 
+// ---- bounds + subtraction ---------------------------------------------------
+
+describe('layerBounds', () => {
+  it('unrotated shapes: the w x h box around the center, padded by stroke', () => {
+    expect(layerBounds(layer('rect', { x: 100, y: 50, width: 40, height: 20 }))).toEqual({
+      x: 80,
+      y: 40,
+      w: 40,
+      h: 20,
+    });
+    const stroked = layer('rect', { x: 100, y: 50, width: 40, height: 20, stroke: '#000', stroke_width: 4 });
+    expect(layerBounds(stroked)).toEqual({ x: 78, y: 38, w: 44, h: 24 });
+  });
+
+  it('rotation enlarges the axis-aligned box', () => {
+    const b = layerBounds(layer('rect', { x: 0, y: 0, width: 100, height: 20, rotation: 90 }));
+    expect(b.w).toBeCloseTo(20, 5);
+    expect(b.h).toBeCloseTo(100, 5);
+  });
+
+  it('lines/polygons bound their points (and controls), padded by the stroke', () => {
+    const line = layer('line', {
+      x: 100,
+      y: 100,
+      points: [
+        { x: -50, y: 0 },
+        { x: 50, y: 0 },
+      ],
+      c1: { x: 0, y: -40 },
+      stroke_width: 6,
+    });
+    expect(layerBounds(line)).toEqual({ x: 47, y: 57, w: 106, h: 46 });
+  });
+});
+
+describe('subtractLayers', () => {
+  it('bakes base-minus-cutter into a pasted-SVG layer positioned over the base', () => {
+    const square = layer('rect', { id: 'sq', x: 100, y: 100, width: 80, height: 80, fill: '#123456' });
+    const slice = layer('line', {
+      id: 'ln',
+      x: 100,
+      y: 100,
+      points: [
+        { x: -60, y: 0 },
+        { x: 60, y: 0 },
+      ],
+      stroke_width: 6,
+    });
+    const out = subtractLayers(square, slice);
+    expect(out.kind).toBe('svg');
+    expect(out.id).not.toBe('sq');
+    // Sits exactly where the square was, no rotation of its own.
+    expect({ x: out.x, y: out.y, w: out.width, h: out.height }).toEqual({ x: 100, y: 100, w: 80, h: 80 });
+    expect(out.rotation).toBe(0);
+    // Markup: a luminance mask (white bounds, cutter forced black by filter)
+    // over the base's own rendering, all inside a viewBox of the bounds.
+    expect(out.svg).toContain('viewBox="60 60 80 80"');
+    expect(out.svg).toContain('<mask id="cut"');
+    expect(out.svg).toContain('fill="#fff"');
+    expect(out.svg).toContain('feFlood flood-color="#000"');
+    expect(out.svg).toContain('<path d="M 40 100 L 160 100"'); // the cutter line
+    expect(out.svg).toContain('fill="#123456"'); // the base keeps its color
+    expect(out.svg).toMatch(/<g mask="url\(#cut\)"><rect/);
+    expect(looksLikeSvg(out.svg)).toBe(true);
+  });
+
+  it('the baked layer renders through the normal pasted-SVG path with ids namespaced', () => {
+    const base = layer('circle', { id: 'c1' });
+    const cutter = layer('rect', { id: 'r1', width: 30, height: 30 });
+    const out = subtractLayers(base, cutter);
+    const rendered = renderLayer(out);
+    expect(rendered).toContain('<g');
+    // Ids re-homed so two subtractions in one document don't collide.
+    expect(rendered).not.toContain('id="cut"');
+    expect(rendered).toMatch(/mask="url\(#l[a-zA-Z0-9]+-cut\)"/);
+    expect(rendered).toMatch(/filter="url\(#l[a-zA-Z0-9]+-blk\)"/);
+  });
+});
+
 // ---- paste hardening (ported from the icon-editor seed) --------------------
 
 describe('paste hardening', () => {
@@ -270,6 +412,27 @@ describe('normalization', () => {
     // Absent background falls back to the default, null stays transparent.
     expect(content.background).toBe('#ffffff');
     expect(normalizeDocumentContent({ background: null } as never).background).toBeNull();
+  });
+
+  it('heals null/NaN numerics (an emptied number input binds null)', () => {
+    // Without a fallback: kind defaults, sizes kept ≥ 1.
+    const healed = normalizeLayer({ kind: 'rect', width: null, height: NaN, x: null } as never);
+    expect(healed.width).toBeGreaterThanOrEqual(1);
+    expect(healed.height).toBeGreaterThanOrEqual(1);
+    expect(Number.isFinite(healed.x)).toBe(true);
+    // With a fallback (the last committed layer): its values win.
+    const prev = layer('rect', { id: 'L', width: 77, height: 33, x: 12 });
+    const reverted = normalizeLayer({ ...prev, width: null, x: undefined } as never, prev);
+    expect(reverted.width).toBe(77);
+    expect(reverted.x).toBe(12);
+    expect(reverted.height).toBe(33);
+    // Whole-document form: layers matched by id, canvas clamped, name kept.
+    const committed = { ...defaultDocumentContent('doc'), layers: [prev] };
+    const dirty = { ...committed, width: 2, layers: [{ ...prev, width: null }] };
+    const clean = normalizeDocumentContent(dirty as never, committed);
+    expect(clean.width).toBe(16);
+    expect(clean.name).toBe('doc');
+    expect(clean.layers[0]!.width).toBe(77);
   });
 
   it('drops a dangling cubic control (c2 without c1)', () => {
