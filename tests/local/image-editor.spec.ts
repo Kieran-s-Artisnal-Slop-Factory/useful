@@ -123,7 +123,7 @@ test.describe('image editor', () => {
     // Brush stroke → child of the image.
     await dragOnCanvas(page, [0.2, 0.2], [0.8, 0.6]);
     await expect(layerRows(page)).toHaveCount(2);
-    await expect(rowNamed(page, 'brush')).toHaveClass(/child/);
+    await expect(rowNamed(page, 'brush')).toHaveAttribute('data-depth', '1');
 
     // Export carries the source name (stem) and the canvas dimensions.
     const first = await downloadBytes(page, () => page.getByTestId('ie-download').click());
@@ -198,7 +198,7 @@ test.describe('image editor', () => {
     await page.getByTestId('ie-crop-h').fill('40');
     await page.getByTestId('ie-crop-stage').click();
     await page.getByTestId('ie-apply-crop').click();
-    await expect(rowNamed(page, 'crop')).toHaveClass(/child/);
+    await expect(rowNamed(page, 'crop')).toHaveAttribute('data-depth', '1');
     // Canvas is untouched (60×40); left shows red, right shows the blue below.
     await expect(page.getByTestId('ie-info')).toContainText('60 × 40px');
     let png = await downloadBytes(page, () => page.getByTestId('ie-download').click());
@@ -213,7 +213,7 @@ test.describe('image editor', () => {
     // Move the crop to top level (⤴): now it clips everything below → the
     // right half becomes transparent (checkerboard, alpha 0 in the PNG).
     await rowNamed(page, 'crop').getByTestId('ie-layer-unnest').click();
-    await expect(rowNamed(page, 'crop')).not.toHaveClass(/child/);
+    await expect(rowNamed(page, 'crop')).toHaveAttribute('data-depth', '0');
     png = await downloadBytes(page, () => page.getByTestId('ie-download').click());
     [left, right] = await probePixels(page, png.bytes, [
       [15, 20],
@@ -247,27 +247,24 @@ test.describe('image editor', () => {
     await page.getByTestId('ie-tool-eraser').click();
     await page.getByTestId('ie-size').fill('10');
     await dragOnCanvas(page, [0.1, 0.5], [0.9, 0.5]);
-    await expect(rowNamed(page, 'eraser')).not.toHaveClass(/child/);
+    await expect(rowNamed(page, 'eraser')).toHaveAttribute('data-depth', '0');
     let png = await downloadBytes(page, () => page.getByTestId('ie-download').click());
     let [onStroke] = await probePixels(page, png.bytes, [[30, 20]]);
     expect(onStroke![3]).toBe(0); // fully transparent: both images punched
 
-    // Drag the eraser row into red.png → it now erases only the red layer,
-    // so the blue below shows through the hole. (Manual mouse steps: the
-    // "drop into" strips only appear once a drag is in flight, so a plain
-    // dragTo would time out on the target's visibility check.)
+    // Drag the eraser row onto the MIDDLE of red.png's row (the "into" zone)
+    // → it now erases only the red layer, so the blue below shows through
+    // the hole. Manual mouse steps so HTML5 drag events fire in Chromium.
     await rowNamed(page, 'eraser').scrollIntoViewIfNeeded();
     const src = (await rowNamed(page, 'eraser').boundingBox())!;
     await page.mouse.move(src.x + 12, src.y + src.height / 2);
     await page.mouse.down();
     await page.mouse.move(src.x + 16, src.y + src.height / 2 + 3);
     await page.mouse.move(src.x + 20, src.y + src.height / 2 + 6);
-    const intoRed = page.getByTestId('ie-drop-into').first(); // strip under the topmost content layer (red)
-    await expect(intoRed).toBeVisible();
-    const tb = (await intoRed.boundingBox())!;
+    const tb = (await rowNamed(page, 'red.png').boundingBox())!;
     await page.mouse.move(tb.x + tb.width / 2, tb.y + tb.height / 2, { steps: 6 });
     await page.mouse.up();
-    await expect(rowNamed(page, 'eraser')).toHaveClass(/child/);
+    await expect(rowNamed(page, 'eraser')).toHaveAttribute('data-depth', '1');
     png = await downloadBytes(page, () => page.getByTestId('ie-download').click());
     [onStroke] = await probePixels(page, png.bytes, [[30, 20]]);
     expect(onStroke!.slice(0, 3)).toEqual([0, 0, 255]);
@@ -310,6 +307,122 @@ test.describe('image editor', () => {
     [px] = await probePixels(page, png.bytes, [[20, 20]]);
     expect(px![0]).toBe(255); // normal again: white on top
 
+    expect(await app.dumpAll()).toEqual(before);
+  });
+
+  test('blank canvas background is a fill layer; fill under an image tints only the image', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/image-editor/');
+    const before = await app.dumpAll();
+    await page.getByTestId('ie-blank-w').fill('60');
+    await page.getByTestId('ie-blank-h').fill('40');
+    await page.getByTestId('ie-blank-create').click();
+    await expect(rowNamed(page, 'Background')).toHaveCount(1);
+    // Add a blue image at the top-left half, then a color fill under it.
+    await page.getByTestId('ie-add-image').setInputFiles({
+      name: 'blue.png',
+      mimeType: 'image/png',
+      buffer: await makeImage(page, 'image/png', 30, 40, '#0000ff'),
+    });
+    await page.getByTestId('ie-color').fill('#ff0000');
+    await page.getByTestId('ie-add-fill').click();
+    await expect(rowNamed(page, 'Color fill')).toHaveAttribute('data-depth', '1');
+    let png = await downloadBytes(page, () => page.getByTestId('ie-download').click());
+    let [onImage, offImage] = await probePixels(page, png.bytes, [
+      [15, 20],
+      [45, 20],
+    ]);
+    expect(onImage!.slice(0, 3)).toEqual([255, 0, 0]); // tinted red
+    expect(offImage!.slice(0, 3)).toEqual([255, 255, 255]); // background fill layer, untouched
+    // Hiding the background layer makes the canvas transparent there.
+    await rowNamed(page, 'Background').getByTestId('ie-layer-vis').click();
+    png = await downloadBytes(page, () => page.getByTestId('ie-download').click());
+    [offImage] = await probePixels(page, png.bytes, [[45, 20]]);
+    expect(offImage![3]).toBe(0);
+    expect(await app.dumpAll()).toEqual(before);
+  });
+
+  test('groups: images nest into groups by drag-and-drop; the group composites as one', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/image-editor/');
+    const before = await app.dumpAll();
+    await importImage(app, 'base.png', 'image/png', await makeImage(page, 'image/png', 60, 40, '#0000ff'));
+    await page.getByTestId('ie-deselect').click();
+    await page.getByTestId('ie-add-group').click();
+    await expect(rowNamed(page, 'Group')).toHaveCount(1);
+
+    // Drag the image row onto the MIDDLE of the group row → nested inside.
+    await rowNamed(page, 'base.png').scrollIntoViewIfNeeded();
+    const src = (await rowNamed(page, 'base.png').boundingBox())!;
+    await page.mouse.move(src.x + 12, src.y + src.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(src.x + 16, src.y + src.height / 2 + 3);
+    const tb = (await rowNamed(page, 'Group').boundingBox())!;
+    await page.mouse.move(tb.x + tb.width / 2, tb.y + tb.height / 2, { steps: 6 });
+    await page.mouse.up();
+    await expect(rowNamed(page, 'base.png')).toHaveAttribute('data-depth', '1');
+
+    // Group opacity applies to the whole stack inside it.
+    await rowNamed(page, 'Group').getByTestId('ie-layer-select').click();
+    await page.getByTestId('ie-sel-opacity').fill('50');
+    const png = await downloadBytes(page, () => page.getByTestId('ie-download').click());
+    const [px] = await probePixels(page, png.bytes, [[30, 20]]);
+    expect(px![2]).toBe(255);
+    expect(px![3]).toBeGreaterThan(100);
+    expect(px![3]).toBeLessThan(160); // ~50% alpha
+    // ⤴ moves it back out; wrapping selects a new group around it.
+    await rowNamed(page, 'base.png').getByTestId('ie-layer-unnest').click();
+    await expect(rowNamed(page, 'base.png')).toHaveAttribute('data-depth', '0');
+    await rowNamed(page, 'base.png').getByTestId('ie-layer-select').click();
+    await page.getByTestId('ie-wrap-group').click();
+    await expect(rowNamed(page, 'base.png')).toHaveAttribute('data-depth', '1');
+    expect(await app.dumpAll()).toEqual(before);
+  });
+
+  test('scale handles resize an image layer (corners keep aspect, edges stretch one axis)', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/image-editor/');
+    const before = await app.dumpAll();
+    // Canvas 200x120 with a 80x60 image at the origin.
+    await page.getByTestId('ie-blank-w').fill('200');
+    await page.getByTestId('ie-blank-h').fill('120');
+    await page.getByTestId('ie-blank-transparent').check();
+    await page.getByTestId('ie-blank-create').click();
+    await page.getByTestId('ie-add-image').setInputFiles({
+      name: 'img.png',
+      mimeType: 'image/png',
+      buffer: await makeImage(page, 'image/png', 80, 60, '#0000ff'),
+    });
+    await page.getByTestId('ie-tool-move').click();
+    await page.getByTestId('ie-zoom-100').click();
+    await page.getByTestId('ie-canvas').scrollIntoViewIfNeeded();
+    const box = (await page.getByTestId('ie-canvas').boundingBox())!;
+    const at = (x: number, y: number): [number, number] => [box.x + (x / 200) * box.width, box.y + (y / 120) * box.height];
+
+    // SE corner (80,60) → (160,130): aspect-locked doubling.
+    await page.mouse.move(...at(80, 60));
+    await page.mouse.down();
+    await page.mouse.move(...at(120, 95), { steps: 4 });
+    await page.mouse.move(...at(160, 120), { steps: 4 });
+    await page.mouse.up();
+    await expect(page.getByTestId('ie-sel-w')).toHaveValue('160');
+    await expect(page.getByTestId('ie-sel-h')).toHaveValue('120');
+
+    // E edge (160, 60) → x=100: width only.
+    await page.mouse.move(...at(160, 60));
+    await page.mouse.down();
+    await page.mouse.move(...at(100, 61), { steps: 4 });
+    await page.mouse.up();
+    await expect(page.getByTestId('ie-sel-w')).toHaveValue('100');
+    await expect(page.getByTestId('ie-sel-h')).toHaveValue('120');
+
+    const png = await downloadBytes(page, () => page.getByTestId('ie-download').click());
+    const [inside, outside] = await probePixels(page, png.bytes, [
+      [90, 100],
+      [150, 100],
+    ]);
+    expect(inside!.slice(0, 3)).toEqual([0, 0, 255]);
+    expect(outside![3]).toBe(0);
     expect(await app.dumpAll()).toEqual(before);
   });
 

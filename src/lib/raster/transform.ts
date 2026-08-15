@@ -100,6 +100,11 @@ export function rotateLayerCW(layer: RasterLayer, w: number, h: number): RasterL
     case 'adjust':
     case 'crop':
       return { ...layer, rect: rotateRectCW(layer.rect, w, h) };
+    case 'fill':
+      return layer;
+    case 'group':
+      // A group has no geometry of its own; its children turn with it.
+      return { ...layer, children: layer.children.map((c) => rotateLayerCW(c, w, h)) };
   }
 }
 
@@ -121,13 +126,59 @@ export function shiftLayer(layer: RasterLayer, dx: number, dy: number): RasterLa
     case 'adjust':
     case 'crop':
       return { ...layer, rect: { ...layer.rect, x: layer.rect.x + dx, y: layer.rect.y + dy } };
+    case 'fill':
+    case 'group':
+      return layer;
   }
 }
 
-/** Shift a layer AND its children together (moving a parent on the canvas). */
+/** Shift a layer AND its whole subtree together (moving it on the canvas). */
 export function shiftLayerTree(layer: RasterLayer, dx: number, dy: number): RasterLayer {
   const moved = shiftLayer(layer, dx, dy);
-  return { ...moved, children: layer.children.map((c) => shiftLayer(c, dx, dy)) };
+  return { ...moved, children: layer.children.map((c) => shiftLayerTree(c, dx, dy)) };
+}
+
+/**
+ * Map a layer's geometry from one rect to another (the on-canvas scale
+ * handles): points and rects map affinely, sizes (stroke/arrow/text) scale by
+ * the geometric mean of the two axis factors, images take the new rect.
+ * Children are left alone — see scaleLayerTree.
+ */
+export function scaleLayer(layer: RasterLayer, from: Rect, to: Rect): RasterLayer {
+  const sx = from.w > 0 ? to.w / from.w : 1;
+  const sy = from.h > 0 ? to.h / from.h : 1;
+  const sz = Math.sqrt(Math.max(1e-6, sx * sy));
+  const mp = (p: RasterPoint): RasterPoint => ({ x: to.x + (p.x - from.x) * sx, y: to.y + (p.y - from.y) * sy });
+  const mr = (r: Rect): Rect => {
+    const a = mp({ x: r.x, y: r.y });
+    return { x: a.x, y: a.y, w: r.w * sx, h: r.h * sy };
+  };
+  switch (layer.kind) {
+    case 'image': {
+      const r = mr({ x: layer.x, y: layer.y, w: layer.width, h: layer.height });
+      return { ...layer, x: r.x, y: r.y, width: Math.max(1, r.w), height: Math.max(1, r.h) };
+    }
+    case 'stroke':
+      return { ...layer, points: layer.points.map(mp), size: Math.max(1, layer.size * sz) };
+    case 'arrow':
+      return { ...layer, from: mp(layer.from), to: mp(layer.to), size: Math.max(1, layer.size * sz) };
+    case 'text': {
+      const p = mp({ x: layer.x, y: layer.y });
+      return { ...layer, x: p.x, y: p.y, size: Math.max(1, layer.size * sz) };
+    }
+    case 'adjust':
+    case 'crop':
+      return { ...layer, rect: mr(layer.rect) };
+    case 'fill':
+    case 'group':
+      return layer;
+  }
+}
+
+/** scaleLayer applied to the layer AND its whole subtree. */
+export function scaleLayerTree(layer: RasterLayer, from: Rect, to: Rect): RasterLayer {
+  const scaled = scaleLayer(layer, from, to);
+  return { ...scaled, children: layer.children.map((c) => scaleLayerTree(c, from, to)) };
 }
 
 /**
@@ -142,11 +193,13 @@ export function rotateImageLayerCW(layer: ImageLayer): ImageLayer {
   // rotate that frame, then re-home the (now h x w) frame on the same center.
   const nx = cx - layer.height / 2;
   const ny = cy - layer.width / 2;
-  const children = layer.children.map((c) => {
+  const turnTree = (c: RasterLayer): RasterLayer => {
     const local = shiftLayer(c, -layer.x, -layer.y);
     const turned = rotateLayerCW(local, layer.width, layer.height);
-    return shiftLayer(turned, nx, ny);
-  });
+    const back = shiftLayer(turned, nx, ny);
+    return { ...back, children: c.children.map(turnTree) };
+  };
+  const children = layer.children.map(turnTree);
   return {
     ...layer,
     x: nx,
@@ -191,6 +244,20 @@ export function layerBounds(layer: RasterLayer): Rect | null {
     case 'adjust':
     case 'crop':
       return { ...layer.rect };
+    case 'fill':
+      return null; // covers the canvas — selectable from the list, not by click
+    case 'group': {
+      const boxes = layer.children.map(layerBounds).filter((b): b is Rect => b !== null);
+      if (boxes.length === 0) return null;
+      const x = Math.min(...boxes.map((b) => b.x));
+      const y = Math.min(...boxes.map((b) => b.y));
+      return {
+        x,
+        y,
+        w: Math.max(...boxes.map((b) => b.x + b.w)) - x,
+        h: Math.max(...boxes.map((b) => b.y + b.h)) - y,
+      };
+    }
   }
 }
 

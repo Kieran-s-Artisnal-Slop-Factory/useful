@@ -9,13 +9,17 @@ import type {
   TextLayer,
 } from './model';
 import {
-  canNest,
+  canHost,
+  canNestUnder,
   flattenLayers,
   isEffectLayer,
+  isWithin,
   layerDefaults,
   locateLayer,
   moveLayer,
   removeLayer,
+  type FillLayer,
+  type GroupLayer,
 } from './model';
 import {
   arrowHeadLength,
@@ -32,6 +36,8 @@ import {
   rotatePointCW,
   rotateRectCW,
   rotatedSize,
+  scaleLayer,
+  scaleLayerTree,
   shiftLayer,
   shiftLayerTree,
 } from './transform';
@@ -75,6 +81,8 @@ const adjust: AdjustLayer = {
   amount: 50,
 };
 const crop: CropLayer = { ...common('c'), kind: 'crop', rect: { x: 1, y: 1, w: 5, h: 5 } };
+const fill: FillLayer = { ...common('f'), kind: 'fill', color: '#fff' };
+const group: GroupLayer = { ...common('g'), kind: 'group' };
 /** A stand-in bitmap — transform math never touches pixels. */
 const fakeSource = { width: 40, height: 30 } as unknown as HTMLCanvasElement;
 const image: ImageLayer = {
@@ -311,7 +319,7 @@ describe('layer tree', () => {
     expect(removeLayer(t, 'zzz')).toBeNull();
   });
 
-  it('moveLayer reorders within a level and re-parents (images never nest)', () => {
+  it('moveLayer reorders within a level and re-parents under hosts', () => {
     const t = tree();
     // Top-level reorder: arrow to the bottom.
     expect(moveLayer(t, 'a', { parentId: null, index: 0 })).toBe(true);
@@ -323,24 +331,70 @@ describe('layer tree', () => {
     // Un-nest the crop to top level above the image.
     expect(moveLayer(t, 'c', { parentId: null, index: 2 })).toBe(true);
     expect(t.map((l) => l.id)).toEqual(['a', 'i', 'c']);
-    // Images refuse to nest; nesting into yourself is refused; effect layers
-    // (the top-level crop 'c') cannot host children.
+    // Refusals: into yourself / your own subtree; images under non-groups;
+    // anything under an effect layer (the top-level crop 'c').
     expect(moveLayer(t, 'i', { parentId: 'i', index: 0 })).toBe(false);
+    expect(moveLayer(t, 'i', { parentId: 't', index: 0 })).toBe(false);
     expect(moveLayer(t, 'i', { parentId: 'c', index: 0 })).toBe(false);
-    expect(moveLayer(t, 't', { parentId: 'c', index: 0 })).toBe(false);
-    expect(canNest(image)).toBe(false);
-    expect(canNest(crop)).toBe(true);
+    expect(moveLayer(t, 'a', { parentId: 'c', index: 0 })).toBe(false);
+    expect(canHost(crop)).toBe(false);
+    expect(canHost(image)).toBe(true);
+    expect(canNestUnder(image, text)).toBe(false);
+    expect(canNestUnder(image, group)).toBe(true);
+    expect(canNestUnder(image, null)).toBe(true);
+    expect(canNestUnder(text, image)).toBe(true);
   });
 
-  it('nesting a top-level layer that has children promotes them to top level', () => {
+  it('groups host anything (incl. images) at any depth; subtrees move whole', () => {
+    // Fresh children arrays: spreading a fixture would share (and mutate) its list.
     const t: RasterLayer[] = [
-      { ...image, id: 'base' },
-      { ...text, id: 'label', children: [{ ...crop, id: 'lc' }] },
+      { ...group, id: 'g1', children: [] },
+      { ...image, id: 'photo', children: [] },
+      { ...text, id: 'label', children: [] },
     ];
-    expect(moveLayer(t, 'label', { parentId: 'base', index: 0 })).toBe(true);
-    expect(t.map((l) => l.id)).toEqual(['base', 'lc']);
-    expect(t[0]!.children.map((c) => c.id)).toEqual(['label']);
-    expect(t[0]!.children[0]!.children).toEqual([]);
+    // Image into the group; a nested group inside it; text into that.
+    expect(moveLayer(t, 'photo', { parentId: 'g1', index: 0 })).toBe(true);
+    const g1 = t.find((l) => l.id === 'g1')!;
+    g1.children.push({ ...group, id: 'g2', children: [] });
+    expect(moveLayer(t, 'label', { parentId: 'g2', index: 0 })).toBe(true);
+    expect(locateLayer(t, 'label')).toMatchObject({ depth: 2 });
+    expect(locateLayer(t, 'label')!.parent!.id).toBe('g2');
+    // The whole subtree flattens top-first, depth-first.
+    expect(flattenLayers(t).map((e) => e.layer.id + ':' + e.depth)).toEqual(['g1:0', 'g2:1', 'label:2', 'photo:1']);
+    // Cannot move g1 into its own descendant g2.
+    expect(isWithin(t, 'g1', 'label')).toBe(true);
+    expect(moveLayer(t, 'g1', { parentId: 'g2', index: 0 })).toBe(false);
+    // Moving g2 out to root carries label with it.
+    expect(moveLayer(t, 'g2', { parentId: null, index: 99 })).toBe(true);
+    expect(t.map((l) => l.id)).toEqual(['g1', 'g2']);
+    expect(t[1]!.children.map((c) => c.id)).toEqual(['label']);
+    // Removing a group removes its subtree.
+    expect(removeLayer(t, 'g2')?.id).toBe('g2');
+    expect(locateLayer(t, 'label')).toBeNull();
+  });
+
+  it('scaleLayer maps geometry between rects; scaleLayerTree carries children', () => {
+    const from = { x: 10, y: 20, w: 40, h: 30 };
+    const to = { x: 0, y: 0, w: 80, h: 60 }; // ×2, moved to origin
+    const si = scaleLayer(image, from, to) as ImageLayer;
+    expect({ x: si.x, y: si.y, w: si.width, h: si.height }).toEqual({ x: 0, y: 0, w: 80, h: 60 });
+    // A stroke point at the image's top-left corner lands at the new corner;
+    // its brush size doubles (geometric mean of ×2, ×2).
+    const s2 = scaleLayer({ ...stroke, points: [{ x: 10, y: 20 }, { x: 50, y: 50 }] }, from, to) as StrokeLayer;
+    expect(s2.points).toEqual([{ x: 0, y: 0 }, { x: 80, y: 60 }]);
+    expect(s2.size).toBe(8);
+    expect((scaleLayer(crop, from, to) as CropLayer).rect).toEqual({ x: -18, y: -38, w: 10, h: 10 });
+    expect(scaleLayer(fill, from, to)).toBe(fill);
+    const parent: ImageLayer = { ...image, children: [{ ...crop, rect: { x: 10, y: 20, w: 20, h: 15 } }] };
+    const st = scaleLayerTree(parent, from, to) as ImageLayer;
+    expect((st.children[0] as CropLayer).rect).toEqual({ x: 0, y: 0, w: 40, h: 30 });
+  });
+
+  it('layerBounds: fills have none, groups bound their children', () => {
+    expect(layerBounds(fill)).toBeNull();
+    expect(layerBounds(group)).toBeNull();
+    const g: GroupLayer = { ...group, children: [image, { ...crop, rect: { x: 0, y: 0, w: 5, h: 5 } }] };
+    expect(layerBounds(g)).toEqual({ x: 0, y: 0, w: 50, h: 50 });
   });
 
   it('isEffectLayer: crop/adjust/eraser act on a target; content layers do not', () => {

@@ -3,15 +3,20 @@
  * lives in transform.ts). Everything re-renders from the layer tree each
  * time; nothing is ever baked, so deleting a layer is lossless.
  *
- * Pipeline (bottom → top over the TOP-LEVEL layers):
- *   - a CONTENT layer (image, brush, arrow, text) renders into its own
- *     buffer, its children are applied to that buffer in order (an eraser
- *     child punches only this layer, a crop child clips only this layer, an
- *     adjust child blurs/darkens only this layer, mark children paint onto
- *     it), then the buffer composites onto the canvas with the layer's
- *     opacity and blend mode;
- *   - an EFFECT layer at top level (eraser stroke, crop, adjust) applies to
- *     the accumulated composite — i.e. everything rendered below it.
+ * Pipeline (recursive; bottom → top within every list):
+ *   - a CONTENT layer (image, brush, arrow, text, fill) renders into its own
+ *     buffer; its children are applied to that buffer in order — effect
+ *     children (eraser/crop/adjust) act on the buffer, content children are
+ *     rendered (with THEIR subtrees) and composited onto it CLIPPED to the
+ *     parent's alpha, so a fill child tints only its parent and a brush child
+ *     paints only where the parent has pixels — then the buffer composites
+ *     onto the target with the layer's opacity and blend mode;
+ *   - a GROUP renders its children as a normal stack into its own buffer
+ *     (each child with its own opacity/blend, effects acting on the group's
+ *     accumulated buffer), then composites like any content layer;
+ *   - an EFFECT layer in a list applies to the accumulated composite of that
+ *     list — everything rendered below it (in the root list: the canvas so
+ *     far; inside a group: the group so far).
  */
 import type { BlendMode, ImageLayer, RasterDocument, RasterLayer, Rect } from './model';
 import { isEffectLayer } from './model';
@@ -123,6 +128,14 @@ export function drawLayer(canvas: HTMLCanvasElement, layer: RasterLayer): void {
       ctx.fillText(layer.text, layer.x, layer.y);
       break;
     }
+    case 'fill': {
+      ctx.fillStyle = layer.color;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      break;
+    }
+    case 'group':
+      // Groups never draw directly — renderLayerBuffer renders their stack.
+      break;
     case 'crop': {
       // Keep only the rect: destination-in with an opaque rect. Opacity
       // softens the crop (partial keep) — deliberate, it is a knob like any.
@@ -179,34 +192,14 @@ export function drawLayer(canvas: HTMLCanvasElement, layer: RasterLayer): void {
   ctx.restore();
 }
 
-/** Render one top-level content layer + its children into a fresh buffer. */
-export function renderLayerBuffer(doc: RasterDocument, layer: RasterLayer): HTMLCanvasElement {
-  const buf = document.createElement('canvas');
-  buf.width = Math.max(1, doc.width);
-  buf.height = Math.max(1, doc.height);
-  // The layer's own opacity/blend apply when the buffer composites, not
-  // while painting its content — so draw it at full strength here.
-  drawLayer(buf, { ...layer, opacity: 100, blend: 'normal' });
-  for (const child of layer.children) drawLayer(buf, child);
-  return buf;
-}
-
-/** Full composite of the document. */
-export function renderDocument(doc: RasterDocument, layers: RasterLayer[]): HTMLCanvasElement {
-  const out = document.createElement('canvas');
-  out.width = Math.max(1, doc.width);
-  out.height = Math.max(1, doc.height);
-  const ctx = out.getContext('2d')!;
-  if (doc.background) {
-    ctx.fillStyle = doc.background;
-    ctx.fillRect(0, 0, out.width, out.height);
-  }
+/** Composite one list of layers (bottom → top) onto a target. */
+export function renderInto(target: HTMLCanvasElement, doc: RasterDocument, layers: RasterLayer[]): void {
+  const ctx = target.getContext('2d')!;
   for (const layer of layers) {
     if (!layer.visible) continue;
     if (isEffectLayer(layer)) {
-      // Acts on everything below: apply directly to the composite. Its own
-      // children (if any) are meaningless here and ignored.
-      drawLayer(out, layer);
+      // Acts on everything below in this list.
+      drawLayer(target, layer);
       continue;
     }
     const buf = renderLayerBuffer(doc, layer);
@@ -216,5 +209,54 @@ export function renderDocument(doc: RasterDocument, layers: RasterLayer[]): HTML
     ctx.drawImage(buf, 0, 0);
     ctx.restore();
   }
+}
+
+/** Render one content layer (or group) plus its subtree into a fresh buffer. */
+export function renderLayerBuffer(doc: RasterDocument, layer: RasterLayer): HTMLCanvasElement {
+  const buf = document.createElement('canvas');
+  buf.width = Math.max(1, doc.width);
+  buf.height = Math.max(1, doc.height);
+  if (layer.kind === 'group') {
+    renderInto(buf, doc, layer.children);
+    return buf;
+  }
+  // The layer's own opacity/blend apply when the buffer composites, not
+  // while painting its content — so draw it at full strength here.
+  drawLayer(buf, { ...layer, opacity: 100, blend: 'normal' });
+  const ctx = buf.getContext('2d')!;
+  for (const child of layer.children) {
+    if (!child.visible) continue;
+    if (isEffectLayer(child)) {
+      drawLayer(buf, child);
+      continue;
+    }
+    // Content child: render its subtree, clip it to the parent's current
+    // alpha (a clipping mask), then composite with its opacity/blend.
+    const cb = renderLayerBuffer(doc, child);
+    const cctx = cb.getContext('2d')!;
+    cctx.save();
+    cctx.globalCompositeOperation = 'destination-in';
+    cctx.drawImage(buf, 0, 0);
+    cctx.restore();
+    ctx.save();
+    ctx.globalAlpha = Math.min(1, Math.max(0, child.opacity / 100));
+    ctx.globalCompositeOperation = blendOp(child.blend);
+    ctx.drawImage(cb, 0, 0);
+    ctx.restore();
+  }
+  return buf;
+}
+
+/** Full composite of the document. */
+export function renderDocument(doc: RasterDocument, layers: RasterLayer[]): HTMLCanvasElement {
+  const out = document.createElement('canvas');
+  out.width = Math.max(1, doc.width);
+  out.height = Math.max(1, doc.height);
+  if (doc.background) {
+    const ctx = out.getContext('2d')!;
+    ctx.fillStyle = doc.background;
+    ctx.fillRect(0, 0, out.width, out.height);
+  }
+  renderInto(out, doc, layers);
   return out;
 }

@@ -7,11 +7,11 @@
   import { DecodeError, decodeToCanvas, encodeCanvas, formatBytes, type TargetFormat } from '../../lib/img/convert';
   import {
     BLEND_MODES,
-    canNest,
+    canHost,
+    canNestUnder,
     clampCanvas,
     findLayer,
     flattenLayers,
-    isEffectLayer,
     layerDefaults,
     layerLabel,
     locateLayer,
@@ -19,6 +19,8 @@
     removeLayer,
     type ArrowLayer,
     type CropLayer,
+    type FillLayer,
+    type GroupLayer,
     type ImageLayer,
     type RasterDocument,
     type RasterLayer,
@@ -34,6 +36,7 @@
     normalizeRect,
     rectContains,
     rotateImageLayerCW,
+    scaleLayerTree,
     shiftLayer,
     shiftLayerTree,
   } from '../../lib/raster/transform';
@@ -119,19 +122,48 @@
   const selected = $derived(selectedId ? findLayer(layers, selectedId) : null);
   const selectedLoc = $derived(selectedId ? locateLayer(layers, selectedId) : null);
   const flat = $derived(flattenLayers(layers));
-  const imageCount = $derived(layers.filter((l) => l.kind === 'image').length);
   const embedActive = $derived(exportFormat === 'jpg' && metaMode === 'edit' && hasEditedFields(exifFields));
   /** Where a new mark goes: under the selected top-level layer, as a
    * sibling of a selected child, or top level when nothing is selected. */
-  const targetLabel = $derived(
-    !selected
-      ? 'the whole canvas (top level)'
-      : selectedLoc?.parent
-        ? `“${layerLabel(selectedLoc.parent)}” (beside the selected effect)`
-        : isEffectLayer(selected)
-          ? 'the whole canvas (top level, above the selected effect)'
-          : `“${layerLabel(selected)}” only`
-  );
+  const targetLabel = $derived.by(() => {
+    if (!selected) return 'the whole canvas (top level)';
+    if (selected.kind === 'group') return `inside the group “${layerLabel(selected)}”`;
+    if (canHost(selected)) return `“${layerLabel(selected)}” only`;
+    const parent = selectedLoc?.parent ?? null;
+    if (parent) {
+      return parent.kind === 'group'
+        ? `inside the group “${layerLabel(parent)}”`
+        : `“${layerLabel(parent)}” (beside the selected effect)`;
+    }
+    return 'the whole canvas (top level, above the selected effect)';
+  });
+
+  /** Scale handles (image layers, move tool): 8 points around the bounds. */
+  type HandleId = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w';
+  const HANDLE_IDS: HandleId[] = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
+  function handlePoint(b: Rect, h: HandleId): RasterPoint {
+    const cx = b.x + b.w / 2;
+    const cy = b.y + b.h / 2;
+    switch (h) {
+      case 'nw':
+        return { x: b.x, y: b.y };
+      case 'n':
+        return { x: cx, y: b.y };
+      case 'ne':
+        return { x: b.x + b.w, y: b.y };
+      case 'e':
+        return { x: b.x + b.w, y: cy };
+      case 'se':
+        return { x: b.x + b.w, y: b.y + b.h };
+      case 's':
+        return { x: cx, y: b.y + b.h };
+      case 'sw':
+        return { x: b.x, y: b.y + b.h };
+      case 'w':
+        return { x: b.x, y: cy };
+    }
+  }
+  const scalable = $derived(tool === 'move' && selected?.kind === 'image');
 
   $effect(() => {
     const el = displayEl;
@@ -186,6 +218,19 @@
         ctx.strokeStyle = 'rgba(255,255,255,0.9)';
         ctx.lineWidth = px;
         ctx.strokeRect(b.x, b.y, b.w, b.h);
+        if (scalable) {
+          // Scale handles: filled squares at corners + edge midpoints.
+          const hs = 5 * px;
+          ctx.setLineDash([]);
+          for (const id of HANDLE_IDS) {
+            const hp = handlePoint(b, id);
+            ctx.fillStyle = '#ffffff';
+            ctx.strokeStyle = 'rgba(0,0,0,0.85)';
+            ctx.lineWidth = px;
+            ctx.fillRect(hp.x - hs, hp.y - hs, hs * 2, hs * 2);
+            ctx.strokeRect(hp.x - hs, hp.y - hs, hs * 2, hs * 2);
+          }
+        }
         ctx.restore();
       }
     }
@@ -197,8 +242,10 @@
 
   function startBlank(e: Event) {
     e.preventDefault();
-    doc = { width: clampCanvas(blankW), height: clampCanvas(blankH), background: blankTransparent ? null : blankBg || '#ffffff' };
-    layers = [];
+    doc = { width: clampCanvas(blankW), height: clampCanvas(blankH), background: null };
+    // The background is a real (fill) layer, so it can be recolored, hidden,
+    // reordered, or deleted like anything else.
+    layers = blankTransparent ? [] : [{ ...layerDefaults('Background'), kind: 'fill', color: blankBg || '#ffffff' }];
     selectedId = null;
     sourceName = '';
     exportName = 'image';
@@ -239,7 +286,8 @@
         height: decoded.height,
         quarter: 0,
       };
-      layers.push(layer);
+      // Into the selected group if there is one, else the root list.
+      addLayer(layer);
       selectedId = layer.id;
       if (first) fitZoom();
     } catch (err) {
@@ -309,15 +357,40 @@
     const loc = selectedLoc;
     if (!loc) {
       layers.push(layer);
-    } else if (loc.parent) {
-      loc.parent.children.push(layer);
-    } else if (canNest(layer) && !isEffectLayer(loc.list[loc.index]!)) {
-      loc.list[loc.index]!.children.push(layer);
-    } else {
-      // Selected is a top-level effect (or the new layer is an image): place
-      // it just above the selection at top level.
-      layers.splice(loc.index + 1, 0, layer);
+      return;
     }
+    const sel = loc.list[loc.index]!;
+    if (canNestUnder(layer, sel)) {
+      sel.children.push(layer);
+    } else if (canNestUnder(layer, loc.parent)) {
+      // Beside the selection (just above it) in the same list.
+      loc.list.splice(loc.index + 1, 0, layer);
+    } else {
+      layers.push(layer);
+    }
+  }
+
+  function addFillLayer() {
+    const f: FillLayer = { ...layerDefaults('Color fill'), kind: 'fill', color: toolColor };
+    addLayer(f);
+    selectedId = f.id;
+  }
+
+  function addGroup() {
+    const g: GroupLayer = { ...layerDefaults('Group'), kind: 'group' };
+    addLayer(g);
+    selectedId = g.id;
+  }
+
+  /** Wrap the selected layer in a new group at its position. */
+  function wrapInGroup() {
+    const loc = selectedLoc;
+    if (!loc) return;
+    const layer = loc.list[loc.index]!;
+    const g: GroupLayer = { ...layerDefaults('Group'), kind: 'group', children: [] };
+    loc.list.splice(loc.index, 1, g);
+    g.children.push(layer);
+    selectedId = g.id;
   }
 
   function deleteLayer(id: string) {
@@ -334,20 +407,28 @@
     loc.list.splice(j, 0, l!);
   }
 
-  /** Nest under the top-level layer directly below (or promote to top level). */
+  /** Nest under the sibling directly below (keyboard path for "drop into"). */
   function nestLayer(id: string) {
     const loc = locateLayer(layers, id);
-    if (!loc || loc.parent) return;
-    const below = layers[loc.index - 1];
-    if (!below || isEffectLayer(below) || !canNest(loc.list[loc.index]!)) return;
+    if (!loc) return;
+    const below = loc.list[loc.index - 1];
+    if (!below || !canNestUnder(loc.list[loc.index]!, below)) return;
     moveLayer(layers, id, { parentId: below.id, index: below.children.length });
   }
 
+  /** Move out of the parent, landing just above it in the parent's list. */
   function unnestLayer(id: string) {
     const loc = locateLayer(layers, id);
     if (!loc?.parent) return;
-    const pi = layers.indexOf(loc.parent);
-    moveLayer(layers, id, { parentId: null, index: pi + 1 });
+    const ploc = locateLayer(layers, loc.parent.id)!;
+    moveLayer(layers, id, { parentId: ploc.parent?.id ?? null, index: ploc.index + 1 });
+  }
+
+  function canNestBelow(id: string): boolean {
+    const loc = locateLayer(layers, id);
+    if (!loc) return false;
+    const below = loc.list[loc.index - 1];
+    return !!below && canNestUnder(loc.list[loc.index]!, below);
   }
 
   function toggleVisible(layer: RasterLayer) {
@@ -367,6 +448,12 @@
   }
 
   // ---- drag/drop reordering in the tree -----------------------------------------
+  //
+  // Zones on a row: top third = drop ABOVE it, bottom third = drop BELOW it,
+  // middle = drop INTO it (nest) when the row can host the dragged layer.
+  // The strip at the end sends to the bottom of the root list.
+
+  type DropZone = 'above' | 'below' | 'into';
 
   function onDragStart(e: DragEvent, id: string) {
     dragLayerId = id;
@@ -374,41 +461,50 @@
     if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
   }
 
-  function onDragOver(e: DragEvent, hint: string) {
-    if (!dragLayerId) return;
-    e.preventDefault();
-    if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
-    dropHint = hint;
+  function zoneFor(e: DragEvent, row: RasterLayer): DropZone {
+    const el = e.currentTarget as HTMLElement;
+    const r = el.getBoundingClientRect();
+    const f = r.height > 0 ? (e.clientY - r.top) / r.height : 0.5;
+    const dragged = dragLayerId ? findLayer(layers, dragLayerId) : null;
+    const canInto = !!dragged && dragged.id !== row.id && canNestUnder(dragged, row);
+    if (canInto) return f < 0.3 ? 'above' : f > 0.7 ? 'below' : 'into';
+    return f < 0.5 ? 'above' : 'below';
   }
 
-  /** Drop BEFORE (visually above) `targetId` in its own list. */
-  function dropBefore(e: DragEvent, targetId: string) {
+  function onRowDragOver(e: DragEvent, row: RasterLayer) {
+    if (!dragLayerId || dragLayerId === row.id) return;
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+    dropHint = zoneFor(e, row) + ':' + row.id;
+  }
+
+  function onRowDrop(e: DragEvent, row: RasterLayer) {
     e.preventDefault();
     const id = dragLayerId;
+    const zone = zoneFor(e, row);
     dragLayerId = null;
     dropHint = null;
-    if (!id || id === targetId) return;
-    const target = locateLayer(layers, targetId);
-    if (!target) return;
-    // The list is rendered top-first, so "above" = a higher index.
+    if (!id || id === row.id) return;
+    if (zone === 'into') {
+      moveLayer(layers, id, { parentId: row.id, index: row.children.length });
+      return;
+    }
+    const target = locateLayer(layers, row.id);
     const dragged = locateLayer(layers, id);
-    if (!dragged) return;
-    let index = target.index + 1;
+    if (!target || !dragged) return;
+    // Lists are rendered top-first, so "above" = a higher index.
+    let index = zone === 'above' ? target.index + 1 : target.index;
     if (dragged.list === target.list && dragged.index < target.index) index -= 1;
     moveLayer(layers, id, { parentId: target.parent?.id ?? null, index });
   }
 
-  /** Drop INTO a top-level layer (as its bottom-most child). */
-  function dropInto(e: DragEvent, parentId: string) {
+  function onBottomDragOver(e: DragEvent) {
+    if (!dragLayerId) return;
     e.preventDefault();
-    const id = dragLayerId;
-    dragLayerId = null;
-    dropHint = null;
-    if (!id || id === parentId) return;
-    moveLayer(layers, id, { parentId, index: 0 });
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+    dropHint = 'bottom';
   }
 
-  /** Drop at the very bottom of the top level. */
   function dropBottom(e: DragEvent) {
     e.preventDefault();
     const id = dragLayerId;
@@ -454,10 +550,58 @@
    * screens a second finger must not hijack or interleave into the stroke. */
   let drawing: {
     pointerId: number;
-    mode: 'stroke' | 'arrow' | 'marquee' | 'move';
+    mode: 'stroke' | 'arrow' | 'marquee' | 'move' | 'scale';
     layerId?: string;
     last?: RasterPoint;
+    /** scale: which handle is held, and the layer's rect when the drag began. */
+    handle?: HandleId;
+    start?: Rect;
   } | null = null;
+
+  /** Which scale handle (if any) is under the pointer, in doc units. */
+  function handleAt(p: RasterPoint): HandleId | null {
+    if (!scalable || !selected || !displayEl) return null;
+    const b = layerBounds(selected);
+    if (!b) return null;
+    const px = Math.max(1, displayEl.width / (cssWidth || displayEl.width));
+    const tol = 8 * px;
+    for (const id of HANDLE_IDS) {
+      const hp = handlePoint(b, id);
+      if (Math.abs(p.x - hp.x) <= tol && Math.abs(p.y - hp.y) <= tol) return id;
+    }
+    return null;
+  }
+
+  /** New rect for a scale drag: corners keep the aspect ratio, edges move one axis. */
+  function scaledRect(start: Rect, handle: HandleId, p: RasterPoint): Rect {
+    let { x, y, w, h } = start;
+    const right = x + w;
+    const bottom = y + h;
+    const west = handle.includes('w');
+    const east = handle.includes('e');
+    const north = handle.includes('n');
+    const south = handle.includes('s');
+    if (west) {
+      x = Math.min(p.x, right - 1);
+      w = right - x;
+    }
+    if (east) w = Math.max(1, p.x - x);
+    if (north) {
+      y = Math.min(p.y, bottom - 1);
+      h = bottom - y;
+    }
+    if (south) h = Math.max(1, p.y - y);
+    if ((west || east) && (north || south) && start.w > 0 && start.h > 0) {
+      // Corner: keep the aspect ratio, anchored on the opposite corner.
+      const ratio = start.w / start.h;
+      const sc = Math.max(0.01, Math.max(w / start.w, h / start.h));
+      w = Math.max(1, start.w * sc);
+      h = Math.max(1, w / ratio);
+      if (west) x = right - w;
+      if (north) y = bottom - h;
+    }
+    return { x: Math.round(x), y: Math.round(y), w: Math.round(w), h: Math.round(h) };
+  }
 
   function toDoc(e: PointerEvent): RasterPoint {
     const el = displayEl!;
@@ -521,6 +665,11 @@
       marquee = { a: p, b: p };
       drawing = { pointerId, mode: 'marquee' };
     } else if (tool === 'move') {
+      const handle = handleAt(p);
+      if (handle && selected) {
+        drawing = { pointerId, mode: 'scale', layerId: selected.id, handle, start: layerBounds(selected)!, last: p };
+        return;
+      }
       const hit = hitTest(p);
       selectedId = hit?.id ?? null;
       if (hit) drawing = { pointerId, mode: 'move', layerId: hit.id, last: p };
@@ -550,8 +699,17 @@
       const dy = p.y - drawing.last!.y;
       drawing.last = p;
       const layer = loc.list[loc.index]!;
-      // A parent carries its children; a child moves alone.
-      loc.list[loc.index] = loc.parent ? shiftLayer(layer, dx, dy) : shiftLayerTree(layer, dx, dy);
+      // A host carries its subtree (its marks/effects stick to it); an effect
+      // or a mark under a host moves alone.
+      loc.list[loc.index] = loc.parent && !canHost(layer) ? shiftLayer(layer, dx, dy) : shiftLayerTree(layer, dx, dy);
+    } else if (drawing.mode === 'scale') {
+      const loc = locateLayer(layers, drawing.layerId!);
+      if (!loc || !drawing.start || !drawing.handle) return;
+      const layer = loc.list[loc.index]!;
+      const from = layerBounds(layer);
+      if (!from) return;
+      const to = scaledRect(drawing.start, drawing.handle, p);
+      loc.list[loc.index] = scaleLayerTree(layer, from, to);
     }
   }
 
@@ -873,100 +1031,99 @@
 
         <Card title="Layers">
           <div class="stack">
+            <div class="row wrap">
+              <button class="btn btn-sm" data-testid="ie-add-fill" onclick={addFillLayer}>+ Color fill</button>
+              <button class="btn btn-sm" data-testid="ie-add-group" onclick={addGroup}>+ Group</button>
+              {#if selected}
+                <button class="btn btn-sm" data-testid="ie-wrap-group" onclick={wrapInGroup}>Wrap selected in group</button>
+              {/if}
+            </div>
             {#if layers.length === 0}
-              <p class="muted small">No layers yet — add an image, draw, drop an arrow, place text, or select a region.</p>
+              <p class="muted small">No layers yet — add an image, a color fill, a group, draw, drop an arrow, place text, or select a region.</p>
             {:else}
-              <ul class="layers" data-testid="ie-layers">
+              {#snippet layerRows(list: RasterLayer[], depth: number)}
                 <!-- Top-first, children listed under (and indented from) their parent. -->
-                {#each [...layers].reverse() as layer (layer.id)}
+                {#each [...list].reverse() as layer (layer.id)}
                   <li
                     class="layer-row"
                     class:active={layer.id === selectedId}
-                    class:drop-target={dropHint === 'before:' + layer.id}
+                    class:drop-above={dropHint === 'above:' + layer.id}
+                    class:drop-below={dropHint === 'below:' + layer.id}
+                    class:drop-into={dropHint === 'into:' + layer.id}
                     class:hidden-layer={!layer.visible}
+                    class:is-group={layer.kind === 'group'}
+                    style={`margin-left: calc(${depth} * var(--space-5));`}
                     data-testid="ie-layer"
                     data-layer-id={layer.id}
+                    data-depth={depth}
                     draggable="true"
                     ondragstart={(e) => onDragStart(e, layer.id)}
-                    ondragover={(e) => onDragOver(e, 'before:' + layer.id)}
-                    ondrop={(e) => dropBefore(e, layer.id)}
+                    ondragover={(e) => onRowDragOver(e, layer)}
+                    ondrop={(e) => onRowDrop(e, layer)}
                     ondragend={onDragEnd}
                   >
-                    <button class="layer-name" data-testid="ie-layer-select" aria-pressed={layer.id === selectedId} onclick={() => (selectedId = layer.id)}>
-                      <span class="dot" style={`background:${'color' in layer ? layer.color : 'transparent'}`}></span>
-                      {layerLabel(layer)}
+                    <span class="grip" aria-hidden="true">⠿</span>
+                    <button
+                      class="layer-name"
+                      data-testid="ie-layer-select"
+                      aria-pressed={layer.id === selectedId}
+                      title={layerLabel(layer)}
+                      onclick={() => (selectedId = layer.id)}
+                    >
+                      {#if layer.kind === 'group'}
+                        <span class="kind-glyph" aria-hidden="true">▣</span>
+                      {:else if layer.kind === 'fill'}
+                        <span class="dot" style={`background:${layer.color}`}></span>
+                      {:else}
+                        <span class="dot" style={`background:${'color' in layer ? layer.color : 'transparent'}`}></span>
+                      {/if}
+                      <span class="name-text">{layerLabel(layer)}</span>
                       {#if layer.opacity < 100 || layer.blend !== 'normal'}
-                        <span class="muted small">· {layer.opacity}%{layer.blend !== 'normal' ? ' ' + layer.blend : ''}</span>
+                        <span class="muted small meta">{layer.opacity}%{layer.blend !== 'normal' ? ' ' + layer.blend : ''}</span>
                       {/if}
                     </button>
                     <span class="row layer-actions">
                       <button class="mini" title={layer.visible ? 'Hide' : 'Show'} aria-label={layer.visible ? 'Hide layer' : 'Show layer'} aria-pressed={!layer.visible} data-testid="ie-layer-vis" onclick={() => toggleVisible(layer)}>{layer.visible ? '👁' : '—'}</button>
                       <button class="mini" title="Move up" aria-label="Move layer up" data-testid="ie-layer-up" onclick={() => nudgeLayer(layer.id, 1)}>▲</button>
                       <button class="mini" title="Move down" aria-label="Move layer down" data-testid="ie-layer-down" onclick={() => nudgeLayer(layer.id, -1)}>▼</button>
-                      {#if canNest(layer)}
+                      {#if canNestBelow(layer.id)}
                         <button class="mini" title="Nest under the layer below" aria-label="Nest under the layer below" data-testid="ie-layer-nest" onclick={() => nestLayer(layer.id)}>⤵</button>
+                      {/if}
+                      {#if depth > 0}
+                        <button class="mini" title="Move out of the parent" aria-label="Move out of the parent" data-testid="ie-layer-unnest" onclick={() => unnestLayer(layer.id)}>⤴</button>
                       {/if}
                       <button class="mini" title="Delete layer" aria-label="Delete layer" data-testid="ie-layer-delete" onclick={() => deleteLayer(layer.id)}>✕</button>
                     </span>
                   </li>
-                  {#if !isEffectLayer(layer)}
-                    <!-- svelte-ignore a11y_no_static_element_interactions -->
-                    <li
-                      class="drop-into"
-                      class:visible={dragLayerId !== null && dragLayerId !== layer.id}
-                      class:drop-target={dropHint === 'into:' + layer.id}
-                      data-testid="ie-drop-into"
-                      ondragover={(e) => onDragOver(e, 'into:' + layer.id)}
-                      ondrop={(e) => dropInto(e, layer.id)}
-                    >
-                      ↳ drop here to apply only to “{layerLabel(layer)}”
+                  {#if layer.children.length > 0}
+                    {@render layerRows(layer.children, depth + 1)}
+                  {:else if layer.kind === 'group'}
+                    <li class="empty-group muted small" style={`margin-left: calc(${depth + 1} * var(--space-5));`}>
+                      (empty group — drop layers onto it)
                     </li>
                   {/if}
-                  {#each [...layer.children].reverse() as child (child.id)}
-                    <li
-                      class="layer-row child"
-                      class:active={child.id === selectedId}
-                      class:drop-target={dropHint === 'before:' + child.id}
-                      class:hidden-layer={!child.visible}
-                      data-testid="ie-layer"
-                      data-layer-id={child.id}
-                      data-parent-id={layer.id}
-                      draggable="true"
-                      ondragstart={(e) => onDragStart(e, child.id)}
-                      ondragover={(e) => onDragOver(e, 'before:' + child.id)}
-                      ondrop={(e) => dropBefore(e, child.id)}
-                      ondragend={onDragEnd}
-                    >
-                      <button class="layer-name" data-testid="ie-layer-select" aria-pressed={child.id === selectedId} onclick={() => (selectedId = child.id)}>
-                        <span class="dot" style={`background:${'color' in child ? child.color : 'transparent'}`}></span>
-                        {layerLabel(child)}
-                        {#if child.opacity < 100 || child.blend !== 'normal'}
-                          <span class="muted small">· {child.opacity}%{child.blend !== 'normal' ? ' ' + child.blend : ''}</span>
-                        {/if}
-                      </button>
-                      <span class="row layer-actions">
-                        <button class="mini" title={child.visible ? 'Hide' : 'Show'} aria-label={child.visible ? 'Hide layer' : 'Show layer'} aria-pressed={!child.visible} data-testid="ie-layer-vis" onclick={() => toggleVisible(child)}>{child.visible ? '👁' : '—'}</button>
-                        <button class="mini" title="Move up" aria-label="Move layer up" data-testid="ie-layer-up" onclick={() => nudgeLayer(child.id, 1)}>▲</button>
-                        <button class="mini" title="Move down" aria-label="Move layer down" data-testid="ie-layer-down" onclick={() => nudgeLayer(child.id, -1)}>▼</button>
-                        <button class="mini" title="Move to top level" aria-label="Move to top level" data-testid="ie-layer-unnest" onclick={() => unnestLayer(child.id)}>⤴</button>
-                        <button class="mini" title="Delete layer" aria-label="Delete layer" data-testid="ie-layer-delete" onclick={() => deleteLayer(child.id)}>✕</button>
-                      </span>
-                    </li>
-                  {/each}
                 {/each}
+              {/snippet}
+              <ul class="layers" data-testid="ie-layers">
+                {@render layerRows(layers, 0)}
                 <!-- svelte-ignore a11y_no_static_element_interactions -->
                 <li
-                  class="drop-into bottom"
+                  class="drop-bottom"
                   class:visible={dragLayerId !== null}
                   class:drop-target={dropHint === 'bottom'}
                   data-testid="ie-drop-bottom"
-                  ondragover={(e) => onDragOver(e, 'bottom')}
+                  ondragover={onBottomDragOver}
                   ondrop={dropBottom}
                 >
                   ↳ drop here to send to the bottom
                 </li>
               </ul>
-              <p class="muted small">Drag rows to reorder or nest; ⤵/⤴ nest and un-nest from the keyboard. Effects (eraser, crop, blur…) under a layer apply only to it; at top level they apply to everything below.</p>
+              <p class="muted small">
+                Drag a row: drop on the top/bottom edge of another row to place it above/below, or on its
+                middle to nest it inside (⤵/⤴ do the same from the keyboard). Effects (eraser, crop, blur…)
+                under a layer apply only to it; at top level they apply to everything below. Groups hold
+                any layers, images included.
+              </p>
               <button class="btn btn-sm" data-testid="ie-clear-layers" onclick={clearLayers}>Remove all</button>
             {/if}
           </div>
@@ -1015,6 +1172,10 @@
                   </div>
                   <button class="btn btn-sm" data-testid="ie-rotate-cw" onclick={rotateSelected}>⟳ Rotate 90°</button>
                 </div>
+                <p class="muted small">
+                  With the Move tool, drag the square handles on the canvas to scale: corners keep the aspect
+                  ratio, edges stretch one axis. Sub-layers scale with the image.
+                </p>
               {:else if selected.kind === 'text'}
                 <div class="row wrap">
                   <div>
@@ -1063,6 +1224,18 @@
                     <input id="ie-sel-asize" data-testid="ie-sel-size" class="num" type="number" min="1" max="200" bind:value={selected.size} />
                   </div>
                 </div>
+              {:else if selected.kind === 'fill'}
+                <div class="row wrap">
+                  <ColorField testid="ie-sel-color" bind:value={selected.color} ariaLabel="Fill color" fallback="#ffffff" />
+                  <p class="muted small self-end">
+                    Covers the whole canvas. Nested under a layer it tints only that layer.
+                  </p>
+                </div>
+              {:else if selected.kind === 'group'}
+                <p class="muted small">
+                  {selected.children.length} layer{selected.children.length === 1 ? '' : 's'} inside. New marks
+                  go into this group while it is selected; drop rows onto it to move them in.
+                </p>
               {:else if selected.kind === 'stroke'}
                 <div class="row wrap">
                   {#if selected.mode === 'paint'}
@@ -1269,23 +1442,25 @@
     display: flex;
     flex-direction: column;
     gap: 2px;
-    max-height: 18rem;
+    max-height: 22rem;
     overflow-y: auto;
+    /* Long file names must never widen the panel — they truncate. */
+    overflow-x: hidden;
   }
 
   .layer-row {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: var(--space-2);
+    gap: var(--space-1);
     border: 1px solid var(--border-color);
-    padding: 2px var(--space-2);
+    padding: 2px var(--space-1) 2px var(--space-2);
     cursor: grab;
+    min-width: 0;
   }
 
-  .layer-row.child {
-    margin-left: var(--space-5);
-    border-left: 3px solid var(--border-strong-color);
+  .layer-row.is-group {
+    border-style: dashed;
   }
 
   .layer-row.active {
@@ -1296,28 +1471,45 @@
     opacity: 0.5;
   }
 
-  .layer-row.drop-target {
-    box-shadow: inset 0 3px 0 var(--color-primary);
+  /* Drop-zone feedback: a line above/below, or a highlighted row for "into". */
+  .layer-row.drop-above {
+    box-shadow: 0 -3px 0 var(--color-primary);
   }
 
-  .drop-into {
+  .layer-row.drop-below {
+    box-shadow: 0 3px 0 var(--color-primary);
+  }
+
+  .layer-row.drop-into {
+    border-color: var(--color-primary);
+    background: var(--color-primary-soft);
+  }
+
+  .grip {
+    color: var(--text-muted-color);
+    flex: none;
+    font-size: var(--font-size-sm);
+    cursor: grab;
+  }
+
+  .empty-group {
+    padding: 1px var(--space-2);
+    border-left: 1px dashed var(--border-color);
+  }
+
+  .drop-bottom {
     display: none;
-    margin-left: var(--space-5);
     padding: 1px var(--space-2);
     font-size: var(--font-size-sm);
     color: var(--text-muted-color);
     border: 1px dashed var(--border-color);
   }
 
-  .drop-into.bottom {
-    margin-left: 0;
-  }
-
-  .drop-into.visible {
+  .drop-bottom.visible {
     display: block;
   }
 
-  .drop-into.drop-target {
+  .drop-bottom.drop-target {
     border-color: var(--color-primary);
     color: var(--color-primary);
   }
@@ -1331,9 +1523,28 @@
     align-items: center;
     gap: var(--space-2);
     padding: var(--space-1) 0;
-    flex: 1;
+    flex: 1 1 auto;
     text-align: left;
     min-width: 0;
+    overflow: hidden;
+  }
+
+  .name-text {
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .meta {
+    flex: none;
+    white-space: nowrap;
+  }
+
+  .kind-glyph {
+    flex: none;
+    color: var(--text-muted-color);
   }
 
   .dot {

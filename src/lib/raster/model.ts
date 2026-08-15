@@ -109,7 +109,30 @@ export interface CropLayer extends LayerCommon {
   rect: Rect;
 }
 
-export type RasterLayer = ImageLayer | StrokeLayer | ArrowLayer | TextLayer | AdjustLayer | CropLayer;
+/** A solid color over the whole canvas. At top level (or in a group) it is a
+ * backdrop — a blank canvas's background is one; nested under a content
+ * layer it tints only that layer (children are clipped to their parent). */
+export interface FillLayer extends LayerCommon {
+  kind: 'fill';
+  color: string;
+}
+
+/** A group: its children render as their own stack (each with opacity and
+ * blend), then the whole group composites with the group's opacity/blend.
+ * Groups may nest, and images may live inside them. */
+export interface GroupLayer extends LayerCommon {
+  kind: 'group';
+}
+
+export type RasterLayer =
+  | ImageLayer
+  | StrokeLayer
+  | ArrowLayer
+  | TextLayer
+  | AdjustLayer
+  | CropLayer
+  | FillLayer
+  | GroupLayer;
 export type RasterLayerKind = RasterLayer['kind'];
 
 /** Layer kinds that ACT ON a target (parent buffer / composite below)
@@ -122,9 +145,25 @@ export function isEffectLayer(layer: RasterLayer): boolean {
   );
 }
 
-/** Only non-image layers may nest (images are always top-level). */
+/** Content layers and groups can host children; effects cannot. */
+export function canHost(layer: RasterLayer): boolean {
+  return !isEffectLayer(layer);
+}
+
+/**
+ * May `child` live directly under `parent`? (null parent = root.) Images
+ * only sit at root or inside groups; everything else nests under any host.
+ */
+export function canNestUnder(child: RasterLayer, parent: RasterLayer | null): boolean {
+  if (parent === null) return true;
+  if (!canHost(parent)) return false;
+  if (child.kind === 'image') return parent.kind === 'group';
+  return true;
+}
+
+/** Can this layer be nested at all (i.e. under some host)? */
 export function canNest(layer: RasterLayer): boolean {
-  return layer.kind !== 'image';
+  return true;
 }
 
 export interface RasterDocument {
@@ -155,6 +194,10 @@ export function layerLabel(layer: RasterLayer): string {
       return layer.mode;
     case 'crop':
       return 'crop';
+    case 'fill':
+      return layer.name || 'fill';
+    case 'group':
+      return layer.name || 'group';
   }
 }
 
@@ -170,22 +213,30 @@ export function layerDefaults(name: string): LayerCommon {
   };
 }
 
-// ---- tree helpers (pure) ----------------------------------------------------
+// ---- tree helpers (pure, any depth) -----------------------------------------
 
 export interface LayerLocation {
-  /** The array the layer lives in (top-level list or a parent's children). */
+  /** The array the layer lives in (root list or a host's children). */
   list: RasterLayer[];
   index: number;
   parent: RasterLayer | null;
+  /** Nesting depth: 0 = root. */
+  depth: number;
 }
 
-/** Find a layer anywhere in the two-level tree. */
-export function locateLayer(layers: RasterLayer[], id: string): LayerLocation | null {
+/** Find a layer anywhere in the tree. */
+export function locateLayer(
+  layers: RasterLayer[],
+  id: string,
+  parent: RasterLayer | null = null,
+  depth = 0
+): LayerLocation | null {
   for (let i = 0; i < layers.length; i++) {
     const l = layers[i]!;
-    if (l.id === id) return { list: layers, index: i, parent: null };
-    for (let j = 0; j < l.children.length; j++) {
-      if (l.children[j]!.id === id) return { list: l.children, index: j, parent: l };
+    if (l.id === id) return { list: layers, index: i, parent, depth };
+    if (l.children.length > 0) {
+      const inner = locateLayer(l.children, id, l, depth + 1);
+      if (inner) return inner;
     }
   }
   return null;
@@ -196,18 +247,35 @@ export function findLayer(layers: RasterLayer[], id: string): RasterLayer | null
   return loc ? (loc.list[loc.index] ?? null) : null;
 }
 
-/** Every layer, top-first (children listed right after their parent, top-first). */
-export function flattenLayers(layers: RasterLayer[]): { layer: RasterLayer; parent: RasterLayer | null }[] {
-  const out: { layer: RasterLayer; parent: RasterLayer | null }[] = [];
+/** True when `id` is `ancestorId` itself or lives anywhere beneath it. */
+export function isWithin(layers: RasterLayer[], ancestorId: string, id: string): boolean {
+  if (ancestorId === id) return true;
+  const anc = findLayer(layers, ancestorId);
+  return anc ? findLayer(anc.children, id) !== null : false;
+}
+
+export interface FlatEntry {
+  layer: RasterLayer;
+  parent: RasterLayer | null;
+  depth: number;
+}
+
+/** Every layer, top-first, depth-first (children right under their parent). */
+export function flattenLayers(
+  layers: RasterLayer[],
+  parent: RasterLayer | null = null,
+  depth = 0
+): FlatEntry[] {
+  const out: FlatEntry[] = [];
   for (let i = layers.length - 1; i >= 0; i--) {
     const l = layers[i]!;
-    out.push({ layer: l, parent: null });
-    for (let j = l.children.length - 1; j >= 0; j--) out.push({ layer: l.children[j]!, parent: l });
+    out.push({ layer: l, parent, depth });
+    if (l.children.length > 0) out.push(...flattenLayers(l.children, l, depth + 1));
   }
   return out;
 }
 
-/** Remove a layer (and, for a top-level layer, its children) from the tree. */
+/** Remove a layer (with its whole subtree) from the tree. */
 export function removeLayer(layers: RasterLayer[], id: string): RasterLayer | null {
   const loc = locateLayer(layers, id);
   if (!loc) return null;
@@ -215,11 +283,11 @@ export function removeLayer(layers: RasterLayer[], id: string): RasterLayer | nu
 }
 
 /**
- * Move a layer to a new position. `target` names a sibling list: top level
- * (`parentId: null`) or a top-level layer's children; `index` is the insert
- * position in that list (after removal). Images refuse to nest; a top-level
- * layer being nested drops its own children (they follow it as siblings
- * would be surprising — they are promoted to top level in its place).
+ * Move a layer (with its subtree) to a new position. `target` names a
+ * sibling list — root (`parentId: null`) or a host layer's children — and
+ * `index` is the insert position in that list (after removal). Refused when
+ * the destination cannot host the layer (see canNestUnder) or lies inside
+ * the layer's own subtree.
  */
 export function moveLayer(
   layers: RasterLayer[],
@@ -229,22 +297,16 @@ export function moveLayer(
   const loc = locateLayer(layers, id);
   if (!loc) return false;
   const layer = loc.list[loc.index]!;
+  let parent: RasterLayer | null = null;
   if (target.parentId !== null) {
-    if (!canNest(layer) || target.parentId === id) return false;
-    const parent = layers.find((l) => l.id === target.parentId);
-    // Only CONTENT layers can host children — an effect layer's children
-    // would never render (see render.ts).
-    if (!parent || isEffectLayer(parent)) return false;
+    if (isWithin(layers, id, target.parentId)) return false;
+    parent = findLayer(layers, target.parentId);
+    if (!parent) return false;
   }
+  if (!canNestUnder(layer, parent)) return false;
   loc.list.splice(loc.index, 1);
-  const dest = target.parentId === null ? layers : layers.find((l) => l.id === target.parentId)!.children;
+  const dest = parent ? parent.children : layers;
   const idx = Math.max(0, Math.min(target.index, dest.length));
-  if (target.parentId !== null && layer.children.length > 0) {
-    // Promote its children to top level where the layer used to be.
-    const promoted = layer.children.splice(0);
-    const at = loc.parent === null ? loc.index : layers.indexOf(loc.parent) + 1;
-    layers.splice(at, 0, ...promoted);
-  }
   dest.splice(idx, 0, layer);
   return true;
 }

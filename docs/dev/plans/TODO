@@ -176,8 +176,19 @@ Review-round fixes (adversarial review of phases 6/7, 2026-08-14) — DONE:
     
 
 
-Suite status after phases 6+7 + cleanup + review round: 270 unit + 127
-Playwright, trust gate 5/5 — all green.
+Image editor round 2 (user request, 2026-08-15) — DONE:
+- [x] Scale tool for image layers with on-canvas handles (corners aspect-
+      locked, edges one axis; sub-layers scale along — scaleLayerTree)
+- [x] Layer file names truncate (ellipsis; list no longer scrolls sideways)
+- [x] Blank-canvas background is a fill layer ("Background")
+- [x] Color-fill layer kind (top level = backdrop; nested = tints parent
+      only — content children are clipped to their parent's alpha)
+- [x] Drag-n-drop anywhere in the tree: above/below/into zones on rows
+- [x] Group layers (any depth, hold images; wrap-selected + empty group)
+- [x] Recursive tree helpers (locate/flatten/move/remove, isWithin) + unit
+      tests; render.ts recursive (renderInto/renderLayerBuffer)
+
+Suite status: 272 unit + Playwright green (see latest run), trust gate 5/5.
 
 Next: Phase 8 (Background remover) per plan-phases.md. Notes:
 - NOTHING IS COMMITTED YET — the whole run (phases 0-2 + redesign) is one

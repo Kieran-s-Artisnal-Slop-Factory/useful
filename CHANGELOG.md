@@ -183,6 +183,20 @@
   UI states exactly which exports carry metadata. Export with a chosen file
   name as PNG or JPG (quality slider); clipboard copies are always PNG,
   labeled.
+- Image editor, round 2: the layer tree is now any depth — **group layers**
+  hold anything (images included) and composite as one with their own
+  opacity/blend, nest inside each other, and can be created empty ("+ Group")
+  or wrapped around the selected layer; **color-fill layers** paint the whole
+  canvas at top level and, nested under a layer, tint only that layer (all
+  content children are now clipped to their parent — a brush stroke on a photo
+  stays on the photo); a blank canvas's background is a real fill layer
+  ("Background") that can be recolored, hidden, or removed; **on-canvas scale
+  handles** on the selected image layer (Move tool: corners keep the aspect
+  ratio, edges stretch one axis; sub-layers scale along); **drag-and-drop
+  anywhere in the tree** — drop on a row's top/bottom edge to place above/below
+  it, on its middle to nest inside it, with a grip and above/below/into
+  highlights (⤵/⤴ remain the keyboard path, now at any depth); and long file
+  names truncate with an ellipsis instead of widening the panel.
 - SVG editor polygons: each vertex can bend the edge to the next vertex with a
   draggable bezier control ("Curve edge" on the selected point) — the layer
   renders as a closed `<path>` while any edge is curved and stays a plain
