@@ -2,6 +2,7 @@
   import type { Event as CalendarEvent, Todo } from '../../lib/db/types';
   import { describeRule } from '../../lib/scheduler/recurrence';
   import { renderMarkdown } from '../../lib/markdown';
+  import { draggable, dropzone, type DragData } from '../../lib/dragdrop';
 
   // Pure display + interaction affordances: renders the month grid from
   // props; every mutation goes back through the callbacks.
@@ -86,26 +87,13 @@
     month = today.getMonth();
   }
 
-  // ---- drag-and-drop rescheduling
+  // ---- drag-and-drop rescheduling (pointer-based: see src/lib/dragdrop.ts —
+  // the HTML5 drag API this used to use never fires on touch or pen)
   let dragOverDate: string | null = $state(null);
 
-  function onDragStart(e: DragEvent, type: 'todo' | 'event', id: string) {
-    hidePreview();
-    e.dataTransfer?.setData('application/x-useful-item', JSON.stringify({ type, id }));
-    if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
-  }
-
-  function onDrop(e: DragEvent, date: string) {
-    e.preventDefault();
+  function onDrop(data: DragData, date: string) {
     dragOverDate = null;
-    const raw = e.dataTransfer?.getData('application/x-useful-item');
-    if (!raw) return;
-    try {
-      const { type, id } = JSON.parse(raw) as { type: 'todo' | 'event'; id: string };
-      if ((type === 'todo' || type === 'event') && typeof id === 'string') ondropitem(type, id, date);
-    } catch {
-      // not our payload — ignore
-    }
+    if (data.kind === 'todo' || data.kind === 'event') ondropitem(data.kind, data.id, date);
   }
 
   // ---- wiki-style hover previews
@@ -186,14 +174,14 @@
         role="gridcell"
         data-testid="cal-cell"
         data-date={cell.date}
-        ondragover={(e) => {
-          e.preventDefault();
-          dragOverDate = cell.date;
+        use:dropzone={{
+          accepts: (d) => d.kind === 'todo' || d.kind === 'event',
+          onOver: () => (dragOverDate = cell.date),
+          onLeave: () => {
+            if (dragOverDate === cell.date) dragOverDate = null;
+          },
+          onDrop: (d) => onDrop(d, cell.date),
         }}
-        ondragleave={() => {
-          if (dragOverDate === cell.date) dragOverDate = null;
-        }}
-        ondrop={(e) => onDrop(e, cell.date)}
       >
         <button class="day" aria-label={'Add event on ' + cell.date} onclick={() => ondayclick(cell.date)}>
           {cell.day}
@@ -202,8 +190,12 @@
           <button
             class="entry event"
             data-testid="cal-event"
-            draggable="true"
-            ondragstart={(e) => onDragStart(e, 'event', ev.id)}
+            use:draggable={{
+              data: { kind: 'event', id: ev.id },
+              label: ev.title,
+              handle: '.entry',
+              onStart: hidePreview,
+            }}
             onmouseenter={(e) => showPreview(e, { kind: 'event', ev })}
             onmouseleave={hidePreview}
             onfocus={(e) => showPreview(e, { kind: 'event', ev })}
@@ -221,8 +213,12 @@
             class="entry todo"
             class:done={t.status === 'completed'}
             data-testid="cal-todo"
-            draggable="true"
-            ondragstart={(e) => onDragStart(e, 'todo', t.id)}
+            use:draggable={{
+              data: { kind: 'todo', id: t.id },
+              label: t.title,
+              handle: '.entry',
+              onStart: hidePreview,
+            }}
             onmouseenter={(e) => showPreview(e, { kind: 'todo', t })}
             onmouseleave={hidePreview}
             onfocus={(e) => showPreview(e, { kind: 'todo', t })}
@@ -327,7 +323,11 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     padding: 0 var(--space-1);
-    cursor: pointer;
+    cursor: grab;
+    /* Entries ARE the drag handle here (they are too small for a separate
+       grip), so they own the gesture on touch — the empty space in a day cell
+       still scrolls the page. */
+    touch-action: none;
   }
 
   .entry.event {

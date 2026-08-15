@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   applyMask,
+  applyPaint,
   blurMask,
   maskFromOutput,
   maskToAlphaRgba,
@@ -180,6 +181,48 @@ describe('applyMask', () => {
     const out = applyMask(image, Float32Array.from([2, -1]));
     expect(out.data[3]).toBe(255);
     expect(out.data[7]).toBe(0);
+  });
+});
+
+describe('applyPaint', () => {
+  /** An RGBA buffer whose alpha channel carries the given values. */
+  const alpha = (values: number[]): Uint8ClampedArray => {
+    const data = new Uint8ClampedArray(values.length * 4);
+    values.forEach((v, i) => (data[i * 4 + 3] = v));
+    return data;
+  };
+
+  it('returns the mask untouched when nothing was painted', () => {
+    const mask = Float32Array.from([0.2, 0.8]);
+    expect(applyPaint(mask, null, null)).toBe(mask);
+  });
+
+  it('keep strokes force a pixel to full subject', () => {
+    const out = applyPaint(Float32Array.from([0, 0.5]), alpha([255, 0]), null);
+    expect(out[0]).toBe(1);
+    expect(out[1]).toBeCloseTo(0.5, 5);
+  });
+
+  it('remove strokes cut a pixel away, even one the model kept', () => {
+    const out = applyPaint(Float32Array.from([1, 1]), null, alpha([255, 0]));
+    expect(out[0]).toBe(0);
+    expect(out[1]).toBe(1);
+  });
+
+  it('a paint layer left over from another image reads as unpainted', () => {
+    const out = applyPaint(Float32Array.from([0.5, 0.5]), alpha([255]), null);
+    expect(out[1]).toBeCloseTo(0.5, 5);
+  });
+
+  it('a remove stroke over a keep stroke wins (painting over undoes it)', () => {
+    const out = applyPaint(Float32Array.from([0]), alpha([255]), alpha([255]));
+    expect(out[0]).toBe(0);
+  });
+
+  it('soft brush edges blend rather than stepping', () => {
+    const out = applyPaint(Float32Array.from([0, 1]), alpha([128, 0]), alpha([0, 128]));
+    expect(out[0]).toBeCloseTo(128 / 255, 3);
+    expect(out[1]).toBeCloseTo(1 - 128 / 255, 3);
   });
 });
 

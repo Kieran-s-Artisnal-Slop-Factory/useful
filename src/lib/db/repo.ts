@@ -272,6 +272,31 @@ export async function putSingleton<T extends object>(
   return row;
 }
 
+/**
+ * The row a delete leaves behind: sync bookkeeping ONLY, every domain field
+ * dropped.
+ *
+ * A tombstone exists so other devices (and a restored backup) learn that the
+ * row is gone — that needs the id, the clock and the delete stamp, and nothing
+ * else. Keeping the payload means a deleted timer's label and notes are still
+ * sitting in IndexedDB, and still land in every backup file the user exports;
+ * "delete" has to actually delete the content.
+ *
+ * The vanished fields are stamped as changed on field-merged stores, so a
+ * later per-field fold cannot quietly reinstate an older copy's values around
+ * the tombstone.
+ */
+function tombstone<T extends SyncFields>(store: StoreName, row: T, at: string): SyncFields {
+  const cleared: SyncFields = {
+    id: row.id,
+    updated_at: at,
+    deleted_at: at,
+    server_seq: row.server_seq ?? null,
+  };
+  if (row.field_updated_at) cleared.field_updated_at = { ...row.field_updated_at };
+  return stampFields(store, cleared, [...domainKeys(row), 'deleted_at'], at);
+}
+
 export async function softDelete(store: StoreName, id: string): Promise<void> {
   const db = await getDB();
   const at = nowIso();
@@ -281,9 +306,7 @@ export async function softDelete(store: StoreName, id: string): Promise<void> {
     await tx.done;
     return;
   }
-  tx.objectStore(store).put(
-    stampFields(store, { ...row, deleted_at: at, updated_at: at }, ['deleted_at'], at)
-  );
+  tx.objectStore(store).put(tombstone(store, row, at));
   enqueueIn(tx, store, id, at);
   await tx.done;
 }
@@ -295,9 +318,7 @@ export async function softDeleteMany(store: StoreName, ids: string[]): Promise<v
   for (const id of ids) {
     const row = (await tx.objectStore(store).get(id)) as SyncFields | undefined;
     if (row && !row.deleted_at) {
-      tx.objectStore(store).put(
-        stampFields(store, { ...row, deleted_at: at, updated_at: at }, ['deleted_at'], at)
-      );
+      tx.objectStore(store).put(tombstone(store, row, at));
       enqueueIn(tx, store, id, at);
     }
   }

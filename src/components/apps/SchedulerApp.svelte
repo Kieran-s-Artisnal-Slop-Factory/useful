@@ -21,6 +21,7 @@
     TodoPriority,
     TodoStatus,
   } from '../../lib/db/types';
+  import { draggable, dropzone, type DragData } from '../../lib/dragdrop';
   import { describeRule, nextDueDate } from '../../lib/scheduler/recurrence';
   import { rankAfter, rankBetween } from '../../lib/scheduler/rank';
   import { renderMarkdown } from '../../lib/markdown';
@@ -383,16 +384,14 @@
   // runs the same complete path as the buttons, so recurrence still spawns)
   let boardDropCol: TodoStatus | null = $state(null);
 
-  function onCardDragStart(e: DragEvent, t: Todo) {
-    e.dataTransfer?.setData('application/x-useful-todo', t.id);
-    if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
+  /** The todo a drag is carrying, if it is still around. */
+  function draggedTodo(data: DragData): Todo | undefined {
+    return data.kind === 'todo' ? todos.find((x) => x.id === data.id) : undefined;
   }
 
-  async function dropOnColumn(e: DragEvent, status: TodoStatus) {
-    e.preventDefault();
+  async function dropOnColumn(data: DragData, status: TodoStatus) {
     boardDropCol = null;
-    const id = e.dataTransfer?.getData('application/x-useful-todo');
-    const t = id ? todos.find((x) => x.id === id) : undefined;
+    const t = draggedTodo(data);
     if (!t) return;
     if (t.status !== status) {
       await setStatus(t, status);
@@ -405,12 +404,9 @@
     await refresh();
   }
 
-  async function dropOnCard(e: DragEvent, target: Todo) {
-    e.preventDefault();
-    e.stopPropagation();
+  async function dropOnCard(data: DragData, target: Todo) {
     boardDropCol = null;
-    const id = e.dataTransfer?.getData('application/x-useful-todo');
-    const t = id ? todos.find((x) => x.id === id) : undefined;
+    const t = draggedTodo(data);
     if (!t || t.id === target.id) return;
     if (t.status !== target.status) {
       await setStatus(t, target.status); // cross-column drops append
@@ -470,13 +466,10 @@
   let listDropId: string | null = $state(null);
   let listDropEnd = $state(false);
 
-  async function dropOnRow(e: DragEvent, target: Todo) {
-    e.preventDefault();
-    e.stopPropagation();
+  async function dropOnRow(data: DragData, target: Todo) {
     listDropId = null;
     listDropEnd = false;
-    const id = e.dataTransfer?.getData('application/x-useful-todo');
-    const t = id ? todos.find((x) => x.id === id) : undefined;
+    const t = draggedTodo(data);
     if (!t || t.id === target.id) return;
     const seq = listTodos;
     if (seq.findIndex((x) => x.id === t.id) === seq.findIndex((x) => x.id === target.id) - 1) {
@@ -495,12 +488,10 @@
     await refresh();
   }
 
-  async function dropAtListEnd(e: DragEvent) {
-    e.preventDefault();
+  async function dropAtListEnd(data: DragData) {
     listDropId = null;
     listDropEnd = false;
-    const id = e.dataTransfer?.getData('application/x-useful-todo');
-    const t = id ? todos.find((x) => x.id === id) : undefined;
+    const t = draggedTodo(data);
     if (!t) return;
     if (listTodos[listTodos.length - 1]?.id === t.id) return; // already last
     const last = listTodos.filter((x) => x.id !== t.id).at(-1);
@@ -795,12 +786,15 @@
     <div
       class="table-wrap"
       class:drop-end={listDropEnd}
-      ondragover={(e) => {
-        e.preventDefault();
-        listDropEnd = true;
+      use:dropzone={{
+        accepts: (d) => d.kind === 'todo',
+        onOver: () => {
+          listDropEnd = true;
+          listDropId = null;
+        },
+        onLeave: () => (listDropEnd = false),
+        onDrop: (d) => void dropAtListEnd(d),
       }}
-      ondragleave={() => (listDropEnd = false)}
-      ondrop={(e) => void dropAtListEnd(e)}
     >
       <table class="data-table">
         <thead>
@@ -813,20 +807,20 @@
               data-todo-id={t.id}
               class:done={t.status === 'completed'}
               class:drop-above={listDropId === t.id}
-              draggable="true"
-              ondragstart={(e) => onCardDragStart(e, t)}
-              ondragover={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                listDropEnd = false;
-                listDropId = t.id;
+              use:draggable={{ data: { kind: 'todo', id: t.id }, label: t.title, handle: '.drag-handle' }}
+              use:dropzone={{
+                accepts: (d) => d.kind === 'todo',
+                onOver: () => {
+                  listDropEnd = false;
+                  listDropId = t.id;
+                },
+                onLeave: () => {
+                  if (listDropId === t.id) listDropId = null;
+                },
+                onDrop: (d) => void dropOnRow(d, t),
               }}
-              ondragleave={() => {
-                if (listDropId === t.id) listDropId = null;
-              }}
-              ondrop={(e) => void dropOnRow(e, t)}
             >
-              <td class="drag-handle" aria-hidden="true">⠿</td>
+              <td class="drag-handle" title="Drag to reorder">⠿</td>
               <td>
                 <select
                   class="status-select"
@@ -869,14 +863,14 @@
         class:dropping={boardDropCol === s.key}
         aria-label={s.label}
         data-testid={'board-col-' + s.key}
-        ondragover={(e) => {
-          e.preventDefault();
-          boardDropCol = s.key;
+        use:dropzone={{
+          accepts: (d) => d.kind === 'todo',
+          onOver: () => (boardDropCol = s.key),
+          onLeave: () => {
+            if (boardDropCol === s.key) boardDropCol = null;
+          },
+          onDrop: (d) => void dropOnColumn(d, s.key),
         }}
-        ondragleave={() => {
-          if (boardDropCol === s.key) boardDropCol = null;
-        }}
-        ondrop={(e) => void dropOnColumn(e, s.key)}
       >
         <h2>{s.label} <span class="muted">{column(s.key).length}</span></h2>
         {#each column(s.key) as t, i (t.id)}
@@ -885,14 +879,18 @@
             data-testid="board-card"
             data-todo-id={t.id}
             role="listitem"
-            draggable="true"
-            ondragstart={(e) => onCardDragStart(e, t)}
-            ondragover={(e) => e.preventDefault()}
-            ondrop={(e) => void dropOnCard(e, t)}
+            use:draggable={{ data: { kind: 'todo', id: t.id }, label: t.title, handle: '.card-grip' }}
+            use:dropzone={{
+              accepts: (d) => d.kind === 'todo',
+              onDrop: (d) => void dropOnCard(d, t),
+            }}
           >
-            <button class="linklike card-title" data-testid="board-card-title" onclick={() => openTodoRead(t)}>
-              {t.title}
-            </button>
+            <div class="card-head">
+              <span class="card-grip" title="Drag to move">⠿</span>
+              <button class="linklike card-title" data-testid="board-card-title" onclick={() => openTodoRead(t)}>
+                {t.title}
+              </button>
+            </div>
             <p class="muted small">
               {t.due_date ?? ''}{t.due_time ? ' ' + t.due_time : ''}
               <span class="prio prio-{t.priority}">{t.priority}</span>
@@ -1035,9 +1033,13 @@
     color: var(--text-muted-color);
     cursor: grab;
     user-select: none;
+    /* The handle owns the gesture on a touchscreen: without this the browser
+       pans the page instead of letting the drag start. Everywhere else on the
+       row keeps scrolling normally. */
+    touch-action: none;
   }
 
-  tbody tr[draggable='true'] {
+  tbody tr {
     cursor: grab;
   }
 
@@ -1149,10 +1151,23 @@
     cursor: grab;
   }
 
+  .card-head {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-2);
+    margin-bottom: var(--space-1);
+  }
+
+  .card-grip {
+    color: var(--text-muted-color);
+    cursor: grab;
+    user-select: none;
+    touch-action: none; /* see .drag-handle */
+  }
+
   .card-title {
     font-weight: 700;
     overflow-wrap: anywhere;
     display: block;
-    margin-bottom: var(--space-1);
   }
 </style>

@@ -5,6 +5,7 @@
   import Explainer from '../Explainer.svelte';
   import { copyPng, downloadBlob } from '../../lib/exportFile';
   import { href } from '../../lib/paths';
+  import { draggable, dropzone, type DragData } from '../../lib/dragdrop';
   import { DecodeError, decodeToCanvas, encodeCanvas, formatBytes, type TargetFormat } from '../../lib/img/convert';
   import {
     BLEND_MODES,
@@ -44,6 +45,17 @@
   } from '../../lib/raster/transform';
   import { renderBase, renderDocument } from '../../lib/raster/render';
   import {
+    canRedo,
+    canUndo,
+    cloneLayers,
+    createHistory,
+    push as pushHistory,
+    redo as redoHistory,
+    touchDeep,
+    undo as undoHistory,
+    type RasterHistory,
+  } from '../../lib/raster/history';
+  import {
     hasEditedFields,
     encodeJpegWithExif,
     summarizeExif,
@@ -56,13 +68,24 @@
   // imports, no writes, nothing persisted. Leaving the page discards the
   // session; the data-integrity suite pins that at zero writes.
 
-  type Tool = 'move' | 'crop' | 'brush' | 'eraser' | 'arrow' | 'text' | 'darken' | 'lighten' | 'blur';
+  type Tool =
+    | 'move'
+    | 'crop'
+    | 'brush'
+    | 'eraser'
+    | 'restore'
+    | 'arrow'
+    | 'text'
+    | 'darken'
+    | 'lighten'
+    | 'blur';
 
   const TOOLS: { id: Tool; label: string }[] = [
     { id: 'move', label: 'Move' },
     { id: 'crop', label: 'Crop' },
     { id: 'brush', label: 'Brush' },
     { id: 'eraser', label: 'Eraser' },
+    { id: 'restore', label: 'Restore' },
     { id: 'arrow', label: 'Arrow' },
     { id: 'text', label: 'Text' },
     { id: 'darken', label: 'Darken' },
@@ -108,6 +131,69 @@
   let cssWidth = $state(0);
   /** Canvas-resize form (applied on submit, not per keystroke). */
   let canvasForm = $state({ w: 0, h: 0 });
+
+  // ---- undo / redo ----
+  /**
+   * One history entry per pause in the editing, not per mutation: the effect
+   * below subscribes to the whole document (cheaply — touchDeep only reads)
+   * and a short debounce collapses a brush stroke, a slider drag or a burst of
+   * typing into a single step. Snapshots share the decoded bitmaps, so a step
+   * costs geometry, not pixels.
+   */
+  let history = $state<RasterHistory>(createHistory({ doc: null, layers: [] }));
+  let historyTimer: ReturnType<typeof setTimeout> | undefined;
+  let lastStructure = '';
+  const HISTORY_DEBOUNCE_MS = 400;
+
+  /** Cheap shape-only key: which layers exist, and under whom. */
+  function structureKey(): string {
+    return (
+      `${doc?.width ?? 0}x${doc?.height ?? 0}|` +
+      flattenLayers(layers)
+        .map((e) => e.layer.id + '>' + (e.parent?.id ?? ''))
+        .join(',')
+    );
+  }
+
+  $effect(() => {
+    touchDeep(doc);
+    touchDeep(layers);
+    const key = structureKey();
+    const structural = key !== lastStructure;
+    lastStructure = key;
+    clearTimeout(historyTimer);
+    // Discrete actions (add, delete, reorder, resize the canvas) get their own
+    // step immediately — waiting would fold two quick clicks into one undo.
+    // DURING a canvas gesture the structure changes too (a stroke layer is
+    // created on pointerdown), and there the debounce is the point: one stroke
+    // is one step, not one for the empty layer plus one for its points.
+    if (structural && !drawing) {
+      history = pushHistory(history, { doc, layers });
+      return;
+    }
+    historyTimer = setTimeout(() => {
+      // Signature-equal states (including one an undo just restored) are
+      // coalesced by push(), so this is safe to call unconditionally.
+      history = pushHistory(history, { doc, layers });
+    }, HISTORY_DEBOUNCE_MS);
+  });
+
+  function applyHistory(next: RasterHistory) {
+    if (next === history) return;
+    clearTimeout(historyTimer);
+    history = next;
+    doc = next.present.doc ? { ...next.present.doc } : null;
+    layers = cloneLayers(next.present.layers);
+    lastStructure = structureKey();
+    // The selection may have been a layer that no longer exists.
+    if (selectedId && !findLayer(layers, selectedId)) selectedId = null;
+    pendingCrop = null;
+    marquee = null;
+    if (doc) canvasForm = { w: doc.width, h: doc.height };
+  }
+
+  const undo = () => applyHistory(undoHistory(history));
+  const redo = () => applyHistory(redoHistory(history));
 
   // ---- layer drag/drop (tree) ----
   let dragLayerId = $state<string | null>(null);
@@ -242,7 +328,31 @@
     }
   });
 
-  onMount(() => () => clearTimeout(feedbackTimer));
+  onMount(() => {
+    // Registered here (not on an element) so the shortcuts work wherever the
+    // focus is, except inside a field where ctrl+z means "undo my typing".
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey)) return;
+      // The event target is only an element when something is focused; when
+      // nothing is, it is the body (or the window for a synthetic event).
+      const target = e.target instanceof HTMLElement ? e.target : null;
+      if (target?.closest('input, textarea, select, [contenteditable="true"]')) return;
+      const key = e.key.toLowerCase();
+      if (key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        undo();
+      } else if (key === 'y' || (key === 'z' && e.shiftKey)) {
+        e.preventDefault();
+        redo();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      clearTimeout(feedbackTimer);
+      clearTimeout(historyTimer);
+    };
+  });
 
   // ---- start / import ---------------------------------------------------------
 
@@ -510,33 +620,30 @@
 
   type DropZone = 'above' | 'below' | 'into';
 
-  function onDragStart(e: DragEvent, id: string) {
-    dragLayerId = id;
-    e.dataTransfer?.setData('text/plain', id);
-    if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
-  }
-
-  function zoneFor(e: DragEvent, row: RasterLayer): DropZone {
-    const el = e.currentTarget as HTMLElement;
-    const r = el.getBoundingClientRect();
-    const f = r.height > 0 ? (e.clientY - r.top) / r.height : 0.5;
-    const dragged = dragLayerId ? findLayer(layers, dragLayerId) : null;
+  /**
+   * Which third of the row the pointer is in. `event.currentTarget` is not
+   * available here (the drop engine, not the DOM, routes these), so the row
+   * element is looked up by id.
+   */
+  function zoneFor(event: PointerEvent, row: RasterLayer, draggedId: string): DropZone {
+    const el = document.querySelector(`[data-layer-id="${row.id}"]`);
+    const r = el?.getBoundingClientRect();
+    const f = r && r.height > 0 ? (event.clientY - r.top) / r.height : 0.5;
+    const dragged = findLayer(layers, draggedId);
     const canInto = !!dragged && dragged.id !== row.id && canNestUnder(dragged, row);
     if (canInto) return f < 0.3 ? 'above' : f > 0.7 ? 'below' : 'into';
     return f < 0.5 ? 'above' : 'below';
   }
 
-  function onRowDragOver(e: DragEvent, row: RasterLayer) {
-    if (!dragLayerId || dragLayerId === row.id) return;
-    e.preventDefault();
-    if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
-    dropHint = zoneFor(e, row) + ':' + row.id;
+  function onRowDragOver(event: PointerEvent, data: DragData, row: RasterLayer) {
+    if (data.id === row.id) return;
+    dragLayerId = data.id;
+    dropHint = zoneFor(event, row, data.id) + ':' + row.id;
   }
 
-  function onRowDrop(e: DragEvent, row: RasterLayer) {
-    e.preventDefault();
-    const id = dragLayerId;
-    const zone = zoneFor(e, row);
+  function onRowDrop(event: PointerEvent, data: DragData, row: RasterLayer) {
+    const id = data.id;
+    const zone = zoneFor(event, row, id);
     dragLayerId = null;
     dropHint = null;
     if (!id || id === row.id) return;
@@ -553,20 +660,10 @@
     moveLayer(layers, id, { parentId: target.parent?.id ?? null, index });
   }
 
-  function onBottomDragOver(e: DragEvent) {
-    if (!dragLayerId) return;
-    e.preventDefault();
-    if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
-    dropHint = 'bottom';
-  }
-
-  function dropBottom(e: DragEvent) {
-    e.preventDefault();
-    const id = dragLayerId;
+  function dropBottom(data: DragData) {
     dragLayerId = null;
     dropHint = null;
-    if (!id) return;
-    moveLayer(layers, id, { parentId: null, index: 0 });
+    moveLayer(layers, data.id, { parentId: null, index: 0 });
   }
 
   function onDragEnd() {
@@ -687,11 +784,11 @@
     } catch {
       /* uncapturable pointer — drag still works while over the canvas */
     }
-    if (tool === 'brush' || tool === 'eraser') {
+    if (tool === 'brush' || tool === 'eraser' || tool === 'restore') {
       const stroke: StrokeLayer = {
         ...layerDefaults(tool),
         kind: 'stroke',
-        mode: tool === 'eraser' ? 'erase' : 'paint',
+        mode: tool === 'eraser' ? 'erase' : tool === 'restore' ? 'restore' : 'paint',
         color: toolColor,
         size: toolSize,
         points: [p],
@@ -900,6 +997,26 @@
                 {doc.width} × {doc.height}px · {Math.round(zoom * 100)}%
               </span>
               <span class="row">
+                <button
+                  class="btn btn-sm"
+                  data-testid="ie-undo"
+                  aria-label="Undo"
+                  title="Undo (ctrl+z)"
+                  disabled={!canUndo(history)}
+                  onclick={undo}
+                >
+                  ↶
+                </button>
+                <button
+                  class="btn btn-sm"
+                  data-testid="ie-redo"
+                  aria-label="Redo"
+                  title="Redo (ctrl+y)"
+                  disabled={!canRedo(history)}
+                  onclick={redo}
+                >
+                  ↷
+                </button>
                 <button class="btn btn-sm" data-testid="ie-zoom-out" aria-label="Zoom out" onclick={() => zoomBy(1 / 1.25)}>−</button>
                 <button class="btn btn-sm" data-testid="ie-zoom-in" aria-label="Zoom in" onclick={() => zoomBy(1.25)}>+</button>
                 <button class="btn btn-sm" data-testid="ie-zoom-fit" onclick={fitZoom}>Fit</button>
@@ -1044,6 +1161,18 @@
                 </div>
                 <p class="muted small self-end">Under a layer it erases just that layer; at top level it erases everything below.</p>
               </div>
+            {:else if tool === 'restore'}
+              <div class="row">
+                <div>
+                  <label for="ie-size-r">Size</label>
+                  <input id="ie-size-r" data-testid="ie-size" class="num" type="number" min="1" max="200" bind:value={toolSize} />
+                </div>
+                <p class="muted small self-end">
+                  Un-erase: paints back the original pixels wherever you brush, so it undoes part of an
+                  eraser stroke or part of a removed background. It has to sit ABOVE the eraser or mask
+                  it is reversing — a fresh stroke does, and you can drag it in the layer list.
+                </p>
+              </div>
             {:else if tool === 'darken' || tool === 'lighten' || tool === 'blur'}
               <div class="grow">
                 <label for="ie-amount">Strength ({adjustAmount})</label>
@@ -1111,13 +1240,23 @@
                     data-testid="ie-layer"
                     data-layer-id={layer.id}
                     data-depth={depth}
-                    draggable="true"
-                    ondragstart={(e) => onDragStart(e, layer.id)}
-                    ondragover={(e) => onRowDragOver(e, layer)}
-                    ondrop={(e) => onRowDrop(e, layer)}
-                    ondragend={onDragEnd}
+                    use:draggable={{
+                      data: { kind: 'layer', id: layer.id },
+                      label: layerLabel(layer),
+                      handle: '.grip',
+                      onStart: (d) => (dragLayerId = d.id),
+                      onEnd: onDragEnd,
+                    }}
+                    use:dropzone={{
+                      accepts: (d) => d.kind === 'layer',
+                      onOver: (d, e) => onRowDragOver(e, d, layer),
+                      onLeave: () => {
+                        if (dropHint?.endsWith(':' + layer.id)) dropHint = null;
+                      },
+                      onDrop: (d, e) => onRowDrop(e, d, layer),
+                    }}
                   >
-                    <span class="grip" aria-hidden="true">⠿</span>
+                    <span class="grip" title="Drag to reorder">⠿</span>
                     <button
                       class="layer-name"
                       data-testid="ie-layer-select"
@@ -1167,8 +1306,14 @@
                   class:visible={dragLayerId !== null}
                   class:drop-target={dropHint === 'bottom'}
                   data-testid="ie-drop-bottom"
-                  ondragover={onBottomDragOver}
-                  ondrop={dropBottom}
+                  use:dropzone={{
+                    accepts: (d) => d.kind === 'layer',
+                    onOver: () => (dropHint = 'bottom'),
+                    onLeave: () => {
+                      if (dropHint === 'bottom') dropHint = null;
+                    },
+                    onDrop: dropBottom,
+                  }}
                 >
                   ↳ drop here to send to the bottom
                 </li>
@@ -1568,6 +1713,10 @@
   }
 
   .grip {
+    /* The handle owns the touch gesture, so a finger can drag a layer while
+       the rest of the list still scrolls. */
+    touch-action: none;
+    cursor: grab;
     color: var(--text-muted-color);
     flex: none;
     font-size: var(--font-size-sm);

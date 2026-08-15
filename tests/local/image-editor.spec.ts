@@ -598,4 +598,94 @@ test.describe('image editor', () => {
     // Still session-only: the model runs entirely outside the data layer.
     expect(await app.dumpAll()).toEqual(before);
   });
+  test('undo and redo step through the session, by button and by keyboard', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/image-editor/');
+    const before = await app.dumpAll();
+    await importImage(app, 'base.png', 'image/png', await makeImage(page, 'image/png', 60, 40));
+    await expect(page.getByTestId('ie-undo')).toBeEnabled();
+
+    // Two more layers, each its own step (the history debounce coalesces a
+    // gesture, not separate actions).
+    await page.getByTestId('ie-add-fill').click();
+    await expect(layerRows(page)).toHaveCount(2);
+    await page.getByTestId('ie-add-group').click();
+    await expect(layerRows(page)).toHaveCount(3);
+
+    await page.getByTestId('ie-undo').click();
+    await expect(layerRows(page)).toHaveCount(2);
+    await page.getByTestId('ie-undo').click();
+    await expect(layerRows(page)).toHaveCount(1);
+    await page.getByTestId('ie-redo').click();
+    await expect(layerRows(page)).toHaveCount(2);
+
+    // Keyboard: ctrl+z / ctrl+y do the same.
+    await page.keyboard.press('Control+z');
+    await expect(layerRows(page)).toHaveCount(1);
+    await page.keyboard.press('Control+y');
+    await expect(layerRows(page)).toHaveCount(2);
+
+    // A new edit after an undo drops the redo branch.
+    await page.keyboard.press('Control+z');
+    await expect(layerRows(page)).toHaveCount(1);
+    await page.getByTestId('ie-add-group').click();
+    await expect(layerRows(page)).toHaveCount(2);
+    await expect(page.getByTestId('ie-redo')).toBeDisabled();
+
+    expect(await app.dumpAll()).toEqual(before);
+  });
+
+  test('the restore brush un-erases: part of an eraser stroke, and part of a removed background', async ({ app }) => {
+    test.slow(); // the second half runs the segmentation model
+    const { page } = app;
+    await app.goto('/tools/image-editor/');
+    const before = await app.dumpAll();
+    await importImage(app, 'base.png', 'image/png', await makeImage(page, 'image/png', 60, 40, '#0000ff'));
+
+    // Erase a band across the middle, then paint half of it back.
+    await page.getByTestId('ie-tool-eraser').click();
+    await page.getByTestId('ie-size').fill('16');
+    await dragOnCanvas(page, [0.1, 0.5], [0.9, 0.5]);
+    let png = await downloadBytes(page, () => page.getByTestId('ie-download').click());
+    expect((await probePixels(page, png.bytes, [[15, 20]]))[0]![3]).toBe(0);
+
+    await page.getByTestId('ie-tool-restore').click();
+    await page.getByTestId('ie-size').fill('16');
+    await dragOnCanvas(page, [0.1, 0.5], [0.4, 0.5]);
+    await expect(rowNamed(page, 'restore')).toBeVisible();
+    png = await downloadBytes(page, () => page.getByTestId('ie-download').click());
+    const [restored, stillErased] = await probePixels(page, png.bytes, [
+      [15, 20],
+      [50, 20],
+    ]);
+    expect(restored!.slice(0, 4)).toEqual([0, 0, 255, 255]); // painted back
+    expect(stillErased![3]).toBe(0); // the rest of the stroke stands
+
+    // Same brush over a background-removal mask: the model cut the corners,
+    // the brush brings one back.
+    // The handler has to be in place BEFORE the click: "start over" confirms,
+    // and Playwright dismisses an unhandled dialog, which would silently keep
+    // the old session and leave the rest of this test testing nothing.
+    page.once('dialog', (d) => void d.accept());
+    await page.getByTestId('ie-new').click();
+    await expect(page.getByTestId('ie-file')).toBeVisible();
+    await importImage(app, 'subject.png', 'image/png', await makeSubject(page, 200, 150));
+    await page.getByTestId('ie-remove-bg').click();
+    await expect(rowNamed(page, 'Background removed')).toBeVisible({ timeout: 120_000 });
+    png = await downloadBytes(page, () => page.getByTestId('ie-download').click());
+    expect((await probePixels(page, png.bytes, [[8, 8]]))[0]![3]).toBe(0);
+
+    await page.getByTestId('ie-tool-restore').click();
+    await page.getByTestId('ie-size').fill('40');
+    await dragOnCanvas(page, [0.04, 0.05], [0.1, 0.12]);
+    png = await downloadBytes(page, () => page.getByTestId('ie-download').click());
+    const [corner, farCorner] = await probePixels(page, png.bytes, [
+      [10, 10],
+      [190, 140],
+    ]);
+    expect(corner![3]).toBe(255); // background painted back here
+    expect(farCorner![3]).toBe(0); // and still gone everywhere else
+
+    expect(await app.dumpAll()).toEqual(before);
+  });
 });

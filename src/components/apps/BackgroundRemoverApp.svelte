@@ -14,7 +14,7 @@
     type TargetFormat,
   } from '../../lib/img/convert';
   import { applyMaskToCanvas, computeMask, maskToCanvas, parseHexColor } from '../../lib/bg/canvas';
-  import { refineMask } from '../../lib/bg/pipeline';
+  import { applyPaint, refineMask } from '../../lib/bg/pipeline';
   import {
     assetsReady,
     BG_TOTAL_BYTES,
@@ -44,6 +44,22 @@
   let bgColor = $state('#ffffff');
   let showMask = $state(false);
 
+  /**
+   * Touch-up brushes. The model is right about most of a picture and wrong
+   * about one strap or one bright patch of wall, and no slider fixes a
+   * specific spot — so the mask can be painted directly. The strokes live in
+   * two bitmaps of their own rather than being burnt into the mask, so the
+   * cutoff and feather knobs (and re-running the model) keep working
+   * underneath them.
+   */
+  let brush = $state<'off' | 'keep' | 'remove'>('off');
+  let brushSize = $state(40);
+  let paintKeep: HTMLCanvasElement | null = null;
+  let paintRemove: HTMLCanvasElement | null = null;
+  /** Bumped on every stroke segment — what the derived mask watches. */
+  let paintVersion = $state(0);
+  let painting: { pointerId: number; x: number; y: number } | null = null;
+
   let format = $state<TargetFormat>('png');
   let quality = $state(90);
 
@@ -70,6 +86,7 @@
     if (!f) return;
     file = f;
     mask = null;
+    clearPaint();
     runError = null;
     elapsedMs = null;
     decodeErr = null;
@@ -133,33 +150,144 @@
 
   let background = $derived(bgMode === 'color' ? parseHexColor(bgColor) : null);
 
+  function paintLayer(which: 'keep' | 'remove'): HTMLCanvasElement | null {
+    const src = decoded;
+    if (!src) return null;
+    const existing = which === 'keep' ? paintKeep : paintRemove;
+    if (existing && existing.width === src.width && existing.height === src.height) return existing;
+    const canvas = document.createElement('canvas');
+    canvas.width = src.width;
+    canvas.height = src.height;
+    if (which === 'keep') paintKeep = canvas;
+    else paintRemove = canvas;
+    return canvas;
+  }
+
+  function clearPaint() {
+    paintKeep = null;
+    paintRemove = null;
+    paintVersion++;
+  }
+
+  /** Anything brushed yet? (Reads paintVersion so it tracks the strokes —
+   * the paint canvases themselves are plain objects, not reactive state.) */
+  let painted = $derived.by(() => {
+    paintVersion;
+    return paintKeep !== null || paintRemove !== null;
+  });
+
+  /** Alpha bitmaps of the two brushes, re-read only when a stroke lands. */
+  let paintData = $derived.by(() => {
+    paintVersion; // dependency: the canvases themselves are not reactive
+    const read = (canvas: HTMLCanvasElement | null) =>
+      canvas
+        ? canvas
+            .getContext('2d', { willReadFrequently: true })!
+            .getImageData(0, 0, canvas.width, canvas.height).data
+        : null;
+    return { keep: read(paintKeep), remove: read(paintRemove) };
+  });
+
+  /**
+   * The mask everything downstream uses: the model's, cleaned up by the
+   * knobs, with the brushes applied LAST so a deliberate stroke always beats
+   * the sliders.
+   */
+  let finalMask = $derived.by(() => {
+    const src = decoded;
+    const m = mask;
+    if (!src || !m) return null;
+    return applyPaint(
+      refineMask(m, src.width, src.height, { cutoff, feather }),
+      paintData.keep,
+      paintData.remove
+    );
+  });
+
   /** The finished cut-out. Rebuilt whenever the mask or a knob changes —
    * cheap enough to be live, and never encoded until an export is asked for. */
   let output = $derived.by(() => {
     const src = decoded;
-    const m = mask;
+    const m = finalMask;
     if (!src || !m) return null;
-    if (showMask) {
-      return maskToCanvas(
-        refineMask(m, src.width, src.height, { cutoff, feather }),
-        src.width,
-        src.height,
-        'grey'
-      );
-    }
-    return applyMaskToCanvas(src.canvas, m, { cutoff, feather }, background);
+    if (showMask) return maskToCanvas(m, src.width, src.height, 'grey');
+    return applyMaskToCanvas(src.canvas, m, {}, background);
   });
 
   /** How much of the picture the mask keeps — the honest one-number summary. */
   let kept = $derived.by(() => {
-    const src = decoded;
-    const m = mask;
-    if (!src || !m) return null;
-    const refined = refineMask(m, src.width, src.height, { cutoff, feather });
+    const m = finalMask;
+    if (!m) return null;
     let sum = 0;
-    for (let i = 0; i < refined.length; i++) sum += refined[i]!;
-    return Math.round((sum / refined.length) * 100);
+    for (let i = 0; i < m.length; i++) sum += m[i]!;
+    return Math.round((sum / m.length) * 100);
   });
+
+  // ---- touch-up brush ----------------------------------------------------
+
+  /** Preview pixel → image pixel (the canvas is displayed scaled to fit). */
+  function toImagePoint(e: PointerEvent): { x: number; y: number } | null {
+    const canvas = previewCanvas;
+    if (!canvas) return null;
+    const box = canvas.getBoundingClientRect();
+    if (box.width === 0 || box.height === 0) return null;
+    return {
+      x: ((e.clientX - box.left) / box.width) * canvas.width,
+      y: ((e.clientY - box.top) / box.height) * canvas.height,
+    };
+  }
+
+  function strokeSegment(from: { x: number; y: number }, to: { x: number; y: number }) {
+    const layer = paintLayer(brush === 'keep' ? 'keep' : 'remove');
+    if (!layer) return;
+    const ctx = layer.getContext('2d')!;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = '#ffffff';
+    // Two passes make a soft edge without ctx.filter (absent in older Safari):
+    // a wide faint pass, then a narrower solid core.
+    for (const [width, alpha] of [
+      [brushSize, 0.35],
+      [brushSize * 0.7, 1],
+    ] as const) {
+      ctx.globalAlpha = alpha;
+      ctx.lineWidth = Math.max(1, width);
+      ctx.beginPath();
+      ctx.moveTo(from.x, from.y);
+      ctx.lineTo(to.x, to.y);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+    paintVersion++;
+  }
+
+  function onBrushDown(e: PointerEvent) {
+    if (brush === 'off' || !mask) return;
+    const p = toImagePoint(e);
+    if (!p) return;
+    e.preventDefault();
+    try {
+      previewCanvas?.setPointerCapture(e.pointerId);
+    } catch {
+      /* uncapturable pointer — pointerup still ends the stroke */
+    }
+    painting = { pointerId: e.pointerId, x: p.x, y: p.y };
+    strokeSegment(p, p); // a tap paints a dot
+  }
+
+  function onBrushMove(e: PointerEvent) {
+    if (!painting || e.pointerId !== painting.pointerId) return;
+    const p = toImagePoint(e);
+    if (!p) return;
+    e.preventDefault();
+    strokeSegment(painting, p);
+    painting = { pointerId: e.pointerId, x: p.x, y: p.y };
+  }
+
+  function onBrushUp(e: PointerEvent) {
+    if (!painting || e.pointerId !== painting.pointerId) return;
+    painting = null;
+  }
 
   // Paint the preview straight onto a canvas; encoding a blob on every slider
   // nudge would burn seconds on a large photo for no benefit.
@@ -326,6 +454,43 @@
               </div>
             {/if}
           </div>
+          <div class="row">
+            <div>
+              <label for="bg-brush">Touch up by hand</label>
+              <select id="bg-brush" data-testid="bg-brush" bind:value={brush}>
+                <option value="off">Off</option>
+                <option value="keep">Brush: bring back</option>
+                <option value="remove">Brush: cut away</option>
+              </select>
+            </div>
+            {#if brush !== 'off'}
+              <div>
+                <label for="bg-brush-size">Brush size ({brushSize}px)</label>
+                <input
+                  id="bg-brush-size"
+                  data-testid="bg-brush-size"
+                  type="range"
+                  min="4"
+                  max="200"
+                  bind:value={brushSize}
+                />
+              </div>
+            {/if}
+            {#if painted}
+              <button class="btn btn-sm self-end" data-testid="bg-clear-paint" onclick={clearPaint}>
+                Clear touch-ups
+              </button>
+            {/if}
+          </div>
+          {#if brush !== 'off'}
+            <p class="muted small" data-testid="bg-brush-hint">
+              Draw on the picture below: {brush === 'keep'
+                ? 'anything you paint over is kept, even where the model cut it away.'
+                : 'anything you paint over is cut away, even where the model kept it.'} Brush strokes
+              sit on top of the sliders, so changing them (or running the model again) keeps your
+              corrections.
+            </p>
+          {/if}
           <label class="check">
             <input type="checkbox" data-testid="bg-show-mask" bind:checked={showMask} />
             Show the mask instead of the cut-out
@@ -339,7 +504,15 @@
         {/if}
 
         <div class="preview" class:checkered={!!mask && bgMode === 'transparent' && !showMask}>
-          <canvas bind:this={previewCanvas} data-testid="bg-preview"></canvas>
+          <canvas
+            bind:this={previewCanvas}
+            data-testid="bg-preview"
+            class:brushing={brush !== 'off' && !!mask}
+            onpointerdown={onBrushDown}
+            onpointermove={onBrushMove}
+            onpointerup={onBrushUp}
+            onpointercancel={onBrushUp}
+          ></canvas>
         </div>
 
         {#if mask}
@@ -441,5 +614,12 @@
     max-width: 100%;
     height: auto;
     object-fit: contain;
+  }
+
+  /* While a brush is selected the canvas owns the gesture — otherwise a
+     touchscreen scrolls the page instead of painting. */
+  .preview canvas.brushing {
+    cursor: crosshair;
+    touch-action: none;
   }
 </style>

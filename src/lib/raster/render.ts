@@ -62,7 +62,12 @@ function drawImageLayer(ctx: CanvasRenderingContext2D, layer: ImageLayer): void 
  * modify what is already on the target. `alpha`/`blend` are the layer's own
  * (children composite onto their parent buffer with them too).
  */
-export function drawLayer(canvas: HTMLCanvasElement, layer: RasterLayer): void {
+export function drawLayer(
+  canvas: HTMLCanvasElement,
+  layer: RasterLayer,
+  /** The target's ORIGINAL pixels — what a `restore` stroke paints back. */
+  pristine?: HTMLCanvasElement | null
+): void {
   if (!layer.visible) return;
   const ctx = canvas.getContext('2d')!;
   ctx.save();
@@ -74,6 +79,22 @@ export function drawLayer(canvas: HTMLCanvasElement, layer: RasterLayer): void {
       break;
     case 'stroke': {
       if (layer.points.length === 0) break;
+      if (layer.mode === 'restore') {
+        // The eraser's opposite: stamp the target's original pixels back
+        // wherever the brush went. Without a pristine copy (nothing has been
+        // rendered under it yet) there is nothing to bring back.
+        if (!pristine) break;
+        const patch = document.createElement('canvas');
+        patch.width = canvas.width;
+        patch.height = canvas.height;
+        const pctx = patch.getContext('2d')!;
+        // Paint the stroke shape, then keep only the pristine pixels under it.
+        drawLayer(patch, { ...layer, mode: 'paint', color: '#000', opacity: 100, blend: 'normal' });
+        pctx.globalCompositeOperation = 'source-in';
+        pctx.drawImage(pristine, 0, 0);
+        ctx.drawImage(patch, 0, 0);
+        break;
+      }
       if (layer.mode === 'erase') ctx.globalCompositeOperation = 'destination-out';
       ctx.strokeStyle = layer.color;
       ctx.fillStyle = layer.color;
@@ -226,22 +247,44 @@ export function drawLayer(canvas: HTMLCanvasElement, layer: RasterLayer): void {
   ctx.restore();
 }
 
+/** Does this list (or these children) contain a restore brush worth the cost? */
+function needsPristine(layers: RasterLayer[]): boolean {
+  return layers.some((l) => l.visible && l.kind === 'stroke' && l.mode === 'restore');
+}
+
+/** A same-size copy of a canvas. */
+function copyOf(canvas: HTMLCanvasElement): HTMLCanvasElement {
+  const out = document.createElement('canvas');
+  out.width = canvas.width;
+  out.height = canvas.height;
+  out.getContext('2d')!.drawImage(canvas, 0, 0);
+  return out;
+}
+
 /** Composite one list of layers (bottom → top) onto a target. */
 export function renderInto(target: HTMLCanvasElement, doc: RasterDocument, layers: RasterLayer[]): void {
   const ctx = target.getContext('2d')!;
+  // A restore brush repaints what the effects above it removed, so it needs
+  // the content of this list WITHOUT those effects. Only allocated when the
+  // list actually has one — it costs a full-canvas copy per content layer.
+  const wantPristine = needsPristine(layers);
+  let pristine: HTMLCanvasElement | null = wantPristine ? copyOf(target) : null;
   for (const layer of layers) {
     if (!layer.visible) continue;
     if (isEffectLayer(layer)) {
       // Acts on everything below in this list.
-      drawLayer(target, layer);
+      drawLayer(target, layer, pristine);
       continue;
     }
     const buf = renderLayerBuffer(doc, layer);
-    ctx.save();
-    ctx.globalAlpha = Math.min(1, Math.max(0, layer.opacity / 100));
-    ctx.globalCompositeOperation = blendOp(layer.blend);
-    ctx.drawImage(buf, 0, 0);
-    ctx.restore();
+    for (const canvas of pristine ? [target, pristine] : [target]) {
+      const c = canvas.getContext('2d')!;
+      c.save();
+      c.globalAlpha = Math.min(1, Math.max(0, layer.opacity / 100));
+      c.globalCompositeOperation = blendOp(layer.blend);
+      c.drawImage(buf, 0, 0);
+      c.restore();
+    }
   }
 }
 
@@ -258,10 +301,13 @@ export function renderLayerBuffer(doc: RasterDocument, layer: RasterLayer): HTML
   // while painting its content — so draw it at full strength here.
   drawLayer(buf, { ...layer, opacity: 100, blend: 'normal' });
   const ctx = buf.getContext('2d')!;
+  // What a restore brush under this layer paints back: the layer's own
+  // content, before any eraser, crop or background mask touched it.
+  const pristine = needsPristine(layer.children) ? copyOf(buf) : null;
   for (const child of layer.children) {
     if (!child.visible) continue;
     if (isEffectLayer(child)) {
-      drawLayer(buf, child);
+      drawLayer(buf, child, pristine);
       continue;
     }
     // Content child: render its subtree, clip it to the parent's current
@@ -277,6 +323,16 @@ export function renderLayerBuffer(doc: RasterDocument, layer: RasterLayer): HTML
     ctx.globalCompositeOperation = blendOp(child.blend);
     ctx.drawImage(cb, 0, 0);
     ctx.restore();
+    if (pristine) {
+      // Content children join the pristine copy too, so restoring after them
+      // brings back everything that was there, not just the parent's bitmap.
+      const pctx = pristine.getContext('2d')!;
+      pctx.save();
+      pctx.globalAlpha = Math.min(1, Math.max(0, child.opacity / 100));
+      pctx.globalCompositeOperation = blendOp(child.blend);
+      pctx.drawImage(cb, 0, 0);
+      pctx.restore();
+    }
   }
   return buf;
 }

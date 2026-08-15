@@ -9,7 +9,7 @@
  * resurrected row, a missing tombstone, or a cursor that advanced past
  * something. Those are the bugs worth catching.
  */
-import { getDB } from './db/db';
+import { closeDB, getDB } from './db/db';
 import { STORES } from './db/types';
 import type { SyncFields } from './db/types';
 import { patch, put, putReconciled, softDelete } from './db/repo';
@@ -32,6 +32,7 @@ export interface TestHook {
   exportData(): Promise<ExportEnvelope>;
   importData(envelope: ExportEnvelope, mode?: ImportMode): Promise<unknown>;
   stores(): string[];
+  closeDb(): Promise<void>;
   [extra: string]: unknown;
 }
 
@@ -74,6 +75,9 @@ export function installTestHook(): void {
     exportData: () => exportData(),
     importData: (envelope, mode) => importData(envelope, mode),
     stores: () => Object.keys(STORES),
+    // Lets a migration test tear the database down and rebuild it at an older
+    // version; an open connection would block deleteDatabase forever.
+    closeDb: () => closeDB(),
   };
   (window as unknown as Record<string, unknown>)['__useful'] = api;
   window.dispatchEvent(new CustomEvent('useful-test-hook-ready'));

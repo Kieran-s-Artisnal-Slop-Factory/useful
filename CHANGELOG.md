@@ -232,6 +232,23 @@
   moves/scales/rotates with the image it is stuck to, and deleting it brings
   the background straight back — nothing is baked.
 
+- Image editor **undo/redo**: ↶ / ↷ buttons beside the zoom controls plus
+  `ctrl+z` / `ctrl+y` (and `ctrl+shift+z`), covering everything in the session —
+  layers, tools, canvas size, background removal. Discrete actions are their own
+  step; a brush stroke, a slider drag or a burst of typing collapses into one.
+  Snapshots share the decoded bitmaps rather than copying them, so history costs
+  geometry, not pixels.
+- Image editor **Restore brush** (un-erase): paints the original pixels back
+  wherever you brush, undoing part of an eraser stroke or part of a removed
+  background without undoing the whole layer. Like every other effect it is a
+  layer — it can be nested, reordered, hidden or deleted, and it acts on
+  whatever sits below it.
+- Background remover **touch-up brushes**: "bring back" and "cut away" paint
+  directly on the preview when the model gets an edge wrong. Strokes are kept as
+  their own layer on top of the mask, so the cutoff/feather sliders and even
+  re-running the model leave your corrections intact; "Clear touch-ups" restores
+  the model's own mask.
+
 ## Bug Fixes
 
 - Image converter preview squashed tall/wide images to the preview box's own
@@ -290,7 +307,39 @@
 - `put`/`bulkPut` stamped `field_updated_at` entries for sync bookkeeping keys (`updated_at`, `deleted_at`) on field-merged stores; stamps are now limited to domain fields, and `putSingleton` explicitly stamps `deleted_at` when it revives a tombstone.
 - Desktop layout gap: the topbar was pushed right by the sidebar's body padding, leaving a dead square above the open sidebar. The topbar is now fixed and full-bleed; the sidebar starts flush beneath it.
 
+- **Deleting a row kept its contents.** A delete tombstoned the row in place
+  with every field intact, so a deleted timer's label and notes stayed in
+  IndexedDB — and turned up in every exported backup. Tombstones now keep only
+  sync bookkeeping (id, clocks, delete stamp, per-field stamps), and database
+  **v6** sweeps the ones already stored, leaving their clocks untouched so the
+  cleanup can never beat a real edit from another device.
+- **Drag and drop did nothing on a touchscreen or pen** — in all three
+  scheduler views and in the image editor's layer tree. Those all used the HTML5
+  drag-and-drop API, which only ever fires for a mouse; the failure is silent,
+  which is how a mouse-driven test suite kept passing over it. Everything now
+  runs on pointer events (`src/lib/dragdrop.ts`), so mouse, touch and pen share
+  one path: grab handles (⠿ on list rows, board cards and layer rows; calendar
+  entries themselves) own the gesture on touch so the page still scrolls, a drag
+  only starts after 5px of travel so clicks stay clicks, Escape cancels, and the
+  app draws its own drag ghost.
+
 ## Other
+- Undo/redo lives in `src/lib/raster/history.ts`, a snapshot stack that
+  deep-copies the layer tree but passes canvases through by reference (the SVG
+  editor's JSON-based history would have turned every bitmap into `{}`), with
+  structural signatures for coalescing; unit-tested with fake bitmaps.
+- The background remover's brush maths (`applyPaint`) is pure and unit-tested
+  alongside the rest of the pipeline: keep strokes win over the model, remove
+  strokes win over keep strokes, and a paint layer left over from another image
+  reads as unpainted rather than as NaN alpha.
+- Test hook gains `closeDb()` so a migration test can tear the database down and
+  rebuild it at an older version (an open connection blocks `deleteDatabase`
+  forever). The v6 sweep is covered end to end: a fat tombstone written against
+  a v5 database is stripped on the next load, clocks intact.
+- Scheduler and image-editor specs now drive real pointer drags instead of
+  Playwright's `dragTo()` (which exercises the HTML5 pipeline no touchscreen
+  has), plus three new touch-drag cases — list, board and calendar — driven
+  through CDP touch events.
 
 - Background remover assets are vendored, not fetched from a CDN:
   `tools/build-bg-assets.mjs` downloads `public/models/u2netp.onnx` (from the

@@ -5,6 +5,60 @@
 import { test, expect } from './helpers/app';
 import { assertIsolatedDelta, assertInvariants } from './helpers/oracle';
 
+type P = import('@playwright/test').Page;
+
+/**
+ * A real pointer drag: press, move in steps, release. The app's drag and drop
+ * is pointer-based (src/lib/dragdrop.ts), so this is what a user's mouse
+ * actually produces — Playwright's dragTo() drives the HTML5 drag API
+ * instead, which is a different pipeline entirely and one no touchscreen has.
+ */
+async function pointerDrag(
+  page: P,
+  source: import('@playwright/test').Locator,
+  target: import('@playwright/test').Locator,
+  options: { sourcePosition?: { x: number; y: number } } = {}
+) {
+  await source.scrollIntoViewIfNeeded();
+  const from = (await source.boundingBox())!;
+  const to = (await target.boundingBox())!;
+  const startX = from.x + (options.sourcePosition?.x ?? from.width / 2);
+  const startY = from.y + (options.sourcePosition?.y ?? from.height / 2);
+  const endX = to.x + to.width / 2;
+  const endY = to.y + to.height / 2;
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  // Several moves: the first crosses the drag threshold, the rest let the
+  // drop target under the pointer update the way it does for a user.
+  await page.mouse.move(startX + 8, startY + 8, { steps: 2 });
+  await page.mouse.move((startX + endX) / 2, (startY + endY) / 2, { steps: 4 });
+  await page.mouse.move(endX, endY, { steps: 4 });
+  await page.mouse.up();
+}
+
+/** The same gesture as a finger: touch drags are the case HTML5 DnD never supported. */
+async function touchDrag(
+  page: P,
+  source: import('@playwright/test').Locator,
+  target: import('@playwright/test').Locator,
+  sourcePosition?: { x: number; y: number }
+) {
+  const from = (await source.boundingBox())!;
+  const to = (await target.boundingBox())!;
+  const startX = from.x + (sourcePosition?.x ?? from.width / 2);
+  const startY = from.y + (sourcePosition?.y ?? from.height / 2);
+  const endX = to.x + to.width / 2;
+  const endY = to.y + to.height / 2;
+  const cdp = await page.context().newCDPSession(page);
+  const point = (x: number, y: number) => [{ x, y, radiusX: 5, radiusY: 5, force: 1, id: 1 }];
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: point(startX, startY) });
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: point(startX + 8, startY + 8) });
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: point((startX + endX) / 2, (startY + endY) / 2) });
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: point(endX, endY) });
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  await cdp.detach();
+}
+
 async function createTodo(app: import('./helpers/app').App, title: string) {
   const { page } = app;
   await page.getByTestId('scheduler-new-todo').click();
@@ -30,12 +84,12 @@ test.describe('list view drag-reorder', () => {
 
     // A REAL drag (mouse press → move → release through Playwright's HTML5
     // DnD pipeline), starting on the row's drag handle.
-    await page
-      .getByTestId('todo-row')
-      .filter({ hasText: 'Gamma' })
-      .dragTo(page.getByTestId('todo-row').filter({ hasText: 'Alpha' }), {
-        sourcePosition: { x: 14, y: 10 },
-      });
+    await pointerDrag(
+      page,
+      page.getByTestId('todo-row').filter({ hasText: 'Gamma' }),
+      page.getByTestId('todo-row').filter({ hasText: 'Alpha' }),
+      { sourcePosition: { x: 14, y: 10 } }
+    );
 
     await expect(page.getByTestId('todo-row').first()).toContainText('Gamma');
     expect(await rowTitles(page)).toEqual(['Gamma', 'Alpha', 'Beta']);
@@ -44,12 +98,12 @@ test.describe('list view drag-reorder', () => {
 
     // Dropping where it already sits (directly above the target) writes nothing.
     const settled = await app.dumpAll();
-    await page
-      .getByTestId('todo-row')
-      .filter({ hasText: 'Gamma' })
-      .dragTo(page.getByTestId('todo-row').filter({ hasText: 'Alpha' }), {
-        sourcePosition: { x: 14, y: 10 },
-      });
+    await pointerDrag(
+      page,
+      page.getByTestId('todo-row').filter({ hasText: 'Gamma' }),
+      page.getByTestId('todo-row').filter({ hasText: 'Alpha' }),
+      { sourcePosition: { x: 14, y: 10 } }
+    );
     expect(await rowTitles(page)).toEqual(['Gamma', 'Alpha', 'Beta']);
     expect(await app.dumpAll()).toEqual(settled);
   });
@@ -62,12 +116,11 @@ test.describe('list view drag-reorder', () => {
     await createTodo(app, 'Gamma');
     const before = await app.dumpAll();
 
-    await page
-      .getByTestId('todo-row')
-      .filter({ hasText: 'Alpha' })
-      .dragTo(page.getByTestId('list-end-drop'), { sourcePosition: { x: 14, y: 10 } });
+    await pointerDrag(page, page.getByTestId('todo-row').filter({ hasText: 'Alpha' }), page.getByTestId('list-end-drop'), {
+      sourcePosition: { x: 14, y: 10 },
+    });
 
-    expect(await rowTitles(page)).toEqual(['Beta', 'Gamma', 'Alpha']);
+    await expect.poll(() => rowTitles(page)).toEqual(['Beta', 'Gamma', 'Alpha']);
     const alpha = (await app.dump('todos')).find((t) => t.title === 'Alpha')!;
     assertIsolatedDelta(before, await app.dumpAll(), [{ store: 'todos', id: String(alpha.id) }]);
   });
@@ -77,13 +130,13 @@ test.describe('list view drag-reorder', () => {
     await app.goto('/tools/scheduler/');
     await createTodo(app, 'Alpha');
     await createTodo(app, 'Beta');
-    await page
-      .getByTestId('todo-row')
-      .filter({ hasText: 'Beta' })
-      .dragTo(page.getByTestId('todo-row').filter({ hasText: 'Alpha' }), {
-        sourcePosition: { x: 14, y: 10 },
-      });
-    expect(await rowTitles(page)).toEqual(['Beta', 'Alpha']);
+    await pointerDrag(
+      page,
+      page.getByTestId('todo-row').filter({ hasText: 'Beta' }),
+      page.getByTestId('todo-row').filter({ hasText: 'Alpha' }),
+      { sourcePosition: { x: 14, y: 10 } }
+    );
+    await expect.poll(() => rowTitles(page)).toEqual(['Beta', 'Alpha']);
 
     await page.getByTestId('view-board').click();
     const cards = page.getByTestId('board-col-todo').getByTestId('board-card');
@@ -270,10 +323,11 @@ test.describe('modal read/update + calendar interactions', () => {
     await expect(page.getByTestId('board-card')).toHaveCount(2);
     const before = await app.dumpAll();
 
-    await page
-      .getByTestId('board-card')
-      .filter({ hasText: 'Drag me' })
-      .dragTo(page.getByTestId('board-col-in_progress'));
+    await pointerDrag(
+      page,
+      page.getByTestId('board-card').filter({ hasText: 'Drag me' }),
+      page.getByTestId('board-col-in_progress')
+    );
 
     await expect
       .poll(async () =>
@@ -323,7 +377,7 @@ test.describe('modal read/update + calendar interactions', () => {
     await page.getByTestId('view-calendar').click();
     await gotoMonth(app, 'June 2024');
     const before = await app.dumpAll();
-    await page.dragAndDrop('[data-testid="cal-event"]', '[data-testid="cal-cell"][data-date="2024-06-20"]');
+    await pointerDrag(page, page.getByTestId('cal-event'), page.locator('[data-testid="cal-cell"][data-date="2024-06-20"]'));
 
     await expect
       .poll(async () => ((await app.dump('events'))[0] as Record<string, unknown>).start)
@@ -343,7 +397,7 @@ test.describe('modal read/update + calendar interactions', () => {
     await page.getByTestId('view-calendar').click();
     await gotoMonth(app, 'June 2024');
     const before = await app.dumpAll();
-    await page.dragAndDrop('[data-testid="cal-todo"]', '[data-testid="cal-cell"][data-date="2024-06-21"]');
+    await pointerDrag(page, page.getByTestId('cal-todo'), page.locator('[data-testid="cal-cell"][data-date="2024-06-21"]'));
 
     await expect
       .poll(async () => ((await app.dump('todos'))[0] as Record<string, unknown>).due_date)
@@ -367,9 +421,10 @@ test.describe('modal read/update + calendar interactions', () => {
     // up UNDER the cursor, then start dragging from the same spot.
     await page.getByTestId('cal-todo').hover();
     await expect(page.getByTestId('cal-preview')).toBeVisible();
-    await page.dragAndDrop(
-      '[data-testid="cal-todo"]',
-      '[data-testid="cal-cell"][data-date="2024-06-18"]'
+    await pointerDrag(
+      page,
+      page.getByTestId('cal-todo'),
+      page.locator('[data-testid="cal-cell"][data-date="2024-06-18"]')
     );
 
     await expect
@@ -377,6 +432,65 @@ test.describe('modal read/update + calendar interactions', () => {
       .toBe('2024-06-18');
     // Starting the drag dismissed the preview.
     await expect(page.getByTestId('cal-preview')).toHaveCount(0);
+  });
+});
+
+test.describe('drag works with a finger, not just a mouse', () => {
+  // The regression that started this: with the HTML5 drag API every one of
+  // these was silently dead on a touchscreen, and a mouse-driven suite could
+  // not see it. Touch drags start from the grab handles.
+  test('list rows reorder by touch', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/scheduler/');
+    await createTodo(app, 'Alpha');
+    await createTodo(app, 'Beta');
+
+    await touchDrag(
+      page,
+      page.getByTestId('todo-row').filter({ hasText: 'Beta' }),
+      page.getByTestId('todo-row').filter({ hasText: 'Alpha' }),
+      { x: 14, y: 10 }
+    );
+
+    await expect(page.getByTestId('todo-row').first()).toContainText('Beta');
+  });
+
+  test('board cards move columns by touch', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/scheduler/');
+    await createTodo(app, 'Touch me');
+    await page.getByTestId('view-board').click();
+    await expect(page.getByTestId('board-card')).toHaveCount(1);
+
+    await touchDrag(page, page.getByTestId('board-card'), page.getByTestId('board-col-in_progress'), {
+      x: 12,
+      y: 14,
+    });
+
+    await expect
+      .poll(async () => ((await app.dump('todos'))[0] as Record<string, unknown>).status)
+      .toBe('in_progress');
+  });
+
+  test('calendar entries reschedule by touch', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/scheduler/');
+    await page.getByTestId('scheduler-new-todo').click();
+    await page.getByTestId('todo-title').fill('Finger drag');
+    await page.getByTestId('todo-due').fill('2024-06-12');
+    await page.getByTestId('todo-save').click();
+    await page.getByTestId('view-calendar').click();
+    await gotoMonth(app, 'June 2024');
+
+    await touchDrag(
+      page,
+      page.getByTestId('cal-todo'),
+      page.locator('[data-testid="cal-cell"][data-date="2024-06-19"]')
+    );
+
+    await expect
+      .poll(async () => ((await app.dump('todos'))[0] as Record<string, unknown>).due_date)
+      .toBe('2024-06-19');
   });
 });
 
@@ -435,6 +549,9 @@ test.describe('events + calendar', () => {
     await page.getByTestId('event-time').fill('14:30');
     await page.getByTestId('event-save').click();
 
+    // Saving is async (write, then close the modal): read the store only once
+    // the row is actually there, or this races the click on a slow run.
+    await expect.poll(async () => (await app.dump('events')).length).toBe(1);
     const ev = (await app.dump('events'))[0] as Record<string, unknown>;
     expect(ev.title).toBe('Design review');
     assertIsolatedDelta(before, await app.dumpAll(), [{ store: 'events', id: String(ev.id) }]);

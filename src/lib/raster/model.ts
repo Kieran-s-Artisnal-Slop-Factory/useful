@@ -65,11 +65,16 @@ export interface ImageLayer extends LayerCommon {
   quarter: number;
 }
 
-/** A freehand stroke: paint composites normally, erase punches transparency
- * through the target (parent buffer, or everything below at top level). */
+/**
+ * A freehand stroke. `paint` composites normally; `erase` punches
+ * transparency through the target (parent buffer, or everything below at top
+ * level); `restore` is the eraser's opposite — it brings the target's ORIGINAL
+ * pixels back wherever it is brushed, which is how you undo part of an eraser
+ * stroke or part of a background-removal mask without undoing the whole layer.
+ */
 export interface StrokeLayer extends LayerCommon {
   kind: 'stroke';
-  mode: 'paint' | 'erase';
+  mode: 'paint' | 'erase' | 'restore';
   color: string;
   size: number;
   points: RasterPoint[];
@@ -162,7 +167,7 @@ export function isEffectLayer(layer: RasterLayer): boolean {
     layer.kind === 'crop' ||
     layer.kind === 'mask' ||
     layer.kind === 'adjust' ||
-    (layer.kind === 'stroke' && layer.mode === 'erase')
+    (layer.kind === 'stroke' && layer.mode !== 'paint')
   );
 }
 
@@ -206,7 +211,8 @@ export function layerLabel(layer: RasterLayer): string {
     case 'image':
       return layer.fileName || 'image';
     case 'stroke':
-      return layer.mode === 'erase' ? 'eraser' : 'brush';
+      if (layer.mode === 'erase') return 'eraser';
+      return layer.mode === 'restore' ? 'restore' : 'brush';
     case 'arrow':
       return 'arrow';
     case 'text':

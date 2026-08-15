@@ -386,3 +386,30 @@ main.page::after {
 .data-table tbody tr:last-child td {
   border-bottom: none;
 }
+
+/* Pointer-based drag and drop (src/lib/dragdrop.ts). The ghost is a plain
+   element following the pointer — the HTML5 drag API drew this for us, but it
+   never fires on touch or pen, so the app draws its own. */
+.drag-ghost {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 1000;
+  max-width: 16rem;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--font-size-sm);
+  background: var(--surface-color);
+  border: 1.5px solid var(--color-stamp);
+  box-shadow: var(--shadow-1);
+  pointer-events: none;
+  opacity: 0.9;
+}
+
+/* While a drag is in flight nothing should select or show a text caret. */
+body.dragging {
+  user-select: none;
+  cursor: grabbing;
+}

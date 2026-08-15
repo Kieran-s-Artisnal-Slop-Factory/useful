@@ -91,6 +91,26 @@ async function runModel(page: P) {
   await expect(page.getByTestId('bg-run')).toBeEnabled();
 }
 
+/** Paint on the preview canvas in IMAGE pixel coordinates. */
+async function paintOnPreview(page: P, from: [number, number], to: [number, number]) {
+  const canvas = page.getByTestId('bg-preview');
+  await canvas.scrollIntoViewIfNeeded();
+  const box = (await canvas.boundingBox())!;
+  const size = await canvas.evaluate((c) => [
+    (c as HTMLCanvasElement).width,
+    (c as HTMLCanvasElement).height,
+  ]);
+  const at = (p: [number, number]): [number, number] => [
+    box.x + (p[0] / size[0]!) * box.width,
+    box.y + (p[1] / size[1]!) * box.height,
+  ];
+  await page.mouse.move(...at(from));
+  await page.mouse.down();
+  await page.mouse.move(...at([(from[0] + to[0]) / 2, (from[1] + to[1]) / 2]), { steps: 3 });
+  await page.mouse.move(...at(to), { steps: 3 });
+  await page.mouse.up();
+}
+
 test.describe('background remover', () => {
   test.slow(); // model download + wasm start-up + inference
 
@@ -217,6 +237,50 @@ test.describe('background remover', () => {
     await page.context().setOffline(false);
     await page.getByTestId('bg-remove-download').click();
     await expect(page.getByTestId('bg-state')).toContainText('Not downloaded');
+
+    expect(await app.dumpAll()).toEqual(before);
+  });
+  test('the touch-up brushes correct the mask, and survive the sliders', async ({ app }) => {
+    const { page } = app;
+    const before = await app.dumpAll();
+    await app.goto('/tools/background-remover/');
+    await page.getByTestId('bg-file').setInputFiles({
+      name: 'subject.png',
+      mimeType: 'image/png',
+      buffer: await subjectImage(page),
+    });
+    await runModel(page);
+    expect(await previewAlpha(page, 6, 6)).toBe(0); // corner cut by the model
+
+    // "Bring back" over the corner: that patch returns, the rest stays cut.
+    await page.getByTestId('bg-brush').selectOption('keep');
+    await page.getByTestId('bg-brush-size').fill('40');
+    await paintOnPreview(page, [10, 10], [24, 20]);
+    await expect.poll(() => previewAlpha(page, 14, 14)).toBe(255);
+    expect(await previewAlpha(page, 190, 140)).toBe(0);
+
+    // The knobs still work, and they do NOT undo the brush.
+    await page.getByTestId('bg-cutoff').fill('60');
+    await expect.poll(() => previewAlpha(page, 14, 14)).toBe(255);
+
+    // "Cut away" over the subject punches a hole in it.
+    await page.getByTestId('bg-brush').selectOption('remove');
+    await paintOnPreview(page, [100, 90], [106, 96]);
+    await expect.poll(() => previewAlpha(page, 103, 93)).toBe(0);
+    expect(await previewAlpha(page, 100, 128)).toBe(255);
+
+    // The export carries the touched-up mask, not the model's.
+    const png = await downloadBytes(page, () => page.getByTestId('bg-save').click());
+    const [corner, hole] = await probePixels(page, png.bytes, 'image/png', [
+      [14, 14],
+      [103, 93],
+    ]);
+    expect(corner![3]).toBe(255);
+    expect(hole![3]).toBe(0);
+
+    // Clearing puts the model's own mask back.
+    await page.getByTestId('bg-clear-paint').click();
+    await expect.poll(() => previewAlpha(page, 14, 14)).toBe(0);
 
     expect(await app.dumpAll()).toEqual(before);
   });

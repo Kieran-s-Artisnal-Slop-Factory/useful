@@ -214,10 +214,48 @@ integration requested below:
 
 Suite status: 297 unit + 134 Playwright green, trust gate 5/5.
 
-Cleanup:
+Cleanup (2026-08-15) — DONE:
 
-- [ ] Scheduler
-  - [ ] The drag and drop for all three views is broken
+- [x] Timers
+  - [x] I just noticed in the export JSON that deleted timers are showing up. Make sure references to deleted timers are properly cleared out
+        (root cause: softDelete tombstoned the row IN PLACE, keeping every
+        field. repo.ts now keeps only sync bookkeeping — id/updated_at/
+        deleted_at/server_seq/field stamps — and DB **v6** sweeps tombstones
+        already stored, leaving their clocks untouched so the cleanup can
+        never beat another device's edit. Covered in data.spec.ts, including
+        the migration itself via a hand-built v5 database + new `closeDb`
+        test hook.)
+- [x] Scheduler
+  - [x] The drag and drop for all three views is broken
+        (root cause: HTML5 drag-and-drop — `draggable="true"` + dataTransfer —
+        which NEVER fires for touch or pen; a mouse-driven suite could not see
+        it. Replaced with pointer events in the new `src/lib/dragdrop.ts`
+        (`use:draggable` / `use:dropzone`): 5px threshold so clicks stay
+        clicks, controls inside a row still work, grab handles own the gesture
+        on touch (⠿ on list rows and board cards, entries themselves in the
+        calendar), Escape cancels, own drag ghost. Specs converted to real
+        pointer drags + 3 new CDP touch-drag cases.)
+- [x] Image editor
+  - [x] Add ctrl+z to undo and ctrl+y to redo the last operation (and add buttons near the zoom controls)
+        (src/lib/raster/history.ts — snapshots deep-copy the tree but SHARE
+        the bitmaps; discrete actions are their own step, gestures/typing
+        coalesce on a 400ms pause; ↶/↷ next to the zoom controls, ctrl+z /
+        ctrl+y / ctrl+shift+z, ignored inside text fields)
+  - [x] Add a way to paint out parts of what you erased (e.g. I want to un-erase part of what I erased)
+        (new `restore` stroke mode + Restore tool: render.ts keeps a pristine
+        copy of the target and stamps it back through the stroke)
+  - [x] Add a similar mechanism to un-erase parts of the background remover
+        (the same brush over a mask layer — one mechanism, both cases)
+- [x] Background remover
+  - [x] Add a mechanism to un-erase parts of the mask
+        (bring-back / cut-away brushes painted on the preview, kept as their
+        own layer so the sliders and re-runs don't wipe them; `applyPaint` is
+        pure + unit-tested; "Clear touch-ups" restores the model's mask)
+- [x] Also converted the image editor's layer-tree drag to the pointer engine
+      (same dead-on-touch defect) — the specs' existing mouse drags still pass.
+
+Suite status after the cleanup round: 314 unit + 142 Playwright green,
+trust gate 5/5 (run `npm test` — a `--reporter=list` override skips the gate).
 
 
 Next: Phase 9 (Hardening & release) per plan-phases.md. Notes:

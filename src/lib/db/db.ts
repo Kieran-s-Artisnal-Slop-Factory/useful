@@ -19,7 +19,10 @@ export const DB_NAME = 'useful';
 type Migration = (
   db: IDBPDatabase,
   tx: IDBPTransaction<unknown, string[], 'versionchange'>
-) => void;
+) => void | Promise<void>;
+
+/** Sync bookkeeping — the only fields a tombstone is allowed to keep. */
+const TOMBSTONE_KEEP = ['id', 'updated_at', 'deleted_at', 'server_seq', 'field_updated_at'];
 
 const MIGRATIONS: Migration[] = [
   // v1 — the schema as generated: one placeholder store. (Frozen to literals;
@@ -69,6 +72,41 @@ const MIGRATIONS: Migration[] = [
       db.createObjectStore('svg_documents', { keyPath: 'id' });
     }
   },
+  // v6 — no schema change: a data sweep. Deletes used to tombstone a row in
+  // place, keeping every field, so a deleted timer's label and notes stayed in
+  // IndexedDB and turned up in every exported backup. repo.ts now clears the
+  // payload on delete; this strips the ones already lying around. Clocks
+  // (updated_at / deleted_at / stamps) are left EXACTLY as they were — a
+  // cleanup pass that restamps rows would beat real edits from another device
+  // and is precisely the kind of write repo.ts's rule 4 forbids.
+  async (db, tx) => {
+    const stores = [
+      'preferences',
+      'timers',
+      'stopwatch',
+      'events',
+      'todos',
+      'todo_comments',
+      'svg_documents',
+    ].filter((name) => db.objectStoreNames.contains(name));
+    for (const name of stores) {
+      const store = tx.objectStore(name);
+      let cursor = await store.openCursor();
+      while (cursor) {
+        const row = cursor.value as Record<string, unknown>;
+        if (row?.deleted_at) {
+          const cleared: Record<string, unknown> = {};
+          for (const key of TOMBSTONE_KEEP) {
+            if (key in row) cleared[key] = row[key];
+          }
+          if (Object.keys(cleared).length !== Object.keys(row).length) {
+            await cursor.update(cleared);
+          }
+        }
+        cursor = await cursor.continue();
+      }
+    }
+  },
 ];
 
 export const DB_VERSION = MIGRATIONS.length;
@@ -78,12 +116,28 @@ let dbPromise: Promise<IDBPDatabase> | null = null;
 export function getDB(): Promise<IDBPDatabase> {
   if (!dbPromise) {
     dbPromise = openDB(DB_NAME, DB_VERSION, {
-      upgrade(db, oldVersion, _newVersion, tx) {
+      // Async migrations are allowed to await requests made on THIS
+      // transaction (idb keeps it alive across those microtasks); awaiting
+      // anything else would let the version-change transaction finish early.
+      async upgrade(db, oldVersion, _newVersion, tx) {
         for (let v = oldVersion; v < MIGRATIONS.length; v++) {
-          MIGRATIONS[v]!(db, tx);
+          await MIGRATIONS[v]!(db, tx);
         }
       },
     });
   }
   return dbPromise;
+}
+
+/**
+ * Drop this tab's connection so the database can be deleted or reopened at a
+ * different version. Only the test harness needs it: an open connection makes
+ * `indexedDB.deleteDatabase` block forever, which is exactly what a migration
+ * test has to do to rebuild an older database.
+ */
+export async function closeDB(): Promise<void> {
+  if (!dbPromise) return;
+  const db = await dbPromise;
+  dbPromise = null;
+  db.close();
 }

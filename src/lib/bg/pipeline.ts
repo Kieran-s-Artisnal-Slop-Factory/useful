@@ -270,6 +270,38 @@ export function applyMask(
   return { data, width, height };
 }
 
+/**
+ * Fold the user's touch-ups into a model mask.
+ *
+ * The model gets edges wrong sometimes — a strap read as background, a bright
+ * patch of wall read as subject — and no slider fixes a specific spot, so the
+ * tool lets you brush the mask directly. Both brushes are kept as separate
+ * layers rather than being burnt into the mask, so the cutoff/feather knobs
+ * (and a re-run of the model) keep working underneath them.
+ *
+ * `keep` wins where it is painted (that pixel is subject, whatever the model
+ * thought); `remove` then cuts, so painting over your own keep strokes erases
+ * them rather than fighting them. Both are read as RGBA bitmaps — the alpha
+ * channel of the canvas the strokes were drawn on.
+ */
+export function applyPaint(
+  mask: Float32Array,
+  keep: Uint8ClampedArray | null,
+  remove: Uint8ClampedArray | null
+): Float32Array {
+  if (!keep && !remove) return mask;
+  const out = new Float32Array(mask.length);
+  for (let i = 0; i < mask.length; i++) {
+    // `?? 0` rather than `!`: a paint layer sized for a different image (a
+    // re-import mid-session) must read as "not painted", not as NaN alpha.
+    const k = keep ? (keep[i * 4 + 3] ?? 0) / 255 : 0;
+    const r = remove ? (remove[i * 4 + 3] ?? 0) / 255 : 0;
+    const value = Math.max(mask[i] ?? 0, k) * (1 - r);
+    out[i] = value < 0 ? 0 : value > 1 ? 1 : value;
+  }
+  return out;
+}
+
 /** A mask rendered as a black bitmap whose ALPHA is the mask (a clip source). */
 export function maskToAlphaRgba(mask: Float32Array, width: number, height: number): Uint8ClampedArray {
   const data = new Uint8ClampedArray(width * height * 4);

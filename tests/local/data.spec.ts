@@ -4,6 +4,9 @@ import { buildRow, sampleValue, tableOf } from './helpers/schema';
 
 const T = 'preferences';
 
+/** The bookkeeping a tombstone is allowed to keep (mirrors repo.ts SYNC_META). */
+const SYNC_FIELDS = new Set(['id', 'updated_at', 'deleted_at', 'server_seq', 'field_updated_at']);
+
 test('loading a page writes nothing', async ({ app }) => {
   const before = await app.dumpAll();
   await app.goto('/settings/');
@@ -70,6 +73,76 @@ test('delete is a tombstone, not a hole', async ({ app }) => {
   expect(row, 'the row was hard-deleted').toBeTruthy();
   expect(row!.deleted_at).toBeTruthy();
   expect((await app.call<unknown[]>('rawDump', T)).length).toBe(1);
+});
+
+test('a tombstone keeps no payload — deleted content leaves the database', async ({ app }) => {
+  const table = tableOf(T);
+  await app.call('repoPut', T, buildRow(table, 'd2', {}, 1));
+  const before = (await app.call<Record<string, unknown>[]>('rawDump', T)).find((r) => r.id === 'd2')!;
+  // The row really did carry domain data before the delete, or this proves nothing.
+  expect(Object.keys(before).some((k) => !SYNC_FIELDS.has(k))).toBe(true);
+
+  await app.call('repoSoftDelete', T, 'd2');
+  const after = (await app.call<Record<string, unknown>[]>('rawDump', T)).find((r) => r.id === 'd2')!;
+  expect(after.deleted_at).toBeTruthy();
+  // Sync bookkeeping only: a deleted timer's label must not survive in the
+  // database — or in the backup file the user exports next.
+  expect(Object.keys(after).filter((k) => !SYNC_FIELDS.has(k))).toEqual([]);
+
+  const envelope = await app.call<{ data: Record<string, unknown[]> }>('exportData');
+  const exported = (envelope.data[T] as Record<string, unknown>[]).find((r) => r.id === 'd2')!;
+  expect(Object.keys(exported).filter((k) => !SYNC_FIELDS.has(k))).toEqual([]);
+});
+
+test('the v6 migration strips payloads from tombstones written by older versions', async ({ app }) => {
+  // Rebuild the database as an older version would have left it: a deleted
+  // timer whose label and notes are still sitting in the row.
+  await app.call('closeDb'); // an open connection blocks deleteDatabase
+  const fat = await app.page.evaluate(async () => {
+    await new Promise<void>((resolve) => {
+      const req = indexedDB.deleteDatabase('useful');
+      req.onsuccess = req.onerror = req.onblocked = () => resolve();
+    });
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      const open = indexedDB.open('useful', 5);
+      open.onupgradeneeded = () => {
+        for (const name of ['preferences', 'sync_outbox', 'timers', 'stopwatch', 'events', 'todos', 'todo_comments', 'svg_documents']) {
+          if (!open.result.objectStoreNames.contains(name)) {
+            open.result.createObjectStore(name, { keyPath: name === 'sync_outbox' ? 'key' : 'id' });
+          }
+        }
+      };
+      open.onsuccess = () => resolve(open.result);
+      open.onerror = () => reject(open.error);
+    });
+    const tx = db.transaction('timers', 'readwrite');
+    tx.objectStore('timers').put({
+      id: 'old-tombstone',
+      updated_at: '2020-01-01T00:00:00.000Z',
+      deleted_at: '2020-01-02T00:00:00.000Z',
+      server_seq: null,
+      label: 'secret standup timer',
+      description: 'private notes',
+      duration_ms: 60000,
+    });
+    await new Promise<void>((resolve) => {
+      tx.oncomplete = () => resolve();
+    });
+    db.close();
+    return true;
+  });
+  expect(fat).toBe(true);
+
+  // Reloading opens the database at v6, which runs the sweep.
+  await app.goto('/tools/timers/');
+  const row = (await app.call<Record<string, unknown>[]>('rawDump', 'timers')).find(
+    (r) => r.id === 'old-tombstone'
+  )!;
+  expect(row, 'the migration dropped the tombstone entirely').toBeTruthy();
+  expect(Object.keys(row).filter((k) => !SYNC_FIELDS.has(k))).toEqual([]);
+  // Clocks are untouched: a cleanup pass must never restamp rows.
+  expect(row.updated_at).toBe('2020-01-01T00:00:00.000Z');
+  expect(row.deleted_at).toBe('2020-01-02T00:00:00.000Z');
 });
 
 test('a corrupt backup is rejected without changing anything', async ({ app }) => {
