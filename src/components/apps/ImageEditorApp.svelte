@@ -4,6 +4,7 @@
   import ColorField from '../ColorField.svelte';
   import Explainer from '../Explainer.svelte';
   import { copyPng, downloadBlob } from '../../lib/exportFile';
+  import { href } from '../../lib/paths';
   import { DecodeError, decodeToCanvas, encodeCanvas, formatBytes, type TargetFormat } from '../../lib/img/convert';
   import {
     BLEND_MODES,
@@ -22,6 +23,7 @@
     type FillLayer,
     type GroupLayer,
     type ImageLayer,
+    type MaskLayer,
     type RasterDocument,
     type RasterLayer,
     type RasterPoint,
@@ -40,7 +42,7 @@
     shiftLayer,
     shiftLayerTree,
   } from '../../lib/raster/transform';
-  import { renderDocument } from '../../lib/raster/render';
+  import { renderBase, renderDocument } from '../../lib/raster/render';
   import {
     hasEditedFields,
     encodeJpegWithExif,
@@ -76,6 +78,10 @@
   let busy = $state(false);
   /** The first imported file's name (export default + metadata source). */
   let sourceName = $state<string>('');
+
+  /** Background removal (Phase 8) status for the selected image layer. */
+  let bgBusy = $state(false);
+  let bgStatus = $state<string | null>(null);
 
   // ---- start screen ----
   let blankW = $state(1024);
@@ -391,6 +397,55 @@
     loc.list.splice(loc.index, 1, g);
     g.children.push(layer);
     selectedId = g.id;
+  }
+
+  /**
+   * Cut the background out of the SELECTED image layer (Phase 8). The result
+   * is a mask layer nested under that image, so it clips only that image —
+   * the whole point of doing it here rather than in the standalone tool — and
+   * deleting it restores the background.
+   *
+   * The pipeline is imported lazily: the model runtime is a 15MB affair and
+   * must not ride along for anyone who only ever draws an arrow.
+   */
+  async function removeBackgroundForSelected() {
+    const loc = selectedLoc;
+    const layer = loc?.list[loc.index];
+    if (!layer || layer.kind !== 'image' || bgBusy) return;
+    bgBusy = true;
+    bgStatus = 'Loading the model…';
+    try {
+      const { computeMask, maskToCanvas } = await import('../../lib/bg/canvas');
+      // Segment exactly what is drawn: the layer's bitmap, turned and scaled
+      // into its own rect (its children — erasers, crops — are NOT applied;
+      // they keep acting on top of the mask like any other effect).
+      const w = Math.max(1, Math.round(layer.width));
+      const h = Math.max(1, Math.round(layer.height));
+      const flat = document.createElement('canvas');
+      flat.width = w;
+      flat.height = h;
+      const bitmap = layer.quarter % 4 === 0 ? layer.source : renderBase(layer.source, layer.quarter, null);
+      flat.getContext('2d')!.drawImage(bitmap, 0, 0, w, h);
+      const mask = await computeMask(flat, (p) => {
+        bgStatus = `Downloading the model… ${Math.round(p.ratio * 100)}%`;
+      });
+      const maskLayer: MaskLayer = {
+        ...layerDefaults('Background removed'),
+        kind: 'mask',
+        source: maskToCanvas(mask, w, h, 'alpha'),
+        rect: { x: layer.x, y: layer.y, w: layer.width, h: layer.height },
+        quarter: 0,
+        invert: false,
+      };
+      layer.children.push(maskLayer);
+      selectedId = maskLayer.id;
+      bgStatus = null;
+    } catch (err) {
+      bgStatus =
+        err instanceof Error ? `Background removal failed: ${err.message}` : 'Background removal failed.';
+    } finally {
+      bgBusy = false;
+    }
   }
 
   function deleteLayer(id: string) {
@@ -1176,6 +1231,24 @@
                   With the Move tool, drag the square handles on the canvas to scale: corners keep the aspect
                   ratio, edges stretch one axis. Sub-layers scale with the image.
                 </p>
+                <div class="row wrap">
+                  <button
+                    class="btn btn-sm"
+                    data-testid="ie-remove-bg"
+                    onclick={removeBackgroundForSelected}
+                    disabled={bgBusy}
+                  >
+                    {bgBusy ? 'Removing background…' : 'Remove background'}
+                  </button>
+                  <span class="muted small self-end" aria-live="polite" data-testid="ie-bg-status">
+                    {bgStatus ?? ''}
+                  </span>
+                </div>
+                <p class="muted small">
+                  Adds a mask under this image, so only this layer is cut out — delete the mask to bring
+                  the background back. The first run downloads the model (~15.8 MB), the same one the
+                  <a href={href('/tools/background-remover/')}>background remover</a> uses.
+                </p>
               {:else if selected.kind === 'text'}
                 <div class="row wrap">
                   <div>
@@ -1246,6 +1319,15 @@
                     <input id="ie-sel-ssize" data-testid="ie-sel-size" class="num" type="number" min="1" max="200" bind:value={selected.size} />
                   </div>
                 </div>
+              {:else if selected.kind === 'mask'}
+                <label class="check">
+                  <input type="checkbox" data-testid="ie-mask-invert" bind:checked={selected.invert} />
+                  Keep the background instead of the subject
+                </label>
+                <p class="muted small">
+                  A cut-out mask from the background remover. It clips whatever it sits under; delete it
+                  to bring the background back.
+                </p>
               {:else if selected.kind === 'adjust'}
                 <div class="row wrap">
                   <div class="grow">
@@ -1254,7 +1336,7 @@
                   </div>
                 </div>
               {/if}
-              {#if selected.kind === 'adjust' || selected.kind === 'crop'}
+              {#if selected.kind === 'adjust' || selected.kind === 'crop' || selected.kind === 'mask'}
                 <div class="row wrap">
                   <div>
                     <label for="ie-sel-rx">X</label>

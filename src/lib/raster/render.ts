@@ -145,6 +145,40 @@ export function drawLayer(canvas: HTMLCanvasElement, layer: RasterLayer): void {
       ctx.fillRect(x, y, Math.max(0, w), Math.max(0, h));
       break;
     }
+    case 'mask': {
+      const { x, y, w, h } = layer.rect;
+      if (w <= 0 || h <= 0) break;
+      const bitmap = layer.quarter % 4 === 0 ? layer.source : renderBase(layer.source, layer.quarter, null);
+      // Build a full-canvas stencil: opaque everywhere (keep), with the mask
+      // painted into its rect. Anything outside the rect is deliberately
+      // untouched — the mask only knows about the region it was computed for.
+      const stencil = document.createElement('canvas');
+      stencil.width = canvas.width;
+      stencil.height = canvas.height;
+      const sctx = stencil.getContext('2d')!;
+      sctx.fillStyle = '#000';
+      sctx.fillRect(0, 0, stencil.width, stencil.height);
+      sctx.clearRect(x, y, w, h);
+      if (layer.invert) {
+        // Keep the background instead: punch the mask out of an opaque patch,
+        // which leaves alpha = 1 - mask.
+        const patch = document.createElement('canvas');
+        patch.width = Math.max(1, Math.round(w));
+        patch.height = Math.max(1, Math.round(h));
+        const pctx = patch.getContext('2d')!;
+        pctx.fillStyle = '#000';
+        pctx.fillRect(0, 0, patch.width, patch.height);
+        pctx.globalCompositeOperation = 'destination-out';
+        pctx.drawImage(bitmap, 0, 0, patch.width, patch.height);
+        sctx.drawImage(patch, x, y, w, h);
+      } else {
+        sctx.drawImage(bitmap, x, y, w, h);
+      }
+      // Like crop, the layer's opacity softens the cut rather than fading it.
+      ctx.globalCompositeOperation = 'destination-in';
+      ctx.drawImage(stencil, 0, 0);
+      break;
+    }
     case 'adjust': {
       const { x, y, w, h } = layer.rect;
       if (w <= 0 || h <= 0) break;

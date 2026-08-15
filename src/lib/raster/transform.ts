@@ -100,6 +100,10 @@ export function rotateLayerCW(layer: RasterLayer, w: number, h: number): RasterL
     case 'adjust':
     case 'crop':
       return { ...layer, rect: rotateRectCW(layer.rect, w, h) };
+    case 'mask':
+      // Its rect turns like any rect; its stencil bitmap turns one more
+      // quarter, exactly like an image layer's.
+      return { ...layer, rect: rotateRectCW(layer.rect, w, h), quarter: (layer.quarter + 1) % 4 };
     case 'fill':
       return layer;
     case 'group':
@@ -125,6 +129,7 @@ export function shiftLayer(layer: RasterLayer, dx: number, dy: number): RasterLa
       return { ...layer, x: layer.x + dx, y: layer.y + dy };
     case 'adjust':
     case 'crop':
+    case 'mask':
       return { ...layer, rect: { ...layer.rect, x: layer.rect.x + dx, y: layer.rect.y + dy } };
     case 'fill':
     case 'group':
@@ -168,6 +173,7 @@ export function scaleLayer(layer: RasterLayer, from: Rect, to: Rect): RasterLaye
     }
     case 'adjust':
     case 'crop':
+    case 'mask':
       return { ...layer, rect: mr(layer.rect) };
     case 'fill':
     case 'group':
@@ -243,6 +249,7 @@ export function layerBounds(layer: RasterLayer): Rect | null {
     }
     case 'adjust':
     case 'crop':
+    case 'mask':
       return { ...layer.rect };
     case 'fill':
       return null; // covers the canvas — selectable from the list, not by click

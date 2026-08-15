@@ -109,6 +109,25 @@ export interface CropLayer extends LayerCommon {
   rect: Rect;
 }
 
+/**
+ * An alpha mask over `rect` — how background removal lands in the editor
+ * (Phase 8). `source` is a black bitmap whose ALPHA channel is the mask, so
+ * it can be drawn as a stencil directly; `quarter` turns it with the layer it
+ * is stuck to, exactly like an image layer's bitmap. Pixels OUTSIDE the rect
+ * are untouched (under an image layer there is nothing out there anyway;
+ * at top level it means the mask cuts only where it was computed).
+ *
+ * Non-destructive like every other effect: delete the layer and the
+ * background is back, and `invert` flips which side is kept.
+ */
+export interface MaskLayer extends LayerCommon {
+  kind: 'mask';
+  source: HTMLCanvasElement;
+  rect: Rect;
+  quarter: number;
+  invert: boolean;
+}
+
 /** A solid color over the whole canvas. At top level (or in a group) it is a
  * backdrop — a blank canvas's background is one; nested under a content
  * layer it tints only that layer (children are clipped to their parent). */
@@ -131,6 +150,7 @@ export type RasterLayer =
   | TextLayer
   | AdjustLayer
   | CropLayer
+  | MaskLayer
   | FillLayer
   | GroupLayer;
 export type RasterLayerKind = RasterLayer['kind'];
@@ -140,6 +160,7 @@ export type RasterLayerKind = RasterLayer['kind'];
 export function isEffectLayer(layer: RasterLayer): boolean {
   return (
     layer.kind === 'crop' ||
+    layer.kind === 'mask' ||
     layer.kind === 'adjust' ||
     (layer.kind === 'stroke' && layer.mode === 'erase')
   );
@@ -194,6 +215,8 @@ export function layerLabel(layer: RasterLayer): string {
       return layer.mode;
     case 'crop':
       return 'crop';
+    case 'mask':
+      return layer.name || 'background mask';
     case 'fill':
       return layer.name || 'fill';
     case 'group':

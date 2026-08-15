@@ -51,6 +51,15 @@ A service worker (registered only in production builds — `npm run build` /
 `npm run preview`, never in dev) precaches the whole app so it loads with no
 network and updates itself when the network is available.
 
+One exception, by design: the **Background remover**'s machine-learning assets
+(`public/models/u2netp.onnx` + `public/ort/`, ~15.8 MB) are excluded from the
+precache. The tool downloads them on an explicit click, with progress, into
+their own Cache Storage bucket (`useful-models-v1`) that app version bumps
+never purge — so it needs one online visit, and works offline from then on.
+Both files are self-hosted and vendored into the repo; regenerate them with
+`node tools/build-bg-assets.mjs --force` (licenses and checksums are recorded
+in `public/models/PROVENANCE.txt`).
+
 ## Backups
 
 The only copy of the data is the browser it was created in. Use Settings →

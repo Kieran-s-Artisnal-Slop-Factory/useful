@@ -4,6 +4,7 @@ import type {
   ArrowLayer,
   CropLayer,
   ImageLayer,
+  MaskLayer,
   RasterLayer,
   StrokeLayer,
   TextLayer,
@@ -81,6 +82,14 @@ const adjust: AdjustLayer = {
   amount: 50,
 };
 const crop: CropLayer = { ...common('c'), kind: 'crop', rect: { x: 1, y: 1, w: 5, h: 5 } };
+const mask: MaskLayer = {
+  ...common('m'),
+  kind: 'mask',
+  source: { width: 40, height: 30 } as unknown as HTMLCanvasElement,
+  rect: { x: 10, y: 20, w: 40, h: 30 },
+  quarter: 0,
+  invert: false,
+};
 const fill: FillLayer = { ...common('f'), kind: 'fill', color: '#fff' };
 const group: GroupLayer = { ...common('g'), kind: 'group' };
 /** A stand-in bitmap — transform math never touches pixels. */
@@ -397,8 +406,27 @@ describe('layer tree', () => {
     expect(layerBounds(g)).toEqual({ x: 0, y: 0, w: 50, h: 50 });
   });
 
-  it('isEffectLayer: crop/adjust/eraser act on a target; content layers do not', () => {
+  it('a background mask moves, scales and turns with the layer it is stuck to', () => {
+    // Same geometry rules as a crop, plus its stencil bitmap turns with it.
+    expect((shiftLayer(mask, 3, 4) as MaskLayer).rect).toEqual({ x: 13, y: 24, w: 40, h: 30 });
+    const turned = rotateLayerCW(mask, 100, 80) as MaskLayer;
+    expect(turned.quarter).toBe(1);
+    expect(turned.rect).toEqual(rotateRectCW(mask.rect, 100, 80));
+    const scaled = scaleLayer(mask, { x: 10, y: 20, w: 40, h: 30 }, { x: 0, y: 0, w: 80, h: 30 }) as MaskLayer;
+    expect(scaled.rect).toEqual({ x: 0, y: 0, w: 80, h: 30 });
+    expect(layerBounds(mask)).toEqual(mask.rect);
+    // Carried along when its parent image is scaled or turned.
+    const parent: ImageLayer = { ...image, children: [mask] };
+    const grown = scaleLayerTree(parent, { x: 10, y: 20, w: 40, h: 30 }, { x: 10, y: 20, w: 80, h: 60 }) as ImageLayer;
+    expect((grown.children[0] as MaskLayer).rect).toEqual({ x: 10, y: 20, w: 80, h: 60 });
+    const spun = rotateImageLayerCW(parent);
+    expect((spun.children[0] as MaskLayer).quarter).toBe(1);
+  });
+
+  it('isEffectLayer: crop/mask/adjust/eraser act on a target; content layers do not', () => {
     expect(isEffectLayer(crop)).toBe(true);
+    expect(isEffectLayer(mask)).toBe(true);
+    expect(canHost(mask)).toBe(false);
     expect(isEffectLayer(adjust)).toBe(true);
     expect(isEffectLayer({ ...stroke, mode: 'erase' })).toBe(true);
     expect(isEffectLayer(stroke)).toBe(false);

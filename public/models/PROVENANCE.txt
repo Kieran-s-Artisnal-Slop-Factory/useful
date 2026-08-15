@@ -1,0 +1,20 @@
+u2netp.onnx
+  source:  https://github.com/danielgatis/rembg/releases/download/v0.0.0/u2netp.onnx
+  model:   U^2-Net (small variant, 320x320 input) — github.com/xuebinqin/U-2-Net
+  license: Apache-2.0
+  bytes:   4574861
+  sha256:  309c8469258dda742793dce0ebea8e6dd393174f89934733ecc8b14c76f4ddd8
+
+../ort/ort-wasm-simd-threaded.wasm
+  source:  npm onnxruntime-web@1.22.0 (dist/)
+  license: MIT
+  bytes:   11210254
+  sha256:  71aef04959c5c1b6de461b6538e2058e306610034a85aad2742d0c7fd4533fe4
+
+../ort/ort-wasm-simd-threaded.mjs
+  source:  npm onnxruntime-web@1.22.0 (dist/)
+  license: MIT
+  bytes:   20856
+  sha256:  30dd851d9c00622940500f71ddd2ff8820c5cb65270816080175b958705385a8
+
+Regenerate both with: node tools/build-bg-assets.mjs --force

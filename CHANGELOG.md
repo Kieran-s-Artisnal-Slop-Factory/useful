@@ -214,6 +214,24 @@
   honestly — including "target NOT reachable" with the smallest allowed
   encode — with a standing notice that a target may not be possible.
 
+- **Background remover** (`/tools/background-remover/`): cuts the subject out of
+  a photo with a segmentation model that runs entirely in the browser — the
+  picture is never uploaded. The model (U²-Net small, Apache-2.0) and its
+  runtime (ONNX Runtime Web, MIT) are self-hosted and downloaded on an explicit
+  "Download model (15.8 MB) for offline use" click with a progress bar, then
+  kept in their own cache so the tool works offline afterwards (and can be
+  removed again from the same card). Live preview over a transparency
+  checkerboard, two cleanup knobs (cut off faint edges, soften edge) that
+  re-tune the existing mask without re-running the model, a transparent or
+  solid-colour background, a mask view, and PNG/JPG export plus copy-as-PNG
+  through the shared pipeline. JPG with a transparent background says so
+  instead of silently whitening it.
+- Image editor: **Remove background** on any image layer, using the same model.
+  The result is a mask layer nested under that image, so it cuts only that
+  layer (not the whole canvas), can be inverted to keep the background instead,
+  moves/scales/rotates with the image it is stuck to, and deleting it brings
+  the background straight back — nothing is baked.
+
 ## Bug Fixes
 
 - Image converter preview squashed tall/wide images to the preview box's own
@@ -273,6 +291,34 @@
 - Desktop layout gap: the topbar was pushed right by the sidebar's body padding, leaving a dead square above the open sidebar. The topbar is now fixed and full-bleed; the sidebar starts flush beneath it.
 
 ## Other
+
+- Background remover assets are vendored, not fetched from a CDN:
+  `tools/build-bg-assets.mjs` downloads `public/models/u2netp.onnx` (from the
+  rembg release of the Apache-2.0 U²-Net conversion) and copies ONNX Runtime
+  Web's wasm + loader out of `node_modules`, then writes
+  `public/models/PROVENANCE.txt` with sources, licenses, sizes and SHA-256s.
+  BriaAI RMBG and `@imgly/background-removal` were rejected on licensing.
+- Service worker: `tools/background-remover/` added to the precached shell,
+  cache bumped to v10, and a dedicated cache-first rule for `models/` + `ort/`
+  that stores them in `useful-models-v1` — a bucket outside the `useful-cache-`
+  prefix, so a version bump never purges 15.8 MB of downloaded model, and
+  stale-while-revalidate never re-fetches it in the background. The assets are
+  deliberately absent from the install precache. New `scissors` icon and
+  Images-category registry entry for the tool.
+- New dependency `onnxruntime-web` (MIT), imported lazily so it only loads for
+  someone who actually removes a background. Vite's dep optimizer is told to
+  leave it alone (`optimizeDeps.exclude`) and the runtime pins ORT's loader
+  path, because both the dev server and the production bundle otherwise
+  resolve it to a URL nothing serves.
+- Pre/post-processing lives in `src/lib/bg/pipeline.ts` as pure typed-array
+  maths (bilinear resample both ways, the U²-Net normalization, mask rescale,
+  cutoff/feather, alpha application) and is unit-tested in node against a
+  mocked runner; `src/lib/bg/runtime.ts` owns asset caching and the session.
+  Playwright drives the REAL model end to end: not-downloaded state, cut-out
+  pixels in the exported PNG, cleanup knobs re-tuning without a second
+  inference pass, an opaque JPG over a chosen colour, a run with the browser
+  taken offline, and the editor's nested mask (including invert and delete);
+  all of it inside zero-write windows, since the tool has no store of its own.
 
 - Database schema v5: new `svg_documents` store (name, canvas size, background,
   layers as JSON); `preferences` gains `svg_last_doc_id` (last-open SVG-editor

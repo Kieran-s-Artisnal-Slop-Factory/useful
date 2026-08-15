@@ -188,9 +188,39 @@ Image editor round 2 (user request, 2026-08-15) — DONE:
 - [x] Recursive tree helpers (locate/flatten/move/remove, isWithin) + unit
       tests; render.ts recursive (renderInto/renderLayerBuffer)
 
-Suite status: 272 unit + Playwright green (see latest run), trust gate 5/5.
+Phase 8 (Background remover, 2026-08-15) — DONE, incl. the image-editor
+integration requested below:
+- [x] Model + runtime vendored, licenses verified: u2netp (U²-Net small,
+      Apache-2.0, 4.4MB) + onnxruntime-web wasm/loader (MIT, 11.2MB) into
+      public/models/ + public/ort/ via `tools/build-bg-assets.mjs`
+      (PROVENANCE.txt records sources/licenses/sha256). RMBG + @imgly
+      rejected on licensing.
+- [x] src/lib/bg/: pipeline.ts (pure — resample, U²-Net normalization by
+      image max, mask rescale, cutoff/feather, alpha apply), runtime.ts
+      (progress download into the `useful-models-v1` cache, ORT session),
+      canvas.ts (canvas glue)
+- [x] BackgroundRemoverApp: not-downloaded/ready states + progress + remove,
+      live preview w/ checkerboard, cutoff + feather + transparent-or-colour
+      background, mask view, PNG/JPG export + copy, editor fallback link
+- [x] Image editor: "Remove background" on image layers → nested `mask`
+      layer kind (render.ts stencil, transform.ts geometry, invertible,
+      deletable, scales/rotates with its parent)
+- [x] SW: page in SHELL, cache v10, cache-first rule for models/+ort/ in a
+      bucket the version purge never touches; assets excluded from precache
+- [x] Registry + scissors icon, CHANGELOG, README offline section
+- [x] Tests: 24 unit (pipeline w/ mocked runner) + mask geometry unit tests;
+      Playwright background-remover.spec.ts (3 cases incl. a run with the
+      browser offline) + image-editor mask case — all zero-write
 
-Next: Phase 8 (Background remover) per plan-phases.md. Notes:
+Suite status: 297 unit + 134 Playwright green, trust gate 5/5.
+
+Cleanup:
+
+- [ ] Scheduler
+  - [ ] The drag and drop for all three views is broken
+
+
+Next: Phase 9 (Hardening & release) per plan-phases.md. Notes:
 - NOTHING IS COMMITTED YET — the whole run (phases 0-2 + redesign) is one
   dirty working tree; commit when the user asks.
 - Week/day calendar views deliberately deferred.

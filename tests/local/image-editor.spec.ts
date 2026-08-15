@@ -84,6 +84,31 @@ async function probePixels(page: P, png: Buffer, points: [number, number][]): Pr
   );
 }
 
+/** A subject the segmentation model can actually find (Phase 8 integration). */
+async function makeSubject(page: P, width: number, height: number): Promise<Buffer> {
+  const dataUrl = await page.evaluate(
+    ([w, h]) => {
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d')!;
+      ctx.fillStyle = '#9dc0e8';
+      ctx.fillRect(0, 0, w, h);
+      ctx.fillStyle = '#7a2418';
+      ctx.beginPath();
+      ctx.ellipse(w / 2, h * 0.6, w * 0.22, h * 0.33, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#3b1f14';
+      ctx.beginPath();
+      ctx.ellipse(w / 2, h * 0.28, w * 0.11, h * 0.15, 0, 0, Math.PI * 2);
+      ctx.fill();
+      return canvas.toDataURL('image/png');
+    },
+    [width, height] as const
+  );
+  return Buffer.from(dataUrl.split(',')[1]!, 'base64');
+}
+
 async function importImage(app: { page: P }, name: string, mimeType: string, buffer: Buffer) {
   await app.page.getByTestId('ie-file').setInputFiles({ name, mimeType, buffer });
   await expect(app.page.getByTestId('ie-canvas')).toBeVisible();
@@ -528,6 +553,49 @@ test.describe('image editor', () => {
     await page.getByTestId('ie-sel-x').fill('10');
     await expect(page.getByTestId('ie-sel-x')).toHaveValue('10');
 
+    expect(await app.dumpAll()).toEqual(before);
+  });
+  test('remove background nests a mask under the image; invert flips it; deleting it restores the background', async ({ app }) => {
+    test.slow(); // model download + wasm start-up + inference
+    const { page } = app;
+    await app.goto('/tools/image-editor/');
+    const before = await app.dumpAll();
+    await importImage(app, 'subject.png', 'image/png', await makeSubject(page, 200, 150));
+
+    await page.getByTestId('ie-remove-bg').click();
+    // Nested UNDER the image (depth 1), so it clips that layer only.
+    await expect(rowNamed(page, 'Background removed')).toBeVisible({ timeout: 120_000 });
+    await expect(rowNamed(page, 'Background removed')).toHaveAttribute('data-depth', '1');
+    // The new mask is selected, so its own settings replace the image's.
+    await expect(page.getByTestId('ie-mask-invert')).toBeVisible();
+
+    const cut = await downloadBytes(page, () => page.getByTestId('ie-download').click());
+    expect(pngSize(cut.bytes)).toEqual({ w: 200, h: 150 });
+    const [subject, corner] = await probePixels(page, cut.bytes, [
+      [100, 90],
+      [2, 2],
+    ]);
+    expect(subject![3]).toBe(255);
+    expect(corner![3]).toBe(0);
+
+    // Invert keeps the background and drops the subject instead.
+    await page.getByTestId('ie-mask-invert').check();
+    const inverted = await downloadBytes(page, () => page.getByTestId('ie-download').click());
+    const [invSubject, invCorner] = await probePixels(page, inverted.bytes, [
+      [100, 90],
+      [2, 2],
+    ]);
+    expect(invSubject![3]).toBe(0);
+    expect(invCorner![3]).toBe(255);
+
+    // Non-destructive: delete the mask and the whole picture is back.
+    await page.getByTestId('ie-sel-delete').click();
+    await expect(rowNamed(page, 'Background removed')).toHaveCount(0);
+    const restored = await downloadBytes(page, () => page.getByTestId('ie-download').click());
+    const [restoredCorner] = await probePixels(page, restored.bytes, [[2, 2]]);
+    expect(restoredCorner![3]).toBe(255);
+
+    // Still session-only: the model runs entirely outside the data layer.
     expect(await app.dumpAll()).toEqual(before);
   });
 });

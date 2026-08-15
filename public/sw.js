@@ -23,7 +23,7 @@
 // Bump this on any meaningful change to this file: `activate` only purges
 // caches whose name differs, so a constant name makes that step dead code and
 // lets a previous deploy's (or a poisoned) entry survive forever.
-const CACHE_NAME = 'useful-cache-v9';
+const CACHE_NAME = 'useful-cache-v10';
 
 // Everything under this prefix belongs to this app. Cache Storage is keyed by
 // ORIGIN, not by service-worker scope, so if two of these apps are ever served
@@ -60,10 +60,26 @@ const SHELL = [
   'tools/image-compressor/',
   'tools/svg-editor/',
   'tools/image-editor/',
+  'tools/background-remover/',
   'favicon.svg',
   'favicon-maskable.svg',
   'manifest.webmanifest',
 ].map((p) => BASE + p);
+
+// The background remover's ML assets (segmentation model + ONNX Runtime wasm,
+// ~15MB together). Three rules, all deliberate:
+//   - never precached, so an install stays small for everyone who never opens
+//     that tool (plan §3.4.2);
+//   - cached in their OWN bucket, whose name does NOT start with CACHE_PREFIX,
+//     so the activate-time purge leaves them alone — re-downloading 15MB
+//     because a stylesheet changed would be indefensible;
+//   - cache-FIRST with no revalidation: they are large and immutable in
+//     practice (a new model ships under a new filename), and the stale-while-
+//     revalidate path below would re-fetch 15MB in the background on each hit.
+// Mirrored by MODEL_CACHE in src/lib/bg/runtime.ts, which fills this bucket
+// with progress reporting; both sides read whatever the other wrote.
+const MODEL_CACHE = 'useful-models-v1';
+const ML_PREFIXES = [BASE + 'models/', BASE + 'ort/'];
 
 // Servers often send `Vary: Origin`, and module import() requests carry an
 // Origin header while our install-time fetches don't — without ignoreVary the
@@ -260,6 +276,24 @@ self.addEventListener('fetch', (event) => {
           // Always resolve with a real Response: resolving respondWith with a
           // non-Response makes Chromium report a confusing synthetic 503.
           return (await cachedNavigation(request, url)) ?? Response.error();
+        }
+      })()
+    );
+    return;
+  }
+
+  if (ML_PREFIXES.some((prefix) => url.pathname.startsWith(prefix))) {
+    event.respondWith(
+      (async () => {
+        const cache = await caches.open(MODEL_CACHE);
+        const cached = await cache.match(request, MATCH_OPTS);
+        if (cached) return cached;
+        try {
+          const response = await fetchWithRetry(request);
+          if (response.ok) await cache.put(request, response.clone());
+          return response;
+        } catch {
+          return Response.error();
         }
       })()
     );

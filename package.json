@@ -23,6 +23,7 @@
     "idb": "^8.0.3",
     "marked": "^18.0.9",
     "marked-highlight": "^2.2.4",
+    "onnxruntime-web": "^1.22.0",
     "piexifjs": "^1.0.6",
     "prismjs": "^1.30.0",
     "qr-scanner": "^1.4.2",
