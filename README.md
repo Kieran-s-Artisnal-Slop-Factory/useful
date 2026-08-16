@@ -5,12 +5,30 @@ Astro + Svelte 5 site where IndexedDB is the source of truth. There is no
 server, no account, and no network dependency — each visitor's data lives in
 their own browser.
 
+## What's in it
+
+- **Time** — countdown timers (sound/vibration/notifications, alarm loop),
+  stopwatch with laps, timezone conversion with city lookup.
+- **Scheduler** — events and TODOs across list, kanban and month-calendar
+  views, with recurrence, comments and due notifications.
+- **Images** — converter, resizer, compressor (target size or percentage),
+  background remover (on-device segmentation model), layered SVG editor,
+  layered raster editor with EXIF viewing/editing.
+- **Calculators** — number bases and bit operations, photography equivalence
+  and light stops, file-transfer times.
+- **Generators** — theme builder and colour conversion, gradients,
+  glassmorphism, regex snippets for four languages, QR create and read.
+- **Playgrounds** — a SQL playground running real SQLite or Postgres in the
+  tab.
+
+Everything runs locally: no account, no server, no telemetry.
+
 ## Tables
 
 - `preferences` — singleton, field-merged; per-tool defaults (timer completion
   defaults, last-used timezone pair, last-used photography sensor format, the
-  image tools' JPG quality, the last-open SVG-editor document; the Preferences
-  page shows what has been remembered)
+  image tools' JPG quality, the last-open SVG-editor document, the last SQL
+  playground engine; the Preferences page shows what has been remembered)
 - `timers` — countdown timers; running timers store an absolute `end_at`
   deadline, so nothing writes per tick
 - `stopwatch` — singleton; start epoch + accumulated elapsed + lap list
@@ -22,6 +40,10 @@ their own browser.
 - `svg_documents` — named SVG-editor documents: canvas size, background, and
   the layer stack as plain JSON (text-only, so documents round-trip backups
   byte-identically)
+- `sql_playgrounds` — one SQL-playground workspace per engine, keyed by the
+  engine id (`sqlite` / `pglite`): the editor buffer and an optional SQL
+  snapshot of the database. The live database is in a Web Worker's memory; only
+  the SQL needed to rebuild it is stored
 
 Every table also carries bookkeeping fields (`id`, `updated_at`,
 `deleted_at`, `server_seq`) that power soft deletes and keep the door open
@@ -51,6 +73,11 @@ A service worker (registered only in production builds — `npm run build` /
 `npm run preview`, never in dev) precaches the whole app so it loads with no
 network and updates itself when the network is available.
 
+Installing the app offers, once, to download everything it can run without a
+network — the pages you have not opened, the background remover's model, and
+each SQL engine. The same panel is in Settings → Offline, and can be re-run any
+time.
+
 One exception, by design: the **Background remover**'s machine-learning assets
 (`public/models/u2netp.onnx` + `public/ort/`, ~15.8 MB) are excluded from the
 precache. The tool downloads them on an explicit click, with progress, into
@@ -58,7 +85,8 @@ their own Cache Storage bucket (`useful-models-v1`) that app version bumps
 never purge — so it needs one online visit, and works offline from then on.
 Both files are self-hosted and vendored into the repo; regenerate them with
 `node tools/build-bg-assets.mjs --force` (licenses and checksums are recorded
-in `public/models/PROVENANCE.txt`).
+in `public/models/PROVENANCE.txt`). The SQL playground's engines behave the
+same way — each is fetched the first time it is picked, and cached afterwards.
 
 ## Backups
 

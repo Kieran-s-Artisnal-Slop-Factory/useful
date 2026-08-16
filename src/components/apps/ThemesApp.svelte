@@ -281,7 +281,7 @@
 
       <div class="preview" data-testid="th-preview" style={previewStyle}>
         <div class="pv-card">
-          <h4>Card</h4>
+          <p class="pv-title">Card</p>
           <p>Plaintext on the surface. <a href="#th" onclick={(e) => e.preventDefault()}>An inline link</a> and
             <span class="pv-badge">accent badge</span>.</p>
           <button class="pv-btn">Primary action</button>
@@ -530,7 +530,7 @@
     padding: var(--padding);
   }
 
-  .pv-card h4 {
+  .pv-card .pv-title {
     margin-bottom: calc(var(--padding) / 2);
   }
 

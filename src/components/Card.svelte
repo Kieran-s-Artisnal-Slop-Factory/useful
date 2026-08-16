@@ -15,7 +15,7 @@
 <section class="card">
   {#if title || actions}
     <header>
-      {#if title}<h3>{title}</h3>{/if}
+      {#if title}<h2>{title}</h2>{/if}
       {#if actions}<div class="actions">{@render actions()}</div>{/if}
     </header>
   {/if}
@@ -60,7 +60,7 @@
     border-bottom: 1px solid var(--border-color);
   }
 
-  h3 {
+  h2 {
     /* Title-block voice: the card header is the drawing's field label. */
     font-size: var(--font-size-sm);
     font-weight: 600;

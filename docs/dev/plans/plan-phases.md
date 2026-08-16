@@ -164,7 +164,7 @@ From `docs/dev/plans/TODO`; a phase is not done until all of these hold:
 
 ---
 
-## Phase 9 — Hardening & release
+## Phase 9 — Hardening & release — DONE (2026-08-15)
 
 **Goal:** cross-cutting quality gates and a cut release.
 

@@ -53,6 +53,12 @@ export interface Preferences extends SyncFields {
   convert_jpg_quality?: number;
   /** Last-open SVG-editor document, resumed on reopen. */
   svg_last_doc_id?: string;
+  /** Last engine picked in the SQL playground ('sqlite' / 'pglite'). */
+  sql_last_engine?: string;
+  /** True once the post-install "download everything" offer has been made. */
+  offline_prompt_seen?: boolean;
+  /** When every offline bundle last finished downloading. */
+  offline_ready_at?: string;
 }
 
 /** A countdown timer. While running, `end_at` is the absolute deadline —
@@ -148,6 +154,24 @@ export interface SvgDocument extends SyncFields {
   layers: SvgLayer[];
 }
 
+/**
+ * One SQL-playground workspace — the editor buffer and, optionally, a saved
+ * snapshot of the database as SQL text.
+ *
+ * The row id IS the engine id ('sqlite' / 'pglite'): one workspace per engine,
+ * because a Postgres snapshot can never be replayed into SQLite. Everything
+ * here is text, so it round-trips the JSON data layer and rides backups like
+ * any other row — the live database itself lives only in the worker's memory.
+ */
+export interface SqlPlayground extends SyncFields {
+  /** Engine id — same value as the row id, kept as a field for readability. */
+  engine: string;
+  buffer: string;
+  /** SQL dump of the saved database state; null when nothing is saved. */
+  snapshot: string | null;
+  snapshot_at: string | null;
+}
+
 export interface StoreIndex {
   name: string;
   multiEntry?: boolean;
@@ -175,6 +199,7 @@ export const STORES: Record<string, StoreDef> = {
   todos: { indexes: [{ name: 'status' }, { name: 'due_date' }], fieldMerge: true },
   todo_comments: { indexes: [{ name: 'todo_id' }] },
   svg_documents: { indexes: [] },
+  sql_playgrounds: { indexes: [] },
 };
 
 export type StoreName = keyof typeof STORES;

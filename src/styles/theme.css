@@ -54,7 +54,10 @@
   /* Feedback. Dark warning is deliberately NOT the stamp yellow — feedback
      must never read as brand. */
   --color-success: light-dark(#17703a, #5fd68a);
-  --color-danger: light-dark(#b93a21, #ff6f61);
+  /* Dark danger lightened from #ff6f61 (4.0:1 on --surface-color, under
+     AA) to 4.8:1 — error text is exactly the text you cannot afford to
+     lose. Verified numerically by the a11y sweep in tests/local. */
+  --color-danger: light-dark(#b93a21, #ff8a7d);
   --color-warning: light-dark(#9a5b00, #ffa94d);
 
   /* Overlay scrim — ink wash, not neutral black, so the field stays blue. */

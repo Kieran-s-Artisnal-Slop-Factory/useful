@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import Card from '../Card.svelte';
+  import OfflinePanel from '../chrome/OfflinePanel.svelte';
   import {
     clearAllData,
     downloadExport,
@@ -131,6 +132,10 @@
         {/if}
       </div>
     </div>
+  </Card>
+
+  <Card title="Offline">
+    <OfflinePanel />
   </Card>
 
   <Card title="Backup">

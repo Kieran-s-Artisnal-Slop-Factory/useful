@@ -23,7 +23,7 @@
 // Bump this on any meaningful change to this file: `activate` only purges
 // caches whose name differs, so a constant name makes that step dead code and
 // lets a previous deploy's (or a poisoned) entry survive forever.
-const CACHE_NAME = 'useful-cache-v10';
+const CACHE_NAME = 'useful-cache-v11';
 
 // Everything under this prefix belongs to this app. Cache Storage is keyed by
 // ORIGIN, not by service-worker scope, so if two of these apps are ever served
@@ -61,6 +61,7 @@ const SHELL = [
   'tools/svg-editor/',
   'tools/image-editor/',
   'tools/background-remover/',
+  'tools/sql-playground/',
   'favicon.svg',
   'favicon-maskable.svg',
   'manifest.webmanifest',
@@ -153,7 +154,7 @@ async function precacheShell() {
  * dynamically imported chunks) and cache them, slowly, after activation.
  * Never awaited by anything the app is waiting on.
  */
-async function warmAssetCache() {
+async function warmAssetCache({ paced = true, onProgress } = {}) {
   const cache = await caches.open(CACHE_NAME);
   const seen = new Set(SHELL);
   const queue = [...SHELL];
@@ -163,13 +164,17 @@ async function warmAssetCache() {
     const url = queue.shift();
     let response = await cache.match(url, MATCH_OPTS);
     if (!response) {
-      await sleep(WARM_DELAY_MS); // pace: never burst at the host
+      // Pacing protects the host from a burst while the app is booting. A
+      // user who explicitly asked to download everything is waiting for it,
+      // so that run goes flat out.
+      if (paced) await sleep(WARM_DELAY_MS);
       try {
         response = await fetchWithRetry(url);
       } catch {
         continue; // genuinely offline; the next activation resumes the crawl
       }
       fetched++;
+      onProgress?.(fetched, queue.length);
       if (!response.ok) continue; // never cache a non-ok response
       await cache.put(url, response.clone());
     }
@@ -244,6 +249,34 @@ self.addEventListener('activate', (event) => {
       // Warm in the background. waitUntil keeps the worker alive for the
       // crawl; clients are already claimed, so nothing is blocked on it.
       .then(() => warmOnce())
+  );
+});
+
+/**
+ * "Download everything for offline use" (see src/lib/offline.ts). The app asks
+ * for the crawl instead of doing it itself because only the worker can see the
+ * whole asset graph — it walks the cached HTML/JS for fingerprinted chunks,
+ * including pages this visitor has never opened. Progress goes back as
+ * messages so the dialog can show it happening.
+ */
+self.addEventListener('message', (event) => {
+  const data = event.data;
+  if (!data || data.type !== 'useful-warm') return;
+  const source = event.source;
+  const reply = (message) => source?.postMessage?.(message);
+  event.waitUntil(
+    (async () => {
+      try {
+        await warmAssetCache({
+          paced: false,
+          onProgress: (fetched) => reply({ type: 'useful-warm-progress', fetched }),
+        });
+        warmDone = true;
+        reply({ type: 'useful-warm-done' });
+      } catch (err) {
+        reply({ type: 'useful-warm-error', error: String(err) });
+      }
+    })()
   );
 });
 

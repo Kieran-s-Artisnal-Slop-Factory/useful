@@ -258,12 +258,55 @@ Suite status after the cleanup round: 314 unit + 142 Playwright green,
 trust gate 5/5 (run `npm test` — a `--reporter=list` override skips the gate).
 
 
-Next: Phase 9 (Hardening & release) per plan-phases.md. Notes:
-- NOTHING IS COMMITTED YET — the whole run (phases 0-2 + redesign) is one
-  dirty working tree; commit when the user asks.
+Improvements (2026-08-15) — DONE:
+
+- [x] When someone installs as a PWA add a modal popup to ask them if they want to download ALL necessary files to be fully offline capable
+      (OfflineSetup.svelte — fires on `appinstalled` AND on a first run in
+      standalone display-mode, asked once, remembered in
+      `offline_prompt_seen`. The shared OfflinePanel also lives in
+      Settings → Offline. src/lib/offline.ts lists the bundles with sizes;
+      the app's own chunks are crawled by the SW through a new `useful-warm`
+      message (unpaced, progress reported), the model reuses the Phase 8
+      loader, and each SQL engine is booted once — which both caches and
+      proves it. Covered by offline.spec.ts, including a real
+      network-off load of a never-visited page.)
+- [x] Add one more category called playgrounds this is for coding playgrounds and other interactive tools
+  - [x] Add a database playground using the database playground from retoken
+        (ported src/lib/sql/* — SQLite + PGlite behind one worker protocol —
+        plus CodeMirror editor; the DataTable/filter library was NOT ported,
+        so the table browser is this app's own markup with a 200-row cap.
+        Persistence rebuilt on the data layer: DB **v7** `sql_playgrounds`,
+        one row per engine (buffer + SQL snapshot), engine remembered in
+        preferences. Registry gains the Playgrounds category + database icon;
+        SW shell + cache v11.)
+
+Phase 9 (Hardening & release, 2026-08-15) — DONE:
+- [x] Accessibility sweep: a11y.spec.ts audits EVERY registered page for
+      accessible names, form labels, image alt text, one h1 and no skipped
+      heading levels, plus AA token contrast in both themes and keyboard paths
+      (palette, disclosures). Two real fixes fell out: dark `--color-danger`
+      was 4.0:1 on the card surface (now 4.8:1) and card titles were h3 under
+      h1 (now h2; the theme preview's mock h4 became styled text).
+- [x] Offline audit: offline.spec.ts downloads the app, cuts the network and
+      loads a page the profile never visited.
+- [x] Performance/precache: payload.spec.ts watches the network — the home
+      page and light tools pull none of the heavy bundles, the playground
+      loads only the picked engine, and the install precache stays shell-only.
+- [x] Docs: README gains a "What's in it" overview and the offline/engine
+      notes; Tables section covers `sql_playgrounds`.
+- [x] Release: CHANGELOG 0.1.0 dated 2026-08-15 (VERSION stays 0.1.0 — this
+      is the first release, and the standing rule only bumps once a dated
+      version exists).
+
+Suite status at release: 338 unit + 183 Playwright green, trust gate 5/5.
+
+Next: whatever comes after 0.1.0. Notes:
 - Week/day calendar views deliberately deferred.
+- retoken's DataTable (filters, CSV, cursor paging) is the obvious follow-up
+  for the SQL playground's browser if it starts feeling cramped.
 - Subagent workflows may fail on a monthly spend limit — work inline if so.
-- Suites: `npm test` (Playwright, builds prod + trust gate) and
+- Suites: `npm test` (Playwright, builds prod + trust gate — do NOT pass
+  `--reporter=list`, it overrides the config and skips the gate) and
   `npm run test:unit` (Vitest). Preview via .claude/launch.json "useful-dev".
 
 

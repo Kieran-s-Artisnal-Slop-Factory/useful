@@ -1,0 +1,8 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import SqlPlaygroundApp from '../../components/apps/SqlPlaygroundApp.svelte';
+---
+
+<Layout title="SQL playground">
+  <SqlPlaygroundApp client:only="svelte" />
+</Layout>

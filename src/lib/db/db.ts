@@ -107,6 +107,13 @@ const MIGRATIONS: Migration[] = [
       }
     }
   },
+  // v7 — Playgrounds: one SQL-playground workspace per engine (editor buffer
+  // plus an optional SQL snapshot). Keyed by the engine id.
+  (db) => {
+    if (!db.objectStoreNames.contains('sql_playgrounds')) {
+      db.createObjectStore('sql_playgrounds', { keyPath: 'id' });
+    }
+  },
 ];
 
 export const DB_VERSION = MIGRATIONS.length;

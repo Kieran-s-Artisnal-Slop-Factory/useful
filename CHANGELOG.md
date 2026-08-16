@@ -1,4 +1,4 @@
-# 0.1.0 (Unreleased)
+# 0.1.0 (2026-08-15)
 
 - Initial release: data model created (`preferences`) and project generated with [local-sync-template](https://github.com/Descent098/local-sync-template).
 
@@ -249,6 +249,23 @@
   re-running the model leave your corrections intact; "Clear touch-ups" restores
   the model's own mask.
 
+- **SQL playground** (`/tools/sql-playground/`, new **Playgrounds** category):
+  a real database in the browser tab — SQLite (sqlite-wasm) or Postgres
+  (PGlite), both running in a Web Worker with nothing uploaded anywhere. A
+  CodeMirror editor with the picked engine's dialect and keyword completion
+  (Ctrl+Enter runs), a results grid, a table browser with column types and
+  primary keys, import (a `.sql` script or the engine's own binary image,
+  sniffed by its header, with the current database restored if the script
+  fails part-way) and export (SQL to clipboard or file, binary image, JSON —
+  schema + data or schema only). Ported from
+  [retoken](https://github.com/Descent098/retoken); persistence was rebuilt on
+  this app's data layer, so a workspace rides backups like any other row.
+- **"Make it work offline?"** — installing the app now offers, once, to
+  download everything it can run without a network: the pages you have not
+  opened, the background remover's model, and each database engine, each with
+  its size and its own progress. The same panel lives in Settings → Offline for
+  later, and reports when it last finished.
+
 ## Bug Fixes
 
 - Image converter preview squashed tall/wide images to the preview box's own
@@ -323,7 +340,36 @@
   only starts after 5px of travel so clicks stay clicks, Escape cancels, and the
   app draws its own drag ghost.
 
+- Dark theme: `--color-danger` sat at 4.0:1 against the card surface, under AA
+  for text — every error message in the app was the hardest thing on screen to
+  read. Lightened to 4.8:1, with the whole token palette now checked
+  numerically in both schemes by the accessibility sweep.
+- Heading structure: card titles were `h3` directly under the page's `h1`, and
+  the theme builder's preview card injected a stray `h4`, so a screen reader's
+  document outline skipped levels on most pages. Card titles are now `h2`, and
+  the preview's mock title is styled text rather than a heading.
+
 ## Other
+- Database schema v7: new `sql_playgrounds` store — one workspace per engine
+  (editor buffer + optional SQL snapshot), keyed by the engine id;
+  `preferences` gains `sql_last_engine`, `offline_prompt_seen` and
+  `offline_ready_at`. Test schema mirror and README Tables updated; the store
+  rides backup export/import automatically.
+- Service worker: `tools/sql-playground/` added to the precached shell, cache
+  bumped to v11, and a new message channel (`useful-warm`) that runs the asset
+  crawl on demand, unpaced, reporting progress — the pacing exists to protect a
+  host while the app boots, and someone who explicitly asked to download
+  everything is waiting for it.
+- New dependencies for the playground: `@sqlite.org/sqlite-wasm`,
+  `@electric-sql/pglite`, `codemirror` + `@codemirror/lang-sql`. All lazy: the
+  home page, and every tool that is not the playground, pull none of them —
+  enforced by a new payload-discipline suite that watches the real network.
+- Phase 9 hardening suites: an accessibility sweep over EVERY registered page
+  (accessible names, form labels, image alt text, one `h1`, no skipped heading
+  levels, plus token contrast in both themes and the keyboard path through the
+  palette and disclosures), payload discipline (heavy bundles stay lazy, the
+  install precache stays shell-only), and an offline audit that downloads the
+  app, cuts the network, and loads a page the profile has never visited.
 - Undo/redo lives in `src/lib/raster/history.ts`, a snapshot stack that
   deep-copies the layer tree but passes canvases through by reference (the SVG
   editor's JSON-based history would have turned every bitmap into `{}`), with

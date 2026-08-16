@@ -32,7 +32,15 @@ export interface ToolDef {
  * land here as their phases ship (Time, Scheduler, Images, Calculators,
  * Generators); 'App' stays last — it holds the app's own pages.
  */
-export const CATEGORY_ORDER: string[] = ['Time', 'Scheduler', 'Images', 'Calculators', 'Generators', 'App'];
+export const CATEGORY_ORDER: string[] = [
+  'Time',
+  'Scheduler',
+  'Images',
+  'Calculators',
+  'Generators',
+  'Playgrounds',
+  'App',
+];
 
 export const REGISTRY: ToolDef[] = [
   {
@@ -161,6 +169,26 @@ export const REGISTRY: ToolDef[] = [
     category: 'Images',
     route: '/tools/image-editor/',
     icon: 'brush',
+  },
+  {
+    id: 'sql-playground',
+    name: 'SQL playground',
+    description: 'Run real SQLite or Postgres in the browser — nothing leaves the tab',
+    aliases: [
+      'sql',
+      'database',
+      'sqlite',
+      'postgres',
+      'postgresql',
+      'pglite',
+      'query',
+      'db',
+      'playground',
+      'scratch database',
+    ],
+    category: 'Playgrounds',
+    route: '/tools/sql-playground/',
+    icon: 'database',
   },
   {
     id: 'colors',
