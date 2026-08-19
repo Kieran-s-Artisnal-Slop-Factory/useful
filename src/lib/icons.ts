@@ -56,6 +56,14 @@ export const ICONS: Record<string, string> = {
   regex:
     '<path d="M17 3v10"/><path d="m12.67 5.5 8.66 5"/><path d="m12.67 10.5 8.66-5"/>' +
     '<path d="M9 17a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v2a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2v-2z"/>',
+  // Lucide "key-round".
+  // Lucide "grid-2x2" — a pixel grid.
+  'grid-2x2':
+    '<path d="M12 3v18"/><path d="M3 12h18"/>' +
+    '<rect x="3" y="3" width="18" height="18" rx="2"/>',
+  'key-round':
+    '<path d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z"/>' +
+    '<circle cx="16.5" cy="7.5" r=".5" fill="currentColor"/>',
   'qr-code':
     '<rect width="5" height="5" x="3" y="3" rx="1"/><rect width="5" height="5" x="16" y="3" rx="1"/>' +
     '<rect width="5" height="5" x="3" y="16" rx="1"/><path d="M21 16h-3a2 2 0 0 0-2 2v3"/>' +

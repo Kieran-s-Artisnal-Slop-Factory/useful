@@ -59,6 +59,8 @@ export interface Preferences extends SyncFields {
   convert_jpg_quality?: number;
   /** Last-open SVG-editor document, resumed on reopen. */
   svg_last_doc_id?: string;
+  /** Last-open sprite-editor document, resumed on reopen. */
+  sprite_last_doc_id?: string;
   /** Last engine picked in the SQL playground ('sqlite' / 'pglite'). */
   sql_last_engine?: string;
   /** True once the post-install "download everything" offer has been made. */
@@ -205,6 +207,26 @@ export interface SqlPlayground extends SyncFields {
   snapshot_at: string | null;
 }
 
+/**
+ * A named sprite-editor document. The grid is an array of strings and the
+ * legend a character -> CSS colour map, so the whole thing is text and rides
+ * the JSON data layer and backups byte-identically — the same reason the SVG
+ * editor's layers do.
+ *
+ * Nothing here is trusted on read: a backup can be hand-edited, and the
+ * generic data suite writes an ARRAY into every json column. `normalizeSprite`
+ * in src/lib/sprite/export.ts squares the grid and filters the legend.
+ */
+export interface Sprite extends SyncFields {
+  name: string;
+  /** Edge length in pixels (4-48 from the editor). */
+  size: number;
+  /** `size` strings of `size` characters; '.' and ' ' are transparent. */
+  rows: string[];
+  /** Single-character key -> a colour `isSafeColor` accepts. */
+  colors: Record<string, string>;
+}
+
 export interface StoreIndex {
   name: string;
   multiEntry?: boolean;
@@ -234,6 +256,7 @@ export const STORES: Record<string, StoreDef> = {
   todos: { indexes: [{ name: 'status' }, { name: 'due_date' }], fieldMerge: true },
   todo_comments: { indexes: [{ name: 'todo_id' }] },
   svg_documents: { indexes: [] },
+  sprites: { indexes: [] },
   sql_playgrounds: { indexes: [] },
 };
 

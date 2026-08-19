@@ -35,6 +35,7 @@ export const TABLES: TableMeta[] = [
       { name: 'photo_last_format', type: 'text', nullable: true, references: null },
       { name: 'convert_jpg_quality', type: 'integer', nullable: true, references: null },
       { name: 'svg_last_doc_id', type: 'text', nullable: true, references: null },
+      { name: 'sprite_last_doc_id', type: 'text', nullable: true, references: null },
       { name: 'sql_last_engine', type: 'text', nullable: true, references: null },
       { name: 'offline_prompt_seen', type: 'boolean', nullable: true, references: null },
       { name: 'offline_ready_at', type: 'timestamp', nullable: true, references: null },
@@ -122,6 +123,17 @@ export const TABLES: TableMeta[] = [
       { name: 'height', type: 'integer', nullable: false, references: null },
       { name: 'background', type: 'text', nullable: true, references: null },
       { name: 'layers', type: 'json', nullable: false, references: null },
+    ],
+  },
+  {
+    name: 'sprites',
+    fieldMerge: false,
+    singleton: false,
+    columns: [
+      { name: 'name', type: 'text', nullable: false, references: null },
+      { name: 'size', type: 'integer', nullable: false, references: null },
+      { name: 'rows', type: 'json', nullable: false, references: null },
+      { name: 'colors', type: 'json', nullable: false, references: null },
     ],
   },
   {

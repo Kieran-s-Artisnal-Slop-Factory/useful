@@ -33,6 +33,8 @@ Per tool, under [`dev/tools/`](dev/tools/):
 [background remover](dev/tools/background-remover.md) ·
 [SVG editor](dev/tools/svg-editor.md) ·
 [image editor](dev/tools/image-editor.md) ·
+[sprite editor](dev/tools/sprite-editor.md) ·
+[secrets](dev/tools/secrets.md) ·
 [SQL playground](dev/tools/sql-playground.md)
 
 ## For users — [`user/`](user/)
@@ -50,9 +52,11 @@ the app.
 | [scheduler.md](user/scheduler.md) | Events and TODOs across list, board and calendar |
 | [calculators.md](user/calculators.md) | Number bases, photography equivalence, file-transfer times |
 | [generators.md](user/generators.md) | Themes and colours, gradients, glassmorphism, regex, QR |
+| [secrets.md](user/secrets.md) | Passwords, keys, tokens and identifiers |
 | [images.md](user/images.md) | Converter, resizer, compressor, background remover |
 | [svg-editor.md](user/svg-editor.md) | The layered vector editor |
 | [image-editor.md](user/image-editor.md) | The layered raster editor (session-only — read the gotchas) |
+| [sprite-editor.md](user/sprite-editor.md) | Pixel art on a character grid |
 | [sql-playground.md](user/sql-playground.md) | Real SQLite and Postgres in the tab |
 
 ## Plans

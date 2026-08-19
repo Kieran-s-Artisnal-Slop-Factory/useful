@@ -2,6 +2,39 @@
 
 ## Features
 
+- **Sprite editor** (`/tools/sprite-editor/`): pixel art on a character grid,
+  ported from [retoken](https://github.com/Descent098/retoken). Every character
+  in the grid paints one colour and the legend says which, so a sprite is a
+  picture written as text — it reads as a diff, rides a backup unchanged, and
+  pastes between projects. Drag or type to paint, arrow keys walk the grid, 4-48
+  a side, eight animations in the preview, and fifteen creature examples to pull
+  apart. Undo/redo covers everything, with one drag counting as one step however
+  many pixels it crossed. Export as TXT, JSON, SVG or PNG (rasterized at its
+  final size, so the pixels stay hard-edged), and import any sprite JSON —
+  including retoken's own files.
+- **Secrets** (`/tools/secrets/`): twenty-seven generators for passwords, keys,
+  tokens and identifiers — strong and passphrase passwords, API keys, JWT
+  signing secrets sized to their algorithm, AES keys, salts and IVs, Django /
+  Laravel / Flask / WordPress secrets, UUID v4 and v7, MongoDB ObjectIds, Wi-Fi
+  passphrases, TOTP secrets, recovery keys and backup codes. Each card shows how
+  much entropy its value actually carries, computed from the alphabet and length
+  in use. Nothing is stored, sent, or put in the address bar: values live in the
+  tab until you replace them.
+  - Characters are drawn by **rejection sampling** over `crypto.getRandomValues`.
+    Taking a random byte modulo an 88-character alphabet — the obvious way, and
+    what the site this catalogue came from does — makes the first 80 characters
+    half again as likely as the last 8.
+  - Identifiers are labelled as identifiers rather than given an entropy figure.
+    A UUID is unique, not unguessable, and printing "122 bits" beside one invites
+    somebody to use it as a session token.
+  - **UUID v7** is offered beside v4: its first 48 bits are the timestamp, so ids
+    sort by creation time instead of scattering through an index. There is no
+    native API for it, so it is built here, counter included so two minted in the
+    same millisecond still increase.
+  - **No WEP**, and the page says why: it has been breakable in minutes since
+    2007. The TODO asked for WEP and 160/504-bit WPA keys because
+    randomkeygen.com used to offer them — that site has since been rebuilt and no
+    longer does.
 - **Week and day calendar views.** The calendar gained Month / Week / Day.
   Week and day lay the hours down the page: timed events sit at their time and
   are as tall as they are long, entries that overlap share the width side by
@@ -89,10 +122,19 @@
 
 ## Other
 
+- The **EFF Long Wordlist** (7,776 words, CC BY 3.0 US) is vendored for the
+  passphrase generator by a new `tools/build-wordlist.mjs`, which refuses to
+  write unless it parses exactly 7,776 unique words. It is 78 KB and only one
+  card needs it, so it loads separately from the page.
 - `dragdrop.ts` hands each drop zone its own element to its `onOver`/`onDrop`
   callbacks. The pointer event they already received is the window-level move,
   so its `currentTarget` is not the zone and cannot be measured — which is what
   a drop that means "08:15 on Thursday" needs.
+- Database schema **v9**: new `sprites` store (name, size, rows, legend);
+  `preferences` gains `sprite_last_doc_id`. Text-only, so sprites ride backup
+  export/import like SVG documents. Nothing read from a stored row is trusted:
+  the grid is squared and the legend filtered to single characters mapping to
+  colours the strict allowlist accepts, because a backup is hand-editable.
 - Database schema **v8**: `events` gains `recurrence`, `exdates`, `series_id`
   and `original_start`, plus an index on `series_id`. Existing rows are read
   with defaults rather than rewritten — a backfill on load would be a write on

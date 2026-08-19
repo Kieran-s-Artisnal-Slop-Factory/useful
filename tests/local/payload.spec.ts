@@ -20,6 +20,8 @@ const HEAVY = [
   { label: 'Postgres engine', match: /pglite/i },
   { label: 'city dataset', match: /cities/i },
   { label: 'CodeMirror', match: /codemirror|lezer/i },
+  // 78 KB for one card on the secrets page — it must arrive on its own.
+  { label: 'EFF word list', match: /wordlist/i },
 ];
 
 /** Record every request URL the page makes while `work` runs. */
@@ -39,6 +41,20 @@ async function watch(page: P, work: () => Promise<void>): Promise<string[]> {
 
 test.describe('payload discipline', () => {
   test.slow();
+
+  test('the secrets page loads its word list separately, not in the page bundle', async ({ app }) => {
+    const { page } = app;
+    // The list is only wanted by the passphrase card; everything else on the
+    // page is a few hundred bytes of maths.
+    const urls = await watch(page, async () => {
+      await app.goto('/tools/secrets/');
+      await expect(page.getByTestId('sec-value-strong')).not.toBeEmpty();
+    });
+    const wordlist = urls.filter((u) => /wordlist/i.test(u));
+    // It DOES arrive — as its own request, after the page is already usable.
+    await expect(page.getByTestId('sec-value-memorable')).toContainText('-');
+    expect(wordlist.length, 'the word list should be its own chunk').toBeLessThanOrEqual(1);
+  });
 
   test('the home page pulls none of the heavy bundles', async ({ app }) => {
     const { page } = app;

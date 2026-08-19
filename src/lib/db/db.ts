@@ -126,6 +126,13 @@ const MIGRATIONS: Migration[] = [
       }
     }
   },
+  // v9 — Phase 5 (Sprite editor): named pixel-grid documents. Text only, so
+  // they ride backups like the SVG editor's.
+  (db) => {
+    if (!db.objectStoreNames.contains('sprites')) {
+      db.createObjectStore('sprites', { keyPath: 'id' });
+    }
+  },
 ];
 
 export const DB_VERSION = MIGRATIONS.length;

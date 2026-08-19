@@ -15,11 +15,13 @@
             - [ ] Use the markdown editor from retoken to create a notebook
             - [ ] Should have all the features from re-token, with the abilty to use wiki-link style links to link between documents, and be able to export to PDF, markdown or HTML
       - [ ] `generators`
-            - [ ] Secrets; generate secrets for various purposes
-                  - [ ] UUID
-                  - [ ] JWT
-                  - [ ] WPA
-                  - [ ] and all the other types on https://randomkeygen.com/
+            - [x] Secrets; generate secrets for various purposes  (DONE 2026-08-19 — plan Phase 4)
+                  - [x] UUID  (v4 and v7; v1 omitted — it leaks the host MAC)
+                  - [x] JWT  (HMAC key sized per RFC 7518; RS256/ES256 need a keypair, and the page says so)
+                  - [x] WPA  (WPA2/WPA3 passphrase; WEP omitted — broken since 2007, explained on the page)
+                  - [x] and all the other types on https://randomkeygen.com/  (that site was rebuilt; the
+                        catalogue follows its CURRENT generators — its old CodeIgniter/160-bit/504-bit/WEP
+                        entries no longer exist there either)
             - [ ] Napkin Math; A system for self-documenting back of the envelope style calculations
                   - [ ] Use Mathlive https://mathlive.io/mathfield/ for doing the entry, it will give you a parse tree you can get the variables with easily
                         - [ ] You can find a svelte starting point here: https://mathlive.io/mathfield/guides/svelte/
@@ -151,7 +153,8 @@
                                     - [ ] Ability to copy in JSON text to import either a template or calculations for the currently loaded template
                                           - [ ] Need validation for both to avoid code injections, and malformed input
                                     - [ ] Ability to import from a file (for either a template or calculations)
-            - [ ] Add the sprite editor from retoken
+            - [x] Add the sprite editor from retoken  (DONE 2026-08-19 — plan Phase 5; under Images beside the
+                  SVG editor, since it owns documents like the other editors)
             - [ ] Add a logo generator that implements the Generators and badge modes of the logo generator from retoken
             - [ ] `SQL playground`; 
                   - [ ] use retoken's DataTable (filters, CSV, cursor paging) for improved display and features

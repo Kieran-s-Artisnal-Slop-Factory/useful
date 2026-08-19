@@ -174,6 +174,15 @@ export const REGISTRY: ToolDef[] = [
     icon: 'brush',
   },
   {
+    id: 'sprite-editor',
+    name: 'Sprite editor',
+    description: 'Draw pixel art on a character grid, with a colour legend',
+    aliases: ['pixel', 'pixel art', 'sprite', 'pixels', 'game art', 'icon', '8-bit'],
+    category: 'Images',
+    route: '/tools/sprite-editor/',
+    icon: 'grid-2x2',
+  },
+  {
     id: 'sql-playground',
     name: 'SQL playground',
     description: 'Run real SQLite or Postgres in the browser — nothing leaves the tab',
@@ -192,6 +201,15 @@ export const REGISTRY: ToolDef[] = [
     category: 'Playgrounds',
     route: '/tools/sql-playground/',
     icon: 'database',
+  },
+  {
+    id: 'secrets',
+    name: 'Secrets',
+    description: 'Passwords, API keys, JWT secrets, UUIDs and Wi-Fi passphrases',
+    aliases: ['password', 'passphrase', 'key', 'token', 'uuid', 'jwt', 'api key', 'wpa', 'wifi', 'random', 'generate'],
+    category: 'Generators',
+    route: '/tools/secrets/',
+    icon: 'key-round',
   },
   {
     id: 'colors',

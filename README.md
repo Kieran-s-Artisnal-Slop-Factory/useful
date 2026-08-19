@@ -13,11 +13,12 @@ their own browser.
   views, with recurrence, comments and due notifications.
 - **Images** — converter, resizer, compressor (target size or percentage),
   background remover (on-device segmentation model), layered SVG editor,
-  layered raster editor with EXIF viewing/editing.
+  layered raster editor with EXIF viewing/editing, pixel-art sprite editor.
 - **Calculators** — number bases and bit operations, photography equivalence
   and light stops, file-transfer times.
 - **Generators** — theme builder and colour conversion, gradients,
-  glassmorphism, regex snippets for four languages, QR create and read.
+  glassmorphism, regex snippets for four languages, QR create and read,
+  secrets (passwords, keys, tokens, identifiers).
 - **Playgrounds** — a SQL playground running real SQLite or Postgres in the
   tab.
 
@@ -44,6 +45,8 @@ Everything runs locally: no account, no server, no telemetry.
 - `svg_documents` — named SVG-editor documents: canvas size, background, and
   the layer stack as plain JSON (text-only, so documents round-trip backups
   byte-identically)
+- `sprites` — named pixel-art documents: grid size, the rows as an array of
+  strings, and a character → colour legend. Text only, for the same reason
 - `sql_playgrounds` — one SQL-playground workspace per engine, keyed by the
   engine id (`sqlite` / `pglite`): the editor buffer and an optional SQL
   snapshot of the database. The live database is in a Web Worker's memory; only

@@ -146,8 +146,8 @@ and the phases below are written to the answers, not the defaults.
 | 1 ✅ | Image editor: alpha, CSS colours, transparent layers | — | — | **DONE 2026-08-19.** Built on Phase 0's `ColorField` |
 | 2 ✅ | Scheduler: recurring events | — | v8 | **DONE 2026-08-19.** |
 | 3 ✅ | Scheduler: week + day views | — | 2 prefs | **DONE 2026-08-19.** Built on Phase 2's expander |
-| 4 | Secrets generator | — | — | Standalone |
-| 5 | Sprite editor (port) | — | v9 | |
+| 4 ✅ | Secrets generator | — | — | **DONE 2026-08-19.** |
+| 5 ✅ | Sprite editor (port) | — | v9 | **DONE 2026-08-19.** |
 | 6 | Logo generator (port) | `@dicebear/*`, `jdenticon`, `lucide-static` | — | |
 | 7 | DataTable + SQL playground | — | — | Adds `src/lib/table/` |
 | 8 | Napkin math | `mathlive`, `@cortex-js/compute-engine` | v10 | Adds `src/lib/codegen/` |
@@ -434,7 +434,7 @@ touching any event row; rendering any view writes nothing.
 
 ---
 
-## Phase 4 — Secrets generator
+## Phase 4 — Secrets generator — DONE (2026-08-19)
 
 **Goal:** `/tools/secrets/` — generate keys, secrets and passwords, on-device,
 with no persistence.
@@ -492,7 +492,7 @@ stored, so copy it before leaving; WEP is broken).
 
 ---
 
-## Phase 5 — Sprite editor (port)
+## Phase 5 — Sprite editor (port) — DONE (2026-08-19)
 
 **Goal:** retoken's pixel-sprite editor, as a document tool.
 
