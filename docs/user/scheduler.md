@@ -10,7 +10,7 @@ _Describes the code as of v0.2.0 (unreleased; schema v7) — verify against sour
 
 A **TODO** has a title, a markdown description, an optional due date with an optional time, a priority (low, medium, high, urgent), a repeat rule, a "Notify when due" switch, and a comment thread. It moves through three fixed states: TODO → In progress → Completed.
 
-An **event** has a title, a markdown description, a date and time (or All day), an optional end date and time, and a "Notify at start" switch. Events have no status and cannot repeat.
+An **event** has a title, a markdown description, a date and time (or All day), an optional end date and time, a repeat rule, and a "Notify at start" switch. Events have no status.
 
 ## The three views
 
@@ -44,11 +44,43 @@ The successor's due date is worked out from the completed one's **due date**, no
 
 Tick "Notify when due" on a TODO or "Notify at start" on an event. While useful is open, a banner appears in the bottom-right corner within a second of the moment — tagged DUE for a TODO, NOW for an event — plus a system notification if you have granted permission.
 
+## Repeating events
+
+Set **Repeats** on an event the same way you would on a TODO: every N days, weeks or months, or on chosen weekdays, with an optional **Until** date. The calendar then shows every occurrence, each marked with a ↻.
+
+The two kinds of repeat behave differently, on purpose. A repeating TODO makes its next copy when you complete it, because until then you have not decided when the next one is. A repeating event has no "done" — so its occurrences are worked out from the rule as the calendar draws them, and only one entry is ever stored.
+
+When you change or delete an occurrence of a repeating event, you are asked what it applies to:
+
+| Choice | What happens |
+|---|---|
+| **This event** | Only that day changes. It becomes an exception that keeps its own title, time and description, and later edits to the series leave it alone. |
+| **This and following** | The series stops the day before, and a new one starts on the day you picked with your changes. Occurrences before it are untouched. |
+| **All events** | The whole series changes — except days you had already changed on their own, which keep what you gave them. |
+
+Dragging one occurrence to another day is the same as "This event": that day moves, the rest of the series stays put. Deleting the whole series also removes the days you had changed individually.
+
+A repeating event keeps its **time of day** when the clocks change: a 09:00 meeting is at 09:00 before and after a daylight-saving switch. Occurrences are worked out in the timezone this device is set to, so if you travel, the series follows your new local time rather than staying on the old one.
+
+## Month, week and day
+
+The calendar has three ranges, picked with the **Month / Week / Day** buttons above it. The choice is remembered, and so is where you were looking: move to March in the month grid, switch to Week, and you are in a week of March rather than back at today.
+
+Week and day lay the hours out down the page:
+
+- Timed events sit at their time, sized by how long they last. Events that overlap share the width side by side.
+- All-day events, anything spanning a whole day, and dated TODOs sit in the **all day** lane above the hours — they have no time to be placed at.
+- Drag an entry onto another day or another hour to move it: dropping on the hours sets the time as well as the day (snapped to the quarter hour, with a line showing where it will land), and the event keeps how long it is. Dropping on the month grid changes only the day.
+- Click any empty hour to create an event there, already filled in.
+
+**Week starts on** in Preferences chooses Sunday or Monday, and both the month and week grids follow it.
+
 ## Gotchas
 
 ### What is not built yet
 
-- **Events cannot repeat.** Only TODOs have a repeat rule.
+- **The month grid hides entries on a narrow screen** when a day has more than fits. Switch to Week or Day to see them all — it does not switch by itself, because that would fight the choice you made.
+- **A repeating event is one entry, not many.** The calendar works out the dates from the rule, so an event that repeats forever costs no more storage than one that happens once — and there is no list of future copies to tidy up.
 - **There is no week or day view** — the calendar is month-only.
 - **Narrow screens show only day numbers** on the calendar; the entries are hidden because they do not fit. Use the list or the board on a phone.
 - **A multi-day event appears only on its start day.** Nothing stretches across cells.

@@ -69,6 +69,32 @@ test.describe('offline readiness', () => {
     await expect(page.getByTestId('offline-dialog')).toHaveCount(0);
   });
 
+  test('dismissing the install offer with Escape still counts as an answer', async ({ app }) => {
+    // The offer used to record an answer ONLY from the "Not now" button, so
+    // pressing Escape closed the dialog and left no trace — and the app asked
+    // again on the next launch. Every exit from the dialog is an answer.
+    const { page } = app;
+    await app.goto('/');
+    const before = await app.dumpAll();
+
+    await page.evaluate(() => window.dispatchEvent(new Event('appinstalled')));
+    await expect(page.getByTestId('offline-dialog')).toBeVisible();
+
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('offline-dialog')).toHaveCount(0);
+
+    await expect
+      .poll(async () => ((await app.dump('preferences'))[0] as Record<string, unknown>)?.offline_prompt_seen)
+      .toBe(true);
+    assertIsolatedDelta(before, await app.dumpAll(), [{ store: 'preferences', id: 'singleton' }]);
+
+    // And it stays answered across a reload.
+    await page.reload();
+    await page.evaluate(() => window.dispatchEvent(new Event('appinstalled')));
+    await page.waitForTimeout(300);
+    await expect(page.getByTestId('offline-dialog')).toHaveCount(0);
+  });
+
   test('after the download, a never-visited page still loads with the network off', async ({ app }) => {
     const { page } = app;
     await app.goto('/settings/');

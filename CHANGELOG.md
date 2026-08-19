@@ -1,8 +1,121 @@
 # 0.2.0 (unreleased)
 
 ## Features
+
+- **Week and day calendar views.** The calendar gained Month / Week / Day.
+  Week and day lay the hours down the page: timed events sit at their time and
+  are as tall as they are long, events that overlap share the width side by
+  side, and all-day events, multi-day spans and dated TODOs sit in an all-day
+  lane above the hours. Dragging onto the hours sets the **time** as well as the
+  day — snapped to the quarter hour, with a line showing where it will land, and
+  the event keeps its length — while a drop on the month grid still changes only
+  the date. Every empty hour is a real button, so creating an event at a time is
+  a keyboard path and not only a drag. All three grids share one position, so
+  switching from month to week lands where you were looking rather than jumping
+  back to today, and the choice is remembered in its own preference.
+- **Week starts on Sunday or Monday**, your choice, in Preferences — read by the
+  month grid and the week grid alike.
+- A multi-day event now appears on every day it covers in the week and day
+  grids. The month grid only ever showed it on its start day.
+- **Events repeat.** A calendar event takes the same repeat rule TODOs have —
+  every N days/weeks/months, or chosen weekdays — with an optional end date,
+  and every occurrence shows on the calendar marked with a ↻. Only ONE row is
+  ever stored: occurrences are computed as the calendar draws them, so a series
+  that repeats forever costs the same as a one-off and there is no list of
+  future copies to maintain. (A repeating TODO still spawns its successor when
+  you complete it; an event has no "done", so it had to work the other way.)
+- Changing or deleting one day of a series asks what it applies to — **this
+  event**, **this and following**, or **all events** — with Google's semantics:
+  a day you changed on its own keeps its own values when the series is edited
+  later. Dragging one occurrence to another day is "this event", and costs
+  exactly one new row; the series itself is not touched.
+- A repeating event keeps its **time of day across daylight saving**: a 09:00
+  meeting is at 09:00 on both sides of the change. Occurrences are worked out in
+  the device's current timezone, so travelling moves the series to your new
+  local time. "Every month" from the 31st gives Feb 28, Mar 31, Apr 30 — the
+  step counts from the original date rather than compounding the clamp.
+- Notifications understand series: the due scan asks for each event's next
+  occurrence and keys its notice per occurrence, so next week's meeting is a
+  separate banner and an occurrence you edited is not announced twice.
+- TODO recurrence gained the same optional **Until** date, through a repeat
+  editor now shared by both.
+
+- **Image editor: colour fills carry transparency.** A fill layer takes any CSS
+  colour you can write — `transparent`, `rebeccapurple`, `#ff000080`,
+  `rgb(255 0 0 / 50%)`, `oklch(…)` — with an alpha slider, a preview swatch over
+  a transparency checkerboard, and Transparent/White/Black shortcuts. The
+  canvas always rendered these correctly; what was missing was any way to reach
+  them, and a native colour picker that quietly flattened alpha every time you
+  used it.
+- **Transparent layers**: "+ Transparent layer" adds a fill that paints
+  nothing — a hole to draw into, or a tint slot to fill in later. A blank
+  canvas started as "Transparent" now gets a real `Background` layer too
+  (previously it got no layers at all, which made the background the one thing
+  in the document you could not recolour, hide or delete).
+- The layer list's colour dots sit on a checkerboard, so a translucent or fully
+  transparent fill reads as what it is instead of blending into the row.
+- A colour that is not a colour now paints **nothing** instead of solid black.
+  Canvas ignores an unassignable `fillStyle` and keeps whatever the context had,
+  which in a fresh buffer is opaque black — so one typo in a fill, stroke, arrow
+  or text colour used to drop a black rectangle over the picture.
+- Exporting as JPG says so when the picture actually contains see-through
+  pixels — read from the rendered image, not guessed from the layer list, so it
+  is not on permanently for a document whose transparency is covered up.
+
 ## Bug Fixes
+
+- **The post-install "make it work offline?" offer could come back after you
+  answered it.** It recorded the answer only from the "Not now" button, so
+  closing it with Escape left no trace and the next launch asked again — and
+  finishing the download inside the dialog did not count as an answer either.
+  Every exit from the dialog now records one, exactly once.
+- **Importing a backup preselected the destructive option.** "Restore" (which
+  empties every table the file covers before loading it) was the mode already
+  chosen when you reached the Import button; **Merge** is now the default, and
+  `importData()` defaults to merging too — a caller that forgets the argument
+  should not be able to wipe a device. Restore is one click away and still
+  behind its confirmation.
+- Searching for "heic" no longer lands on the image converter, which cannot
+  decode HEIC — an alias that takes you to a tool that will refuse your file is
+  worse than no result.
+- `SyncFields.field_updated_at` carried a comment claiming nothing consumed the
+  per-field stamps yet. `foldFieldMerged` has consumed them since 0.1.0, and the
+  data suite proves it; the comment now says what the code does.
+
 ## Other
+
+- `dragdrop.ts` hands each drop zone its own element to its `onOver`/`onDrop`
+  callbacks. The pointer event they already received is the window-level move,
+  so its `currentTarget` is not the zone and cannot be measured — which is what
+  a drop that means "08:15 on Thursday" needs.
+- Database schema **v8**: `events` gains `recurrence`, `exdates`, `series_id`
+  and `original_start`, plus an index on `series_id`. Existing rows are read
+  with defaults rather than rewritten — a backfill on load would be a write on
+  load. Backups from v8 will not import into 0.1.0 builds, as designed.
+- **Colour fields can carry alpha.** `ColorField` gained opt-in `alpha` and
+  `showSwatch` props: a slider that edits the alpha channel, and a preview
+  swatch over a transparency checkerboard. A native `<input type="color">`
+  cannot express alpha and used to flatten it away on every pick — it now
+  preserves whatever alpha is set. Both props default off, so the six existing
+  callers are unchanged.
+- `setAlpha()` and `resolveFillStyle()` in the colour library: the first
+  replaces a colour's alpha and re-emits it **in the spelling it was written
+  in** (hex stays hex, `oklch()` stays `oklch()`, a named colour becomes
+  `rgb(… / a)` while translucent and takes its name back at alpha 1); the
+  second returns a canvas-safe fill or `null`, so an unparseable colour can be
+  skipped rather than silently painted opaque black.
+- The accessibility sweep now derives its route list from the tool registry
+  instead of a hand-maintained copy beside it. A page forgotten in that list
+  used to ship unaudited while the suite stayed green; registering a tool is now
+  all it takes to be audited.
+- `--font-mono` is defined. Ten files asked for it and nothing declared it: two
+  had no fallback and silently inherited. It is an alias of the (monospace)
+  body face, so nothing looks different today, and one line changes if that ever
+  stops being true.
+- A shared `.checkerboard` utility for transparency backdrops, replacing the
+  copy-paste gradient that had spread to four components.
+- `package.json`'s version had drifted to `0.1.0` while `VERSION` said `0.2.0`;
+  they are back in step.
 
 - **The app is documented.** [docs/](docs/README.md) now carries a page per
   system for maintainers and a page per feature for users — 9 `docs/dev`

@@ -123,12 +123,12 @@ A delete never removes a key. `softDelete` replaces the row with `tombstone(stor
 
 Rows are exported verbatim, tombstones included. `sync_outbox` is not exported. `downloadExport()` serialises with two-space indentation to `useful-backup-YYYY-MM-DD.json` via a temporary `<a download>`. `BACKED_UP_STORES = Object.keys(STORES)` — a store added to the map is in the next backup with no other change; the module throws at load if that list is ever empty.
 
-`importData(envelope, mode = 'replace')`:
+`importData(envelope, mode = 'merge')`:
 
 - **Version gate.** Not an object with a numeric `schemaVersion` and an object `data` → `Not a valid useful backup file`. `schemaVersion > DB_VERSION` → rejected (`Backup is from a newer app version…`). Older is accepted; rows are written as-is with no per-row up-conversion.
 - **Store selection.** Only names present in both `envelope.data` and `STORES` are touched. Unknown stores in the file are ignored; stores the file lacks are left alone (so an older backup cannot wipe a store it never knew).
 - **Validate everything first.** `validate()` walks every selected row before any write: must be a non-array object with a non-empty string `id` and `updated_at`; `deleted_at` null or string; `server_seq` null or number. Domain fields are not checked. A failure throws with nothing written — the Settings page relies on that for its "nothing was changed" message.
-- **`'replace'`** — per store: `clear()`, then `put` each row unchanged (`server_seq` included). After commit, `clearOutbox()` — the queue described data that no longer exists.
+- **`'replace'`** — per store: `clear()`, then `put` each row unchanged (`server_seq` included). After commit, `clearOutbox()` — the queue described data that no longer exists. It is never the default: a caller that omits the mode gets the fold, because forgetting an argument must not wipe a device.
 - **`'merge'`** — per row, read the local copy:
   - both alive on a `fieldMerge` store → `foldFieldMerged`: for each domain field present in the incoming row, take the incoming value if its stamp (`field_updated_at[field]`, falling back to the row's `updated_at`) is strictly newer than the local one; union stamps to the max; row `updated_at` = max of both. Nothing newer → skipped. Otherwise write with `server_seq: null`.
   - anything else (ordinary store, or either side tombstoned) → whole-row LWW: write only if `row.updated_at > local.updated_at` (ties keep local, so a same-instant tombstone is never undone), with `server_seq: null`. The backup's `server_seq` belongs to whatever server that device talked to; keeping it would mark the row already-synced.

@@ -71,11 +71,11 @@ flowchart TD
   R -->|"byCategory minus 'home'"| H["HomeApp.svelte tiles (tile-&lt;id&gt;)"]
   R -->|"searchRegistry + fuzzyScore"| P["CommandPalette.svelte (max 10 rows)"]
   R -->|"unit test: ids unique, route shape, known category, hasIcon"| U["registry.test.ts"]
-  R -.->|"hand-kept mirror"| A["a11y.spec.ts ROUTES"]
+  R -->|"ROUTES = REGISTRY routes"| A["a11y.spec.ts sweep"]
   R -.->|"hand-kept mirror"| W["public/sw.js SHELL"]
 ```
 
-The dashed edges matter: the a11y sweep's `ROUTES` array and the service worker's `SHELL` list are **not** derived from the registry (`sw.js` is a plain script outside the bundle; the spec keeps its list explicit). Adding a tool means touching all three — see the recipe at the end.
+The dashed edge matters: the service worker's `SHELL` list is **not** derived from the registry — `sw.js` is a plain script outside the bundle, so it cannot import it. Everything else is: the a11y sweep builds its `ROUTES` from `REGISTRY`, so a registered tool is audited whether or not anyone remembered to add it. Adding a tool means touching the registry and `SHELL` — see the recipe at the end.
 
 ## Sidebar, drawer and collapse
 
@@ -158,7 +158,7 @@ The body gets `padding-top: var(--navbar-height)` and, on desktop while not coll
 | `Card` (`title?` string, `children` / `actions?` snippets) | `<section class="card">` with corner registration marks, optional ruled header (`<h2>` in title-block voice) and an actions slot. | Any grouped block on a tool page. Every tool page is built from Cards. Its header is an `h2`, so keep page structure `h1` → Card → `h3` inside. |
 | `Explainer` (`summary`, `children`, `testid = 'explainer'`) | Native `<details class="explainer">` / `<summary>` — keyboard toggling for free. | The "how to do it by hand" drop-downs under calculators and generators. |
 | `Icon` (`name`, `size = 16`) | 24×24 viewBox stroke SVG from `ICONS`; unknown keys draw an empty square instead of throwing. | Anywhere a registry icon is shown. Add glyphs to `icons.ts` (Lucide inner markup), never as emoji. |
-| `ColorField` (`value` bindable, `testid`, `id?`, `placeholder?`, `ariaLabel?`, `fallback?` = `#000000`, `oncommit?`) | Free-text CSS colour input plus a native `<input type="color">` kept in sync; text testid `X`, picker `X-pick`; `aria-invalid` when unparseable; `oncommit` fires on finalised edits only. | Any colour input in generators/editors. Bind `value` for live previews; hook `oncommit` when a change should push an undo/save step. |
+| `ColorField` (`value` bindable, `testid`, `id?`, `placeholder?`, `ariaLabel?`, `fallback?` = `#000000`, `alpha?` = false, `showSwatch?` = false, `oncommit?`) | Free-text CSS colour input plus a native `<input type="color">` kept in sync; text testid `X`, picker `X-pick`, alpha slider `X-alpha`, swatch `X-swatch`; `aria-invalid` when unparseable; `oncommit` fires on finalised edits only. With `alpha` on, the slider edits the alpha channel through `setAlpha` (re-emitting in the spelling you typed) and picking a colour PRESERVES the current alpha instead of flattening it to 6-digit hex. | Any colour input in generators/editors. Bind `value` for live previews; hook `oncommit` when a change should push an undo/save step; turn on `alpha`/`showSwatch` where transparency is meaningful (the image editor's fills). |
 | `CodeEditor` (`initialDoc`, `extensions`, `language`, `ariaLabel`, `onDocChange`, `onRun`; exports `getText()`, `setText()`, `focus()`) | CodeMirror 6 chassis themed onto the blueprint tokens; `Mod-Enter` calls `onRun`; `language` lives in a `Compartment` so it can change without rebuilding. | Editable code buffers. `SqlEditor` wraps it with the engine's dialect for the SQL playground. |
 | `.btn` family, `.page-header`, `.stack`, `.row`, `.grid-2`, `.table-wrap` + `.data-table`, `.eyebrow` | Global CSS classes, not components. | See [design-system.md](design-system.md). |
 
@@ -213,7 +213,7 @@ Consumers: `SchedulerApp` (board cards), `CalendarView` (rescheduling), `ImageEd
 ## Testing
 
 - `npm run test:unit` (Vitest, `src/**/*.test.ts`): `registry.test.ts` — unique ids, route shape, every category in `CATEGORY_ORDER`, every icon key resolves via `hasIcon`, `byCategory` covers every tool once in order, `searchRegistry` tiering (name > alias, empty query returns all, no-match returns nothing). `fuzzy.test.ts` — subsequence semantics, prefix/word-boundary/consecutive preferences, case-insensitivity, positive floor.
-- `npm test` (Playwright against a **production build** on port 4330, `tests/local/`): `nav.spec.ts` — sidebar navigation and `aria-current`, navigation writes nothing, `ctrl+k` + fuzzy + Enter, arrow keys, Search button + focus trap + focus restore, collapse persists across full reload and across client-side navigation with a pinned theme, Escape closes only the topmost layer, closed drawer links out of the tab order, drawer opens/closes below the breakpoint. `a11y.spec.ts` — for every route in its `ROUTES` list: no unnamed `button`/`a`/`summary`, no unlabelled field, no `img` without `alt`, exactly one `h1` in `main` and no skipped heading level; plus token contrast in both schemes and keyboard paths through the palette and explainers.
+- `npm test` (Playwright against a **production build** on port 4330, `tests/local/`): `nav.spec.ts` — sidebar navigation and `aria-current`, navigation writes nothing, `ctrl+k` + fuzzy + Enter, arrow keys, Search button + focus trap + focus restore, collapse persists across full reload and across client-side navigation with a pinned theme, Escape closes only the topmost layer, closed drawer links out of the tab order, drawer opens/closes below the breakpoint. `a11y.spec.ts` — for every route in the registry: no unnamed `button`/`a`/`summary`, no unlabelled field, no `img` without `alt`, exactly one `h1` in `main` and no skipped heading level; plus token contrast in both schemes and keyboard paths through the palette and explainers.
 
 ## Adding a tool
 
@@ -221,12 +221,11 @@ Consumers: `SchedulerApp` (board cards), `CalendarView` (rescheduling), `ImageEd
 2. Add `src/pages/tools/foo.astro`: `Layout` + `<FooApp client:only="svelte" />`.
 3. Append a `ToolDef` to `REGISTRY`: `route: '/tools/foo/'`, a `category` from `CATEGORY_ORDER`, an `icon` key that exists in `ICONS` (add the Lucide inner markup to `icons.ts` if not). Sidebar, home tiles and palette now show it; `registry.test.ts` fails if any field is off.
 4. Add `'tools/foo/'` to `SHELL` in [public/sw.js](../../public/sw.js) and bump `CACHE_NAME` — see [service-worker-and-offline.md](service-worker-and-offline.md).
-5. Add `'/tools/foo/'` to `ROUTES` in `a11y.spec.ts`.
-6. Run `npm run test:unit` and `npm test`; add a line under the unreleased heading in `CHANGELOG.md`.
+5. Run `npm run test:unit` and `npm test`; add a line under the unreleased heading in `CHANGELOG.md`. The a11y sweep picks the page up from the registry on its own — no list to extend.
 
 ## Known limits and decisions
 
-- Three lists to keep in step (registry, `SHELL`, a11y `ROUTES`); the unit test guards only the first. Deliberate: `sw.js` cannot import from the bundle, and the sweep's list is meant to be read.
+- Two lists to keep in step (registry and `SHELL`); the unit test guards only the first. `sw.js` is a plain script outside the bundle, so it cannot import the registry — that one stays manual.
 - The palette shows at most 10 results and searches names/aliases/category/description only — nothing inside a tool.
 - No keyboard shortcut toggles the sidebar; only the hamburger.
 - `Icon` renders an empty square for an unknown key so a typo degrades visibly rather than crashing the shell.

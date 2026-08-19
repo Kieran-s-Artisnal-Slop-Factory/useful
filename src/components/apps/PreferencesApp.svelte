@@ -20,6 +20,7 @@
     ...BOOL_PREFS.map((p) => p.key),
     'timer_alarm_seconds',
     'auto_remember_based_on_last_value',
+    'scheduler_week_start',
   ]);
 
   let loading = $state(true);
@@ -41,6 +42,11 @@
   async function setPref(key: string, value: unknown) {
     prefs = { ...prefs, [key]: value };
     await putSingleton('preferences', { [key]: value });
+  }
+
+  /** 0 = Sunday, 1 = Monday. Read by the month grid and the week grid alike. */
+  function weekStartValue(): number {
+    return prefs.scheduler_week_start === 1 ? 1 : 0;
   }
 
   async function saveAlarmSeconds() {
@@ -105,6 +111,27 @@
             onchange={saveAlarmSeconds}
           />
           <span class="muted small">seconds</span>
+        </div>
+      </div>
+    </Card>
+
+    <Card title="Calendar">
+      <div class="stack">
+        <p class="muted small">
+          Which day the month and week grids start on. Sunday unless you say
+          otherwise.
+        </p>
+        <div class="row">
+          <label class="inline" for="pref-week-start">Week starts on</label>
+          <select
+            id="pref-week-start"
+            data-testid="pref-scheduler_week_start"
+            value={String(weekStartValue())}
+            onchange={(e) => setPref('scheduler_week_start', Number(e.currentTarget.value))}
+          >
+            <option value="0">Sunday</option>
+            <option value="1">Monday</option>
+          </select>
         </div>
       </div>
     </Card>

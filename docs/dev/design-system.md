@@ -102,6 +102,7 @@ The sheet and its frame live in `global.css`; everything else is a small utility
 | `.muted` | `color: var(--text-muted-color)`. | Secondary copy inside a block that is otherwise body text. |
 | `.btn`, `.btn-primary`, `.btn-danger`, `.btn-sm` | Square, 1.5px ruled, uppercase, letterspaced. Hover **doubles the line weight** (border colour plus a 1px box-shadow ring) rather than glowing. Disabled is 45° hatching, the drafting way to mark a void — not opacity. `.btn-danger` recolours the text only. | All buttons; there is no button component. |
 | `.drag-ghost`, `body.dragging` | The pointer-following ghost (stamp-bordered, fixed, `z-index: 1000`) and the no-select/`grabbing` body state. | Written by [dragdrop.ts](../../src/lib/dragdrop.ts); do not restyle per tool. |
+| `.checkerboard` | The transparency checkerboard: a 16px `repeating-conic-gradient` in `--border-color`. Alternate squares are `transparent`, so whatever the element sits on shows through — it is a drop-in for the hand-rolled copies that predate it. | Behind anything that can be see-through: image previews, colour swatches, editor canvases. Give the element its own `background-color` on top and the alpha composites over the checks. |
 
 Two breakpoints, both in `global.css`, both CSS range syntax:
 
@@ -130,7 +131,7 @@ Prism token colours ([global.css](../../src/styles/global.css)) are the blueprin
 | --- | --- |
 | [Card.svelte](../../src/components/Card.svelte) | Corner registration marks are eight positioned `linear-gradient` background layers — a 10px × 1.5px and a 1.5px × 10px arm per corner, in `--border-strong-color` via a local `--tick` variable — over a `--surface-color` fill with a hairline border. Header is optional (`title` and/or `actions`) and its `<h2>` is in title-block voice. Because the title is an `h2`, page structure must be `h1` → Card → `h3`; the a11y sweep fails on a skipped level. |
 | [Explainer.svelte](../../src/components/Explainer.svelte) | Native `<details>`, so keyboard toggling and the accessibility tree come free. Dashed `--border-strong-color` border, 88%-opacity surface, summary in eyebrow voice that goes from muted to full ink on hover and while open. |
-| [ColorField.svelte](../../src/components/ColorField.svelte) | Text input plus a 2.9rem native `<input type="color">`. Sets `aria-invalid` when the text does not parse, and the invalid state is drawn as a `--color-danger` **border** — a colour change alone would not be enough, so the field also carries the ARIA state. |
+| [ColorField.svelte](../../src/components/ColorField.svelte) | Text input plus a 2.9rem native `<input type="color">`. Sets `aria-invalid` when the text does not parse, and the invalid state is drawn as a `--color-danger` **border** — a colour change alone would not be enough, so the field also carries the ARIA state. Opt into `alpha` for a slider (a native picker cannot express alpha) and `showSwatch` for a `.checkerboard` preview; both are off by default, so the callers that predate them are untouched. |
 | [Icon.svelte](../../src/components/Icon.svelte) | See below. |
 
 ## Icons
@@ -202,7 +203,7 @@ The same file also sweeps **every** registered route for structure — no `butto
 
 ## Known limits and decisions
 
-- **`--font-mono` does not exist.** Eight components (`ColorField` and seven tool islands) ask for `var(--font-mono, ui-monospace, monospace)` and get the fallback; [CodeEditor.svelte](../../src/components/CodeEditor.svelte) and [SqlPlaygroundApp.svelte](../../src/components/apps/SqlPlaygroundApp.svelte) reference it with **no** fallback, so those declarations are invalid and the element inherits instead. It is harmless today only because `--font-body` is already monospace. Either define the token or drop the references.
+- **`--font-mono` is an alias of `--font-body`**, not a second stack — the body face is already monospace. It exists because code, colour values and numeric readouts ask for "the mono face" by name; if the body face ever stops being monospace, that one line is what has to change. (Before v0.2.0 the token was referenced by ten files and defined by none: eight fell back to `ui-monospace, monospace` and two, having no fallback, silently inherited.)
 - **The sweep does not measure every token.** `--color-stamp`, `--color-warning`, `--color-primary` / `--color-on-primary`, `--color-primary-soft` and `--border-color` are unchecked; a change to any of them will not be caught by CI.
 - **Contrast is checked on the tokens, not on the composition.** Text on `--color-primary-soft`, or muted text on `--surface-raised-color`, is nobody's assertion.
 - **`--shadow-1` is `none`** while several components still reference it. That is deliberate (one edit flips every sheet to lifted), but reading the CSS suggests an elevation that is not drawn.

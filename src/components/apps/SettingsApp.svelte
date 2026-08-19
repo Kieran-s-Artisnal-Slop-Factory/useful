@@ -39,7 +39,13 @@
   // ---- backup
   let importInput: HTMLInputElement | undefined = $state();
 
-  let importMode: ImportMode = $state('replace');
+  /**
+   * Merge, not Restore. Restore wipes this device's data before loading the
+   * file, and a destructive action should never be the one already selected
+   * when someone reaches for "Import". Restore is one click away and still
+   * behind its own confirm.
+   */
+  let importMode: ImportMode = $state('merge');
 
   async function onImportFile(e: Event) {
     const input = e.target as HTMLInputElement;

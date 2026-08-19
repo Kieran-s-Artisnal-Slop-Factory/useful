@@ -32,7 +32,11 @@ Everything runs locally: no account, no server, no telemetry.
 - `timers` — countdown timers; running timers store an absolute `end_at`
   deadline, so nothing writes per tick
 - `stopwatch` — singleton; start epoch + accumulated elapsed + lap list
-- `events` — calendar events (title, start/end, all-day); no recurrence
+- `events` — calendar events (title, start/end, all-day). Repeating events
+  keep the rule on the row and expand VIRTUALLY: one row draws every
+  occurrence, nothing is materialized. Cancelled occurrences are listed in
+  `exdates`; a single occurrence edited on its own becomes an ordinary row
+  carrying `series_id` + `original_start`, which shadows the series' copy
 - `todos` — field-merged; title, markdown, due date/time, priority, fixed
   three-state workflow, recurrence rule (successor spawned on complete, never
   on render), fractional `rank` for kanban ordering

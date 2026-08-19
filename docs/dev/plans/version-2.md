@@ -12,8 +12,8 @@ Written 2026-08-19 against the shipped 0.1.0 code (VERSION already reads
 `0.2.0`, CHANGELOG already has an empty `0.2.0 (unreleased)` stanza, schema
 v7, `CACHE_NAME` `useful-cache-v11`).
 
-> **Nothing here is built yet.** This document is the plan; the work starts
-> when a phase is picked up.
+> **Progress:** phases are marked DONE in the overview table and on their own
+> heading as they land. Everything else is still plan.
 
 ---
 
@@ -45,9 +45,10 @@ plus one addition (item 6) now that the documentation tree exists.
    `CACHE_NAME` bumped; new tools registered in
    [registry.ts](../../../src/lib/registry.ts) with an icon in
    [icons.ts](../../../src/lib/icons.ts); links built with `href()`.
-5. **Accessibility:** keyboard operability and AA contrast for anything new; the
-   route added to `ROUTES` in [a11y.spec.ts](../../../tests/local/a11y.spec.ts)
-   (until Phase 0 makes that list derive from the registry).
+5. **Accessibility:** keyboard operability and AA contrast for anything new. The
+   sweep in [a11y.spec.ts](../../../tests/local/a11y.spec.ts) reads its routes
+   from the registry (since Phase 0), so registering the tool is what enrols it
+   — there is no list to extend, and no way to ship a page unaudited.
 6. **Docs:** every user-visible feature gets its page under
    [docs/dev/](../) and [docs/user/](../../user/) — new tools get a new page,
    changes to existing tools edit the existing page. A phase is not done while
@@ -113,14 +114,15 @@ reasons are the part that ages.
 ## Open questions
 
 Answers change what gets built. Each is tagged with the phase that needs it; the
-phase can start without it only where noted.
+phase can start without it only where noted. **Q1–Q5 were answered 2026-08-19**
+and the phases below are written to the answers, not the defaults.
 
-| # | Question | Needed by | Default if unanswered |
+| # | Question | Needed by | Answer / default if unanswered |
 |---|----------|-----------|-----------------------|
-| Q1 | Recurring events: store an IANA `tz` per event (a 09:00 weekly meeting stays 09:00 through DST, and stays in its original zone if you travel) or expand in the device's current zone? | Phase 2 | Store `tz`; it is the only option that survives DST correctly |
-| Q2 | Should recurring events support an end — `until` date, `count`, or neither? And should the same be offered for recurring TODOs? | Phase 2 | `until` on both; no `count` |
+| Q1 | Recurring events: store an IANA `tz` per event (a 09:00 weekly meeting stays 09:00 through DST, and stays in its original zone if you travel) or expand in the device's current zone? | Phase 2 | **ANSWERED: expand in the device's current zone.** No `tz` field. Wall time is still preserved across DST for anyone staying put; a traveller sees the event at their new local wall time |
+| Q2 | Should recurring events support an end — `until` date, `count`, or neither? And should the same be offered for recurring TODOs? | Phase 2 | **ANSWERED: `until` on both, no `count`** — one shared field in the shared rule editor |
 | Q3 | Editing "all events" in a series: re-fold previously overridden occurrences (Apple) or leave overrides alone (Google)? | Phase 2 | Google semantics — overrides win |
-| Q4 | Week start: the month grid hard-codes Sunday. Add a Monday/Sunday preference now? | Phase 3 | Keep Sunday; add the preference later |
+| Q4 | Week start: the month grid hard-codes Sunday. Add a Monday/Sunday preference now? | Phase 3 | **ANSWERED: add the preference now**, read by the month grid and the new week grid alike |
 | Q5 | On mobile (<44rem) the month grid hides entries. Auto-switch to day view, or keep month plus a manual switch? | Phase 3 | Manual switch |
 | Q6 | Secrets: the TODO asks for WPA and WEP. randomkeygen.com has been rebuilt and no longer offers WEP, 160/504-bit WPA or CodeIgniter keys (see Phase 4). Ship a WiFi/WPA generator only, or also WEP behind a "broken since 2007" warning? | Phase 4 | WPA only; WEP omitted |
 | Q7 | Sprite editor scope: a faithful port of retoken's (single frame, single layer, square 4–48 grid, no undo), or grown with undo/frames/sheet export? | Phase 5 | Faithful port + undo/redo; frames deferred |
@@ -140,10 +142,10 @@ phase can start without it only where noted.
 
 | Phase | Goal | New deps | DB | Notes |
 |-------|------|----------|----|-------|
-| 0 | Groundwork + the bugs the docs pass turned up | — | — | Unblocks 1, 3, 5, 6 |
-| 1 | Image editor: alpha, CSS colours, transparent layers | — | — | Needs Phase 0's `ColorField` |
-| 2 | Scheduler: recurring events | — | v8 | |
-| 3 | Scheduler: week + day views | — | pref only | Needs Phase 2's expander |
+| 0 ✅ | Groundwork + the bugs the docs pass turned up | — | — | **DONE 2026-08-19.** Unblocks 1, 3, 5, 6 |
+| 1 ✅ | Image editor: alpha, CSS colours, transparent layers | — | — | **DONE 2026-08-19.** Built on Phase 0's `ColorField` |
+| 2 ✅ | Scheduler: recurring events | — | v8 | **DONE 2026-08-19.** |
+| 3 ✅ | Scheduler: week + day views | — | 2 prefs | **DONE 2026-08-19.** Built on Phase 2's expander |
 | 4 | Secrets generator | — | — | Standalone |
 | 5 | Sprite editor (port) | — | v9 | |
 | 6 | Logo generator (port) | `@dicebear/*`, `jdenticon`, `lucide-static` | — | |
@@ -158,7 +160,7 @@ renumber — the migration list is append-only, so whoever lands first takes v8.
 
 ---
 
-## Phase 0 — Groundwork
+## Phase 0 — Groundwork — DONE (2026-08-19)
 
 **Goal:** the small shared changes later phases depend on, plus the four defects
 the 0.1.0 documentation pass turned up. Nothing user-facing except the fixes.
@@ -208,9 +210,9 @@ the 0.1.0 documentation pass turned up. Nothing user-facing except the fixes.
   `OfflinePanel` without `onfinished`).
 - **Backup import defaults to Restore, not Merge.** That is what the code does
   (`importMode = $state('replace')`, and `importData(envelope, mode =
-  'replace')`); the destructive option should not be the preselected one, or the
-  UI must say plainly that it replaces everything. Decide, then make code and
-  docs agree.
+  'replace')`) — the destructive option is the preselected one. **Decided:
+  default to Merge**; Restore stays available behind its existing confirm, and
+  the docs follow.
 - **A stale comment on `SyncFields.field_updated_at`** claims nothing consumes
   the per-field stamps. `foldFieldMerged` in
   [export.ts](../../../src/lib/db/export.ts) has consumed them since Phase 1 and
@@ -235,7 +237,7 @@ version sync).
 
 ---
 
-## Phase 1 — Image editor: alpha, CSS colours, transparent layers
+## Phase 1 — Image editor: alpha, CSS colours, transparent layers — DONE (2026-08-19)
 
 **Goal:** the TODO's image-editor item — colour fill layers with an alpha
 channel, transparent layers, and CSS colour names.
@@ -264,6 +266,10 @@ that silently drops alpha on use.
    the layer list's `50%` badge only reflects opacity.
 6. The export card says so when a composite with alpha is exported as JPG (it
    flattens onto white — correct, and surprising next to a checkerboard preview).
+   **As built:** read from the rendered composite through a 64x64 downscale
+   rather than inferred from the layer tree — a transparent layer that
+   something opaque covers is not transparency, and a warning that never turns
+   off is a warning nobody reads.
 
 **Not in scope:** an `alpha` field on the layer. Colour alpha and `layer.opacity`
 are already multiplicative in the render pipeline; a second knob for the same
@@ -288,7 +294,7 @@ rather than black; a translucent fill exported as JPG flattens onto white; and
 
 ---
 
-## Phase 2 — Scheduler: recurring events
+## Phase 2 — Scheduler: recurring events — DONE (2026-08-19)
 
 **Goal:** events repeat, with the same "one row per user action, zero rows per
 render" discipline the rest of the scheduler keeps.
@@ -307,8 +313,10 @@ trigger — which is why they expand virtually instead.
   stepping happens on local dates (reusing `addDays` / `addMonthsClamped` /
   the weekday scan already in `recurrence.ts`, exported for the purpose) and the
   wall time is re-applied through `wallTimeToInstant`. That is what keeps a 09:00
-  weekly meeting at 09:00 across a DST boundary while its UTC instant shifts
-  (Q1). Duration is the anchor's `end - start`, re-applied per occurrence.
+  weekly meeting at 09:00 across a DST boundary while its UTC instant shifts.
+  The zone is **the device's current zone**, not a stored one (Q1) — so no `tz`
+  field, and a traveller sees the series at their new local wall time. Duration
+  is the anchor's `end - start`, re-applied per occurrence.
 - **Month-end steps from the anchor, not from the previous occurrence.** "Every
   month" from the 31st gives Feb 28/29 and Apr 30 — and then May 31 again, not
   May 30.
@@ -334,9 +342,10 @@ trigger — which is why they expand virtually instead.
   `RecurrenceFields.svelte` so both kinds of recurrence read the same.
 
 **Data model — migration v8.** `Event` gains `recurrence: RecurrenceRule | null`,
-`tz: string | null`, `exdates: string[]`, `series_id: string | null`,
-`original_start: string | null`; `RecurrenceRule` gains optional `until` and no
-`count` (Q2), offered on recurring TODOs through the same shared editor;
+`exdates: string[]`, `series_id: string | null`,
+`original_start: string | null` (no `tz` — Q1); `RecurrenceRule` gains optional
+`until` and no `count` (Q2), offered on recurring TODOs through the same shared
+editor;
 `STORES.events` gains a `series_id` index (the only part that needs the version
 bump). Readers default missing keys at read time — no backfill, because a
 backfill on load is a write on load. Mirror in `schema.ts` (`series_id` as a
@@ -368,7 +377,7 @@ notifications still only fire while a tab is open).
 
 ---
 
-## Phase 3 — Scheduler: week and day calendar views
+## Phase 3 — Scheduler: week and day calendar views — DONE (2026-08-19)
 
 **Goal:** the month grid gains week and day siblings.
 
@@ -395,9 +404,11 @@ notifications still only fire while a tab is open).
   back to the list. The control is the only way views change: below 44rem the
   month grid keeps hiding entries and the user switches by hand (Q5), because an
   automatic width-driven switch would fight a persisted choice.
-- The week view's first column is Sunday, matching the month grid's hard-coded
-  start (Q4). No week-start preference in this phase; if it lands later it is one
-  preference field read by both grids.
+- **Week start becomes a preference** (Q4): a Monday/Sunday setting on the
+  Preferences page, read by the month grid (which hard-codes Sunday today) and
+  the new week grid alike, defaulting to Sunday so nothing shifts under anyone
+  who never opens it. The day-of-week header row and the leading-blank
+  calculation both derive from it.
 - Keyboard: roving tabindex across day columns and slots, Enter to create at the
   focused slot, and slot buttons named ("Add event on 2026-06-12 at 09:00") —
   the a11y sweep fails on unnamed controls.
@@ -406,13 +417,16 @@ notifications still only fire while a tab is open).
 - Touch: the hour column must still pan when a finger lands on empty space, so
   only entries and slot buttons take the gesture.
 
-**Data model:** one new optional preference field, mirrored in `schema.ts`. No
-migration.
+**Data model:** two new optional preference fields —
+`scheduler_calendar_view` and `scheduler_week_start` — mirrored in `schema.ts`.
+No migration.
 
-**Tests:** unit — slot/position maths and the overlap-column packer. Playwright —
-switching views writes only the preferences row; a week drop onto a slot changes
-one row and sets the time; a touch drag through CDP touch events works in the
-week grid; rendering any view writes nothing.
+**Tests:** unit — slot/position maths, the overlap-column packer, and the
+week-start-aware grid maths (leading blanks and header order for both starts).
+Playwright — switching views writes only the preferences row; a week drop onto a
+slot changes one row and sets the time; a touch drag through CDP touch events
+works in the week grid; changing week start reorders the month header without
+touching any event row; rendering any view writes nothing.
 
 **Docs:** as Phase 2's pages.
 

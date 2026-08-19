@@ -13,6 +13,7 @@
  * while closed are surfaced as "missed" on the next open.
  */
 import { all, get, getSingleton, patch, softDelete } from '../db/repo';
+import { nextOccurrenceOnOrAfter } from '../scheduler/occurrences';
 import type { Event as CalendarEvent, Preferences, Timer, Todo } from '../db/types';
 
 export interface CompletionNotice {
@@ -179,17 +180,42 @@ async function scanDue(now: number): Promise<void> {
     ];
     await showNotification('Due now: ' + t.title, 'useful — scheduler', 'useful-todo-' + t.id);
   }
+  // Instants a series has handed to a detached override: the override row is
+  // scanned in its own right, so firing the series' version too would notify
+  // twice for the same meeting.
+  const overridden = new Map<string, Set<string>>();
+  for (const ev of events) {
+    if (ev.series_id && ev.original_start) {
+      const set = overridden.get(ev.series_id) ?? new Set<string>();
+      set.add(ev.original_start);
+      overridden.set(ev.series_id, set);
+    }
+  }
+
   for (const ev of events) {
     if (!ev.notify) continue;
-    const start = Date.parse(ev.start);
-    const key = `event:${ev.id}:${ev.start}`;
-    if (Number.isNaN(start) || now < start || now - start > DUE_FIRE_WINDOW_MS || firedDue.has(key)) continue;
+    // A recurring event has no single start to compare against, so ask for the
+    // one it is closest to. Looking from the start of the fire window means a
+    // moment that has just passed is still found.
+    const start = nextOccurrenceOnOrAfter(ev, now - DUE_FIRE_WINDOW_MS, undefined, overridden.get(ev.id));
+    if (start === null) continue;
+    const startIso = new Date(start).toISOString();
+    // Keyed per OCCURRENCE, so next week's meeting is a separate notice.
+    const key = `event:${ev.id}:${startIso}`;
+    if (now < start || now - start > DUE_FIRE_WINDOW_MS || firedDue.has(key)) continue;
     firedDue.add(key);
     engineState.notices = [
       ...engineState.notices,
-      { id: ev.id, kind: 'event', label: ev.title, missed: false, at: new Date().toISOString(), alarming: false },
+      {
+        id: `${ev.id}@${startIso}`,
+        kind: 'event',
+        label: ev.title,
+        missed: false,
+        at: new Date().toISOString(),
+        alarming: false,
+      },
     ];
-    await showNotification('Starting now: ' + ev.title, 'useful — scheduler', 'useful-event-' + ev.id);
+    await showNotification('Starting now: ' + ev.title, 'useful — scheduler', `useful-event-${ev.id}@${startIso}`);
   }
 }
 

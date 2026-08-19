@@ -20,7 +20,23 @@
  */
 import type { BlendMode, ImageLayer, RasterDocument, RasterLayer, Rect } from './model';
 import { isEffectLayer } from './model';
+import { resolveFillStyle } from '../gen/color';
 import { arrowHeadPoints, arrowShaftEnd, rotatedSize } from './transform';
+
+/**
+ * A paintable `fillStyle`/`strokeStyle` for a layer's color, or null when the
+ * string is not a color at all.
+ *
+ * Assigning an unparseable value to `fillStyle` is a silent no-op — the context
+ * keeps whatever it had, which in a fresh buffer is opaque black. Colors here
+ * are free-form CSS typed by a person (`transparent`, `red`, `#ff000080`), so a
+ * typo would paint a black rectangle over their picture. Callers skip the draw
+ * instead, and the normalized `rgb()` string means the canvas paints exactly
+ * what the field's swatch previewed.
+ */
+function paintable(color: string): string | null {
+  return resolveFillStyle(color);
+}
 
 /** Map a BlendMode to the canvas globalCompositeOperation name. */
 export function blendOp(mode: BlendMode): GlobalCompositeOperation {
@@ -96,8 +112,12 @@ export function drawLayer(
         break;
       }
       if (layer.mode === 'erase') ctx.globalCompositeOperation = 'destination-out';
-      ctx.strokeStyle = layer.color;
-      ctx.fillStyle = layer.color;
+      // An eraser does not care what colour it is (destination-out only reads
+      // alpha), but a paint stroke does — and must not fall back to black.
+      const strokePaint = layer.mode === 'erase' ? layer.color : paintable(layer.color);
+      if (strokePaint === null) break;
+      ctx.strokeStyle = strokePaint;
+      ctx.fillStyle = strokePaint;
       ctx.lineWidth = layer.size;
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
@@ -123,9 +143,11 @@ export function drawLayer(
       break;
     }
     case 'arrow': {
+      const arrowPaint = paintable(layer.color);
+      if (arrowPaint === null) break;
       const shaftEnd = arrowShaftEnd(layer.from, layer.to, layer.size);
-      ctx.strokeStyle = layer.color;
-      ctx.fillStyle = layer.color;
+      ctx.strokeStyle = arrowPaint;
+      ctx.fillStyle = arrowPaint;
       ctx.lineWidth = layer.size;
       ctx.lineCap = 'round';
       ctx.beginPath();
@@ -142,7 +164,9 @@ export function drawLayer(
       break;
     }
     case 'text': {
-      ctx.fillStyle = layer.color;
+      const textPaint = paintable(layer.color);
+      if (textPaint === null) break;
+      ctx.fillStyle = textPaint;
       ctx.font = `${layer.bold ? 700 : 400} ${layer.size}px system-ui, -apple-system, sans-serif`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
@@ -150,7 +174,9 @@ export function drawLayer(
       break;
     }
     case 'fill': {
-      ctx.fillStyle = layer.color;
+      const fillPaint = paintable(layer.color);
+      if (fillPaint === null) break;
+      ctx.fillStyle = fillPaint;
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       break;
     }

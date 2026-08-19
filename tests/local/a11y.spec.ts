@@ -13,34 +13,18 @@
  * page inherits it.
  */
 import { test, expect } from './helpers/app';
+import { REGISTRY } from '../../src/lib/registry';
 
 type P = import('@playwright/test').Page;
 
-/** Every route the app registers, plus its own pages. */
-const ROUTES = [
-  '/',
-  '/preferences/',
-  '/settings/',
-  '/tools/timers/',
-  '/tools/stopwatch/',
-  '/tools/timezones/',
-  '/tools/scheduler/',
-  '/tools/number-conversion/',
-  '/tools/photography/',
-  '/tools/file-transfer/',
-  '/tools/colors/',
-  '/tools/gradients/',
-  '/tools/glassmorphism/',
-  '/tools/regex/',
-  '/tools/qr/',
-  '/tools/image-converter/',
-  '/tools/image-resizer/',
-  '/tools/image-compressor/',
-  '/tools/background-remover/',
-  '/tools/svg-editor/',
-  '/tools/image-editor/',
-  '/tools/sql-playground/',
-];
+/**
+ * Every route the app registers, taken FROM the registry rather than copied
+ * beside it. A hand-maintained list is a list someone forgets to extend, and a
+ * page missing from it ships unaudited while this suite stays green — so the
+ * one source of truth for navigation is the one source of truth for the sweep
+ * too. Adding a tool to the registry is all it takes to be audited here.
+ */
+const ROUTES = [...new Set(REGISTRY.map((tool) => tool.route))].sort();
 
 interface A11yReport {
   headings: string[];

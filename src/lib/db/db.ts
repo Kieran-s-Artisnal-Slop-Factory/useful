@@ -114,6 +114,18 @@ const MIGRATIONS: Migration[] = [
       db.createObjectStore('sql_playgrounds', { keyPath: 'id' });
     }
   },
+  // v8 — Recurring events: `events` gains recurrence/exdates/series_id/
+  // original_start (defaulted at READ time, never backfilled — a backfill on
+  // load would be a write on load) plus an index on series_id so a series can
+  // find its detached overrides.
+  (db, tx) => {
+    if (db.objectStoreNames.contains('events')) {
+      const events = tx.objectStore('events');
+      if (!events.indexNames.contains('series_id')) {
+        events.createIndex('series_id', 'series_id', { multiEntry: false });
+      }
+    }
+  },
 ];
 
 export const DB_VERSION = MIGRATIONS.length;

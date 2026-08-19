@@ -23,11 +23,29 @@
   } from '../../lib/db/types';
   import { draggable, dropzone, type DragData } from '../../lib/dragdrop';
   import { describeRule, nextDueDate } from '../../lib/scheduler/recurrence';
+  import { isSeries, type Occurrence } from '../../lib/scheduler/occurrences';
+  import { draftToRule, ruleToDraft, type RecurDraft } from '../../lib/scheduler/recurDraft';
   import { rankAfter, rankBetween } from '../../lib/scheduler/rank';
   import { renderMarkdown } from '../../lib/markdown';
   import CalendarView from './CalendarView.svelte';
+  import TimeGridView from './TimeGridView.svelte';
+  import RecurrenceFields from './RecurrenceFields.svelte';
+
+  /**
+   * Which instances of a series an edit or a delete applies to. Google's
+   * semantics: "all" leaves occurrences that were already changed on their own
+   * alone, because someone deliberately made them different (Q3).
+   */
+  type Scope = 'this' | 'following' | 'all';
 
   type View = 'list' | 'board' | 'calendar';
+  /** Month, week or day — a sub-view OF the calendar, not a fourth view. */
+  type CalView = 'month' | 'week' | 'day';
+  const CAL_VIEWS: { key: CalView; label: string }[] = [
+    { key: 'month', label: 'Month' },
+    { key: 'week', label: 'Week' },
+    { key: 'day', label: 'Day' },
+  ];
   const STATUSES: { key: TodoStatus; label: string }[] = [
     { key: 'todo', label: 'TODO' },
     { key: 'in_progress', label: 'In progress' },
@@ -35,8 +53,18 @@
   ];
   const PRIORITIES: TodoPriority[] = ['low', 'medium', 'high', 'urgent'];
 
+  const pad2 = (n: number) => String(n).padStart(2, '0');
+  const todayKey = (() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+  })();
+
   let loading = $state(true);
   let view: View = $state('list');
+  let calView: CalView = $state('month');
+  /** Shared by all three calendar grids, so switching lands on the same dates. */
+  let calAnchor = $state(todayKey);
+  let weekStart = $state(0);
   let todos: Todo[] = $state([]);
   let events: CalendarEvent[] = $state([]);
   let comments: TodoComment[] = $state([]);
@@ -51,12 +79,21 @@
 
   onMount(async () => {
     const prefs = await getSingleton<Preferences>('preferences');
+    if (prefs?.scheduler_calendar_view === 'week' || prefs?.scheduler_calendar_view === 'day') {
+      calView = prefs.scheduler_calendar_view;
+    }
+    if (prefs?.scheduler_week_start === 1) weekStart = 1;
     if (prefs?.scheduler_view === 'board' || prefs?.scheduler_view === 'calendar') {
       view = prefs.scheduler_view;
     }
     await refresh();
     loading = false;
   });
+
+  function setCalView(v: CalView) {
+    calView = v;
+    void putSingleton<Partial<Preferences>>('preferences', { scheduler_calendar_view: v });
+  }
 
   function setView(v: View) {
     view = v;
@@ -88,6 +125,13 @@
 
   let modalTodo = $derived(modal?.type === 'todo' && modal.id ? todos.find((t) => t.id === modal!.id) ?? null : null);
   let modalEvent = $derived(modal?.type === 'event' && modal.id ? events.find((e) => e.id === modal!.id) ?? null : null);
+  /** The occurrence the modal was opened from — a series row is not enough. */
+  let modalOccurrence: Occurrence | null = $state(null);
+  /** Does this modal need to ask "this / following / all"? */
+  let modalNeedsScope = $derived(
+    modalEvent !== null && (isSeries(modalEvent) || modalEvent.series_id !== null)
+  );
+  let eventScope: Scope = $state('this');
 
   function closeModal() {
     modal = null;
@@ -109,6 +153,7 @@
       every_interval: 1,
       every_unit: 'days' as 'days' | 'weeks' | 'months',
       weekdays: [] as number[],
+      until: '',
     };
   }
 
@@ -131,27 +176,14 @@
       due_time: t.due_time ?? '',
       priority: t.priority,
       notify: t.notify,
-      recur: t.recurrence === null ? 'none' : t.recurrence.kind === 'every' ? 'every' : 'weekdays',
-      every_interval: t.recurrence?.kind === 'every' ? t.recurrence.interval : 1,
-      every_unit: t.recurrence?.kind === 'every' ? t.recurrence.unit : 'days',
-      weekdays: t.recurrence?.kind === 'weekdays' ? [...t.recurrence.days] : [],
+      ...ruleToDraft(t.recurrence),
     };
     todoError = null;
     modal = { type: 'todo', id: t.id, mode: 'edit' };
   }
 
   function draftRule(): RecurrenceRule | null {
-    if (todoDraft.recur === 'every') {
-      return {
-        kind: 'every',
-        interval: Math.max(1, Math.round(+todoDraft.every_interval || 1)),
-        unit: todoDraft.every_unit,
-      };
-    }
-    if (todoDraft.recur === 'weekdays') {
-      return todoDraft.weekdays.length > 0 ? { kind: 'weekdays', days: [...todoDraft.weekdays].sort() } : null;
-    }
-    return null;
+    return draftToRule(todoDraft as RecurDraft);
   }
 
   async function saveTodo(e: SubmitEvent) {
@@ -297,23 +329,46 @@
   let eventDraft = $state(blankEventDraft());
 
   function blankEventDraft() {
-    return { title: '', description_md: '', date: '', time: '', end_date: '', end_time: '', all_day: false, notify: false };
+    return {
+      title: '',
+      description_md: '',
+      date: '',
+      time: '',
+      end_date: '',
+      end_time: '',
+      all_day: false,
+      notify: false,
+      recur: 'none' as 'none' | 'every' | 'weekdays',
+      every_interval: 1,
+      every_unit: 'days' as 'days' | 'weeks' | 'months',
+      weekdays: [] as number[],
+      until: '',
+    };
   }
 
-  function openEventCreate(date?: string) {
-    eventDraft = { ...blankEventDraft(), date: date ?? '' };
+  function openEventCreate(date?: string, time?: string) {
+    eventDraft = { ...blankEventDraft(), date: date ?? '', time: time ?? '' };
     eventError = null;
+    modalOccurrence = null;
+    eventScope = 'this';
     modal = { type: 'event', id: null, mode: 'edit' };
   }
 
-  function openEventRead(ev: CalendarEvent) {
+  /** Opened from the calendar: remember WHICH occurrence was clicked. */
+  function openOccurrenceRead(occ: Occurrence) {
     eventError = null;
-    modal = { type: 'event', id: ev.id, mode: 'read' };
+    modalOccurrence = occ;
+    eventScope = 'this';
+    modal = { type: 'event', id: occ.event.id, mode: 'read' };
   }
 
   function editEventFromModal(ev: CalendarEvent) {
-    const start = new Date(ev.start);
-    const end = ev.end ? new Date(ev.end) : null;
+    // Edit the occurrence that was opened, not the series anchor: the times in
+    // the form must be the ones on screen.
+    const startIso = modalOccurrence?.event.id === ev.id ? modalOccurrence.start : ev.start;
+    const endIso = modalOccurrence?.event.id === ev.id ? modalOccurrence.end : ev.end;
+    const start = new Date(startIso);
+    const end = endIso ? new Date(endIso) : null;
     eventDraft = {
       title: ev.title,
       description_md: ev.description_md,
@@ -323,9 +378,23 @@
       end_time: end && !ev.all_day ? localTime(end) : '',
       all_day: ev.all_day,
       notify: ev.notify,
+      ...ruleToDraft(ev.recurrence),
     };
     eventError = null;
+    eventScope = isSeries(ev) || ev.series_id ? 'this' : 'all';
     modal = { type: 'event', id: ev.id, mode: 'edit' };
+  }
+
+  /** The day before a local date — where "this and following" ends the old series. */
+  function dayBefore(date: string): string {
+    const [y, m, d] = date.split('-').map(Number);
+    const dt = new Date(y!, m! - 1, d! - 1);
+    return localDate(dt);
+  }
+
+  /** Detached rows that belong to a series (alive only — `all()` hides tombstones). */
+  function detachedOf(seriesId: string): CalendarEvent[] {
+    return events.filter((e) => e.series_id === seriesId);
   }
 
   const pad = (n: number) => String(n).padStart(2, '0');
@@ -351,6 +420,7 @@
       eventError = 'The end must not be before the start.';
       return;
     }
+    const rule = draftToRule(eventDraft as RecurDraft);
     const fields = {
       title: eventDraft.title.trim(),
       description_md: eventDraft.description_md,
@@ -359,23 +429,108 @@
       all_day: eventDraft.all_day,
       notify: eventDraft.notify,
     };
-    if (modal?.id) {
-      const saved = await patch<CalendarEvent>('events', modal.id, fields);
+
+    if (!modal?.id) {
+      await put<CalendarEvent>(
+        'events',
+        withSyncFields({ ...fields, recurrence: rule, exdates: [], series_id: null, original_start: null })
+      );
+      closeModal();
+      await refresh();
+      return;
+    }
+
+    const row = events.find((e) => e.id === modal!.id);
+    if (!row) {
+      eventError = 'That event was deleted somewhere else — nothing was saved.';
+      await refresh();
+      return;
+    }
+
+    // A detached row, or a plain event, is just itself.
+    if (!isSeries(row) || eventScope === 'all') {
+      const saved = await patch<CalendarEvent>('events', row.id, {
+        ...fields,
+        ...(isSeries(row) || row.recurrence ? { recurrence: rule } : {}),
+      });
       if (!saved) {
         eventError = 'That event was deleted somewhere else — nothing was saved.';
         await refresh();
         return;
       }
+    } else if (eventScope === 'this') {
+      // One occurrence pulled out of the series: ONE new row, parent untouched.
+      const occStart = modalOccurrence?.start ?? row.start;
+      await put<CalendarEvent>(
+        'events',
+        withSyncFields({
+          ...fields,
+          recurrence: null,
+          exdates: [],
+          series_id: row.id,
+          original_start: occStart,
+        })
+      );
     } else {
-      await put<CalendarEvent>('events', withSyncFields(fields));
+      // This and following: end the old series the day before, start a new one
+      // here. Two rows, both deliberate.
+      const occStart = modalOccurrence?.start ?? row.start;
+      const splitDate = localDate(new Date(occStart));
+      const previous = dayBefore(splitDate);
+      await patch<CalendarEvent>('events', row.id, {
+        recurrence: { ...(row.recurrence as RecurrenceRule), until: previous },
+      });
+      await put<CalendarEvent>(
+        'events',
+        withSyncFields({ ...fields, recurrence: rule, exdates: [], series_id: null, original_start: null })
+      );
     }
     closeModal();
     await refresh();
   }
 
   async function deleteEvent(ev: CalendarEvent) {
-    if (!confirm('Delete event "' + ev.title + '"?')) return;
-    await softDelete('events', ev.id);
+    const occStart = modalOccurrence?.event.id === ev.id ? modalOccurrence.start : ev.start;
+
+    // A detached override: remove the row AND cancel the instant on the parent,
+    // or the series would simply put its original occurrence back.
+    if (ev.series_id && ev.original_start) {
+      if (!confirm('Delete this occurrence of "' + ev.title + '"?')) return;
+      const parent = events.find((e) => e.id === ev.series_id);
+      await softDelete('events', ev.id);
+      if (parent) {
+        await patch<CalendarEvent>('events', parent.id, {
+          exdates: [...(parent.exdates ?? []), ev.original_start],
+        });
+      }
+      closeModal();
+      await refresh();
+      return;
+    }
+
+    if (!isSeries(ev)) {
+      if (!confirm('Delete event "' + ev.title + '"?')) return;
+      await softDelete('events', ev.id);
+      closeModal();
+      await refresh();
+      return;
+    }
+
+    if (eventScope === 'this') {
+      if (!confirm('Delete this occurrence of "' + ev.title + '"?')) return;
+      await patch<CalendarEvent>('events', ev.id, { exdates: [...(ev.exdates ?? []), occStart] });
+    } else if (eventScope === 'following') {
+      if (!confirm('Delete this and every later occurrence of "' + ev.title + '"?')) return;
+      await patch<CalendarEvent>('events', ev.id, {
+        recurrence: { ...(ev.recurrence as RecurrenceRule), until: dayBefore(localDate(new Date(occStart))) },
+      });
+    } else {
+      if (!confirm('Delete the whole series "' + ev.title + '"?')) return;
+      // The overrides are part of the series; leaving them would orphan rows
+      // whose foreign key points at a tombstone.
+      const children = detachedOf(ev.id).map((c) => c.id);
+      await softDeleteMany('events', [ev.id, ...children]);
+    }
     closeModal();
     await refresh();
   }
@@ -426,24 +581,64 @@
 
   /** Calendar drag-and-drop: ONE row per drop; same-day drops write nothing.
    * Events keep their time of day (end shifts by the same delta). */
-  async function dropOnDate(type: 'todo' | 'event', id: string, date: string) {
+  async function dropOnDate(
+    type: 'todo' | 'event',
+    id: string,
+    date: string,
+    occStart: string | null = null,
+    /** 'HH:MM' when dropped on a time grid; null from the month grid. */
+    time: string | null = null
+  ) {
     if (type === 'todo') {
       const t = todos.find((x) => x.id === id);
-      if (!t || t.due_date === date) return;
-      await patch<Todo>('todos', id, { due_date: date });
-    } else {
-      const ev = events.find((x) => x.id === id);
-      if (!ev) return;
-      const start = new Date(ev.start);
-      if (localDate(start) === date) return;
-      const [y, m, d] = date.split('-').map(Number);
-      const newStart = new Date(start);
-      newStart.setFullYear(y!, m! - 1, d!);
-      const deltaMs = newStart.getTime() - start.getTime();
-      await patch<CalendarEvent>('events', id, {
-        start: newStart.toISOString(),
-        end: ev.end ? new Date(Date.parse(ev.end) + deltaMs).toISOString() : null,
+      if (!t) return;
+      // A drop onto the same date AND time is a no-op, and must not write.
+      if (t.due_date === date && (time === null || t.due_time === time)) return;
+      await patch<Todo>('todos', id, {
+        due_date: date,
+        ...(time === null ? {} : { due_time: time }),
       });
+      await refresh();
+      return;
+    }
+
+    const ev = events.find((x) => x.id === id);
+    if (!ev) return;
+    // Move the OCCURRENCE that was dragged, which for a series is not the row's
+    // own start.
+    const fromIso = occStart ?? ev.start;
+    const start = new Date(fromIso);
+    if (localDate(start) === date && (time === null || localTime(start) === time)) return;
+    const [y, m, d] = date.split('-').map(Number);
+    const newStart = new Date(start);
+    newStart.setFullYear(y!, m! - 1, d!);
+    if (time !== null) {
+      const [hh, mm] = time.split(':').map(Number);
+      newStart.setHours(hh!, mm!, 0, 0);
+    }
+    const durationMs = ev.end ? Date.parse(ev.end) - Date.parse(ev.start) : null;
+    const newEnd = durationMs === null ? null : new Date(newStart.getTime() + durationMs).toISOString();
+
+    if (isSeries(ev)) {
+      // Dragging one occurrence of a series detaches it: ONE new row, and the
+      // series is not touched at all.
+      await put<CalendarEvent>(
+        'events',
+        withSyncFields({
+          title: ev.title,
+          description_md: ev.description_md,
+          start: newStart.toISOString(),
+          end: newEnd,
+          all_day: ev.all_day,
+          notify: ev.notify,
+          recurrence: null,
+          exdates: [],
+          series_id: ev.id,
+          original_start: fromIso,
+        })
+      );
+    } else {
+      await patch<CalendarEvent>('events', id, { start: newStart.toISOString(), end: newEnd });
     }
     await refresh();
   }
@@ -505,17 +700,27 @@
     return due.getTime() < Date.now();
   }
 
-  function eventWhen(ev: CalendarEvent): string {
-    const start = new Date(ev.start);
+  function eventWhen(ev: CalendarEvent, startIso = ev.start, endIso = ev.end): string {
+    const start = new Date(startIso);
     const startText = ev.all_day
       ? start.toLocaleDateString()
       : start.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
-    if (!ev.end) return startText;
-    const end = new Date(ev.end);
+    if (!endIso) return startText;
+    const end = new Date(endIso);
     const endText = ev.all_day
       ? end.toLocaleDateString()
       : end.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
     return `${startText} → ${endText}`;
+  }
+
+  /**
+   * When the OCCURRENCE the modal was opened from happens — not the series
+   * anchor, which for a weekly meeting opened in March may be back in January.
+   */
+  function occurrenceWhen(): string {
+    if (!modalEvent) return '';
+    const occ = modalOccurrence?.event.id === modalEvent.id ? modalOccurrence : null;
+    return eventWhen(modalEvent, occ?.start ?? modalEvent.start, occ?.end ?? modalEvent.end);
   }
 </script>
 
@@ -642,40 +847,7 @@
             </div>
           </div>
           <div class="row">
-            <div>
-              <label for="todo-recur">Repeats</label>
-              <select id="todo-recur" data-testid="todo-recur" bind:value={todoDraft.recur}>
-                <option value="none">never</option>
-                <option value="every">every N…</option>
-                <option value="weekdays">weekly on…</option>
-              </select>
-            </div>
-            {#if todoDraft.recur === 'every'}
-              <div>
-                <label for="todo-every-n">Every</label>
-                <div class="row">
-                  <input id="todo-every-n" class="num" type="number" min="1" max="365" bind:value={todoDraft.every_interval} />
-                  <select bind:value={todoDraft.every_unit} aria-label="Unit">
-                    <option value="days">days</option>
-                    <option value="weeks">weeks</option>
-                    <option value="months">months</option>
-                  </select>
-                </div>
-              </div>
-            {:else if todoDraft.recur === 'weekdays'}
-              <div class="row" role="group" aria-label="Weekdays">
-                {#each ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as name, day (day)}
-                  <label class="check">
-                    <input type="checkbox" checked={todoDraft.weekdays.includes(day)} onchange={(e) => {
-                      todoDraft.weekdays = e.currentTarget.checked
-                        ? [...todoDraft.weekdays, day]
-                        : todoDraft.weekdays.filter((d) => d !== day);
-                    }} />
-                    {name}
-                  </label>
-                {/each}
-              </div>
-            {/if}
+            <RecurrenceFields bind:draft={todoDraft} idPrefix="todo" />
             <label class="check">
               <input type="checkbox" data-testid="todo-notify" bind:checked={todoDraft.notify} />
               Notify when due
@@ -707,9 +879,16 @@
         </header>
         <dl class="attrs">
           <dt>When</dt>
-          <dd>{eventWhen(modalEvent)}</dd>
+          <dd data-testid="modal-when">{occurrenceWhen()}</dd>
           <dt>All day</dt>
           <dd>{modalEvent.all_day ? 'yes' : 'no'}</dd>
+          <dt>Repeats</dt>
+          <dd data-testid="modal-repeats">
+            {modalEvent.recurrence ? describeRule(modalEvent.recurrence) : 'never'}{modalEvent.recurrence
+              ?.until
+              ? ' until ' + modalEvent.recurrence.until
+              : ''}{modalEvent.series_id ? ' (changed for this day)' : ''}
+          </dd>
           <dt>Notify</dt>
           <dd>{modalEvent.notify ? 'at start' : 'no'}</dd>
         </dl>
@@ -717,6 +896,24 @@
           <div class="desc" data-testid="modal-desc">{@html renderMarkdown(modalEvent.description_md)}</div>
         {:else}
           <p class="muted">No description.</p>
+        {/if}
+        {#if modalNeedsScope && modalEvent.recurrence}
+          <fieldset class="scope" data-testid="event-scope">
+            <legend>Apply to</legend>
+            {#each [['this', 'This event'], ['following', 'This and following'], ['all', 'All events']] as [value, label] (value)}
+              <label class="check">
+                <input
+                  type="radio"
+                  name="event-scope"
+                  data-testid={'event-scope-' + value}
+                  value={value}
+                  checked={eventScope === value}
+                  onchange={() => (eventScope = value as Scope)}
+                />
+                {label}
+              </label>
+            {/each}
+          </fieldset>
         {/if}
         <div class="row">
           <button class="btn btn-sm btn-danger" data-testid="modal-delete" onclick={() => modalEvent && deleteEvent(modalEvent)}>
@@ -766,6 +963,33 @@
             <label class="check"><input type="checkbox" data-testid="event-all-day" bind:checked={eventDraft.all_day} /> All day</label>
             <label class="check"><input type="checkbox" bind:checked={eventDraft.notify} /> Notify at start</label>
           </div>
+          {#if !modal.id || !modalEvent?.series_id}
+            <div class="row">
+              <RecurrenceFields bind:draft={eventDraft} idPrefix="event" />
+            </div>
+          {:else}
+            <p class="muted small">
+              This day was changed on its own, so it no longer follows the series' repeat.
+            </p>
+          {/if}
+          {#if modalNeedsScope}
+            <fieldset class="scope" data-testid="event-scope-edit">
+              <legend>Apply to</legend>
+              {#each [['this', 'This event'], ['following', 'This and following'], ['all', 'All events']] as [value, label] (value)}
+                <label class="check">
+                  <input
+                    type="radio"
+                    name="event-scope-edit"
+                    data-testid={'event-scope-edit-' + value}
+                    value={value}
+                    checked={eventScope === value}
+                    onchange={() => (eventScope = value as Scope)}
+                  />
+                  {label}
+                </label>
+              {/each}
+            </fieldset>
+          {/if}
           {#if eventError}<p class="form-error">{eventError}</p>{/if}
           <div class="row">
             <button class="btn btn-primary" data-testid="event-save" type="submit">Save</button>
@@ -911,17 +1135,67 @@
     {/each}
   </div>
 {:else}
-  <CalendarView
-    {events}
-    {todos}
-    oneventclick={(ev) => openEventRead(ev)}
-    ontodoclick={(t) => openTodoRead(t)}
-    ondayclick={(date) => openEventCreate(date)}
-    ondropitem={(type, id, date) => void dropOnDate(type, id, date)}
-  />
+  <div class="row cal-views" role="group" aria-label="Calendar range">
+    {#each CAL_VIEWS as v (v.key)}
+      <button
+        class="btn btn-sm"
+        class:btn-primary={calView === v.key}
+        data-testid={'cal-view-' + v.key}
+        aria-pressed={calView === v.key}
+        onclick={() => setCalView(v.key)}
+      >
+        {v.label}
+      </button>
+    {/each}
+  </div>
+  {#if calView === 'month'}
+    <CalendarView
+      {events}
+      {todos}
+      bind:anchor={calAnchor}
+      {weekStart}
+      oneventclick={(occ) => openOccurrenceRead(occ)}
+      ontodoclick={(t) => openTodoRead(t)}
+      ondayclick={(date) => openEventCreate(date)}
+      ondropitem={(type, id, date, occStart) => void dropOnDate(type, id, date, occStart)}
+    />
+  {:else}
+    <TimeGridView
+      {events}
+      {todos}
+      days={calView === 'week' ? 7 : 1}
+      bind:anchor={calAnchor}
+      {weekStart}
+      oneventclick={(occ) => openOccurrenceRead(occ)}
+      ontodoclick={(t) => openTodoRead(t)}
+      onslotclick={(date, time) => openEventCreate(date, time)}
+      ondropitem={(type, id, date, occStart, time) => void dropOnDate(type, id, date, occStart, time)}
+    />
+  {/if}
 {/if}
 
 <style>
+  .cal-views {
+    justify-content: flex-end;
+  }
+
+  .scope {
+    border: 1px dashed var(--border-color);
+    padding: var(--space-2);
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+    align-items: center;
+  }
+
+  .scope legend {
+    font-size: var(--font-size-eyebrow);
+    letter-spacing: var(--tracking-label);
+    text-transform: uppercase;
+    color: var(--text-muted-color);
+    padding: 0 var(--space-1);
+  }
+
   .views {
     margin-bottom: var(--space-4);
   }

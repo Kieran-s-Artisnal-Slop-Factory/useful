@@ -18,6 +18,10 @@ _Describes the code as of v0.2.0 (unreleased; schema v7) — verify against sour
 | [db.ts](../../../src/lib/db/db.ts) | Migration v4 creates the three stores and their indexes. |
 | [engine.svelte.ts](../../../src/lib/time/engine.svelte.ts) | `scanDue` — due-time notices for todos and events. Rendered by [NotificationEngine.svelte](../../../src/components/chrome/NotificationEngine.svelte). |
 | [markdown.ts](../../../src/lib/markdown.ts) | `renderMarkdown` — descriptions, comments and previews all go through it (sanitized). |
+| [TimeGridView.svelte](../../../src/components/apps/TimeGridView.svelte) | The week and day grids (one component: a day view is a week view with one column). |
+| [occurrences.ts](../../../src/lib/scheduler/occurrences.ts) | Virtual expansion of recurring events. |
+| [timegrid.ts](../../../src/lib/scheduler/timegrid.ts) | Time-grid geometry: overlap packing, drop snapping, week-start ordering. |
+| [recurDraft.ts](../../../src/lib/scheduler/recurDraft.ts), [RecurrenceFields.svelte](../../../src/components/apps/RecurrenceFields.svelte) | The repeat editor shared by TODOs and events, and its rule/draft conversion. |
 
 ## Data model
 
@@ -44,25 +48,109 @@ erDiagram
         string todo_id FK
         string body_md
     }
+    events ||--o| events : "series_id"
     events {
         string id PK
         string title
         string description_md
-        string start "UTC ISO"
+        string start "UTC ISO - the ANCHOR for a series"
         string end "UTC ISO, nullable"
         boolean all_day
         boolean notify
+        json recurrence "RecurrenceRule, nullable"
+        json exdates "cancelled occurrence instants"
+        string series_id "nullable - set on a detached override"
+        string original_start "nullable - the instant it replaces"
     }
 ```
 
-Every row also carries the `SyncFields` (`id`, `updated_at`, `deleted_at`, `server_seq`, and `field_updated_at` on `todos`, which is `fieldMerge`). Migration v4 in [db.ts](../../../src/lib/db/db.ts) creates the stores with indexes `events.start`, `todos.status`, `todos.due_date`, `todo_comments.todo_id`. The test oracle mirrors the shape in [schema.ts](../../../tests/local/helpers/schema.ts), including the two foreign keys (`todo_comments.todo_id → todos`, `todos.recurrence_parent_id → todos`).
+Every row also carries the `SyncFields` (`id`, `updated_at`, `deleted_at`, `server_seq`, and `field_updated_at` on `todos`, which is `fieldMerge`). Migration v4 in [db.ts](../../../src/lib/db/db.ts) creates the stores with indexes `events.start`, `todos.status`, `todos.due_date`, `todo_comments.todo_id`; migration **v8** adds `events.series_id` and the four recurrence fields (defaulted at read time — a backfill on load would be a write on load). The test oracle mirrors the shape in [schema.ts](../../../tests/local/helpers/schema.ts), including the three foreign keys (`todo_comments.todo_id → todos`, `todos.recurrence_parent_id → todos`, `events.series_id → events`).
 
 Points worth knowing:
 
 - `Event.start`/`end` are UTC instants; the form builds them from a local date + time (`00:00` when all-day or no time) and calls `toISOString()`. Todos instead store a local calendar date and a separate `HH:MM` — `due_time` is only kept when a `due_date` is set (`saveTodo` nulls it otherwise).
-- Events have no workflow and no recurrence. `Todo.recurrence` is the only recurrence in the app.
+- Events have no workflow, but they DO recur — see [Recurring events](#recurring-events) below. Todos and events share the `RecurrenceRule` shape and the [RecurrenceFields.svelte](../../../src/components/apps/RecurrenceFields.svelte) editor, but not the mechanism: a todo spawns its successor when completed, an event is expanded on the fly.
 - Comments are child rows, not an array on the todo, so a comment write touches one small row and the FK invariants apply.
 - The scheduler reads with `all()` on mount and after every action (`refresh()`); the indexes exist but nothing in the island queries by them.
+
+## Recurring events
+
+A recurring todo spawns its successor when it is **completed** — a user action, and therefore a legitimate moment to write a row. Events are never completed, so that trick has no trigger, and the only other candidate is page load, which must not write. Events therefore expand **virtually**: [occurrences.ts](../../../src/lib/scheduler/occurrences.ts) computes them on every render and every notification scan, and nothing is ever stored.
+
+The model is iCal's, mapped onto the store that already exists:
+
+| Piece | Where it lives | What it means |
+| --- | --- | --- |
+| the rule | `events.recurrence` (shared `RecurrenceRule`, with an optional inclusive `until`) | the series repeats; `start` is the anchor AND its first occurrence |
+| a cancelled occurrence | `events.exdates` — an array of occurrence-start instants | that instant is skipped. **Not** a tombstone: `all()` hides tombstoned rows, so a skipped occurrence would be a hole nobody could see or undo |
+| an occurrence edited alone | an ordinary event row with `series_id` + `original_start` ("detached") | it renders as itself and suppresses the series' copy of that instant |
+
+`occurrencesBetween(events, fromMs, toMs, zone?)` takes the WHOLE list, because a detached row has to shadow its parent and that cannot be decided one row at a time. `nextOccurrenceOnOrAfter(ev, ms, zone?, overridden?)` is its single-answer sibling, used by the 1-second notification tick — it jumps arithmetically to the right index instead of expanding a range.
+
+```mermaid
+flowchart TD
+  A["events rows"] --> B{"recurrence set and usable?"}
+  B -->|no| C["one occurrence: the row itself"]
+  B -->|yes| D["step LOCAL dates from the anchor"]
+  D --> E["re-apply the anchor wall time in the device zone"]
+  E --> F{"in exdates?"}
+  F -->|yes| G["skip"]
+  F -->|no| H{"claimed by a detached row?"}
+  H -->|yes| G
+  H -->|no| I["emit occurrence"]
+  C --> J["sort by start"]
+  I --> J
+```
+
+Details that are decisions, not accidents:
+
+- **Wall-time stepping.** Dates step in the local calendar and the anchor's wall time is re-applied through `wallTimeToInstant`, so a 09:00 weekly meeting stays 09:00 across a DST change even though its UTC instant moves. The zone is the **device's current** one, not a stored one (plan Q1): a traveller sees the series at their new local wall time. Sub-minute precision is preserved by re-adding the anchor's own residue past the whole minute.
+- **Month stepping counts from the anchor**, never from the previous occurrence, so "every month" from the 31st gives Feb 28, Mar 31, Apr 30 — not Feb 28, Mar 28, Apr 28.
+- **A weekdays rule always keeps its anchor**, even when the anchor's weekday is not in the list: it is the event the user actually created.
+- **`MAX_OCCURRENCES` (1000)** caps one series' contribution to one range, so a corrupt rule cannot hang a render.
+- **A malformed rule expands to nothing** rather than throwing — the generic round-trip suite writes an array into every `json` column, and a parser that threw would take unrelated suites down with it (`isUsableRule`).
+
+### What each action costs
+
+The scope chooser ("This event / This and following / All events") appears on the read and edit modals whenever the row is a series or a detached override.
+
+| Action | Rows written |
+| --- | --- |
+| drag one occurrence to another day | **1** — a new detached row; the series is not touched |
+| delete this occurrence | 1 — the series' `exdates` |
+| delete a detached occurrence | 2 — tombstone the override, and add its `original_start` to the parent's `exdates` (otherwise the series would put its original back) |
+| edit this occurrence | 1 — a new detached row |
+| edit/delete this and following | 2 — the parent's `until` moves to the day before, and a new series starts here |
+| edit all | 1 — the series row. Occurrences already detached keep their own values (Google semantics, plan Q3) |
+| delete the series | 1 + one per detached child, in the same action — an override whose parent is a tombstone would be an orphan the FK check rejects |
+
+### Notifications
+
+`scanDue` asks `nextOccurrenceOnOrAfter(ev, now - 60s)` instead of parsing a single `start`, and dedupes on `event:<id>:<occurrenceStart>` so next week's meeting is a separate notice. Instants claimed by a detached row are skipped on the parent — the override is scanned in its own right, so the meeting is not announced twice. As everywhere else in the app, this fires only while a tab is open.
+
+## Calendar views
+
+The calendar has three grids, chosen with a segmented control and remembered in `scheduler_calendar_view` — a **separate** preference from `scheduler_view`, because writing `'week'` into the latter would make a 0.1.0 build silently fall back to the list.
+
+| Grid | Component | Range shown |
+| --- | --- | --- |
+| Month | [CalendarView.svelte](../../../src/components/apps/CalendarView.svelte) | 42 cells from the week containing the 1st |
+| Week | [TimeGridView.svelte](../../../src/components/apps/TimeGridView.svelte) with `days={7}` | the week containing the anchor |
+| Day | the same component with `days={1}` | one day |
+
+All three share one **anchor date** (`calAnchor` in `SchedulerApp.svelte`, bound into each grid), so switching from month to week lands on what you were already looking at rather than jumping back to today. Each grid expands its own visible range through `occurrencesBetween` — the work is proportional to what is on screen, and expansion is pure, so drawing still writes nothing.
+
+**Week start** is a preference (`scheduler_week_start`, 0 = Sunday, 1 = Monday) read by both the month grid and the week grid. The month grid's leading-blank count and the weekday header order both come from `leadingBlanks()` / `weekdayOrder()` in [timegrid.ts](../../../src/lib/scheduler/timegrid.ts).
+
+### The time grid
+
+[timegrid.ts](../../../src/lib/scheduler/timegrid.ts) holds everything that decides WHERE something goes, so it can be tested without a browser; the component only turns minutes into percentages.
+
+- **Lanes.** An entry goes in the all-day lane if it is `all_day`, or if it covers the whole of that column's day (a multi-day event appears in the lane of every day it touches — the month grid only ever showed it on its start day). A dated TODO has no duration, so it is always in the lane. Everything else is positioned down the hours.
+- **Overlaps.** `packOverlaps` clusters entries that overlap transitively — A-B and B-C put all three in one cluster — and assigns each the first column free at its start. A cluster is always split into the same number of columns, so nothing is drawn over anything else; two entries that do not overlap may still share a column. `MIN_SPAN_MINUTES` (15) keeps a zero-length entry clickable.
+- **Dropping.** One dropzone per day column plus one per all-day lane, through the same pointer-event [dragdrop.ts](../../../src/lib/dragdrop.ts) the other views use, so mouse, touch and pen share one path. The drop minute comes from `minuteFromOffset(clientY - zoneTop, zoneHeight)`, snapped to 15 minutes, and a snap line follows the pointer. `ondropitem` carries a `time`, so a drop sets the time of day as well as the date — preserving the event's duration — while a drop on the month grid passes `null` and changes only the date. A drop onto the same date **and** time writes nothing.
+- **Zone geometry.** `dropzone`'s callbacks receive the zone's own element as a third argument. The pointer event they also receive is the window-level move, so its `currentTarget` is not the zone and cannot be measured — that argument is what makes a time-from-position drop possible at all.
+- **Slots.** Each hour is a real `<button>` labelled "Add event on YYYY-MM-DD at HH:MM", so creating at a time is a keyboard path and not only a drag. The grid opens scrolled to about 07:00.
 
 ## Status workflow
 

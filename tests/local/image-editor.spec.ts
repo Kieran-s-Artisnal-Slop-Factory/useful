@@ -689,3 +689,197 @@ test.describe('image editor', () => {
     expect(await app.dumpAll()).toEqual(before);
   });
 });
+
+/**
+ * Phase 1 — colour fills carry alpha, accept any CSS colour, and can be
+ * transparent. Everything here is asserted on EXPORTED pixels, because that is
+ * the only place the answer is unambiguous: the swatch and the canvas both
+ * render from the same string, so agreeing with each other would prove nothing.
+ */
+test.describe('fill layers: alpha and CSS colours', () => {
+  /** Blank 60×40 transparent canvas, then one colour fill, selected. */
+  async function blankWithFill(page: P): Promise<void> {
+    await page.getByTestId('ie-blank-w').fill('60');
+    await page.getByTestId('ie-blank-h').fill('40');
+    await page.getByTestId('ie-blank-transparent').check();
+    await page.getByTestId('ie-blank-create').click();
+    await page.getByTestId('ie-add-fill').click();
+    await expect(page.getByTestId('ie-sel-color')).toBeVisible();
+  }
+
+  test('a fill takes any CSS spelling — translucent, named, transparent — and paints exactly it', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/image-editor/');
+    const before = await app.dumpAll();
+    await blankWithFill(page);
+
+    // Modern slash-alpha syntax.
+    await page.getByTestId('ie-sel-color').fill('rgb(255 0 0 / 50%)');
+    await page.getByTestId('ie-sel-color').blur();
+    let png = await downloadBytes(page, () => page.getByTestId('ie-download').click());
+    let [px] = await probePixels(page, png.bytes, [[30, 20]]);
+    expect(px!.slice(0, 3)).toEqual([255, 0, 0]);
+    expect(Math.abs(px![3]! - 128)).toBeLessThanOrEqual(2);
+
+    // A CSS colour name.
+    await page.getByTestId('ie-sel-color').fill('rebeccapurple');
+    await page.getByTestId('ie-sel-color').blur();
+    png = await downloadBytes(page, () => page.getByTestId('ie-download').click());
+    [px] = await probePixels(page, png.bytes, [[30, 20]]);
+    expect(px).toEqual([102, 51, 153, 255]);
+
+    // Hex with an alpha pair.
+    await page.getByTestId('ie-sel-color').fill('#00ff0040');
+    await page.getByTestId('ie-sel-color').blur();
+    png = await downloadBytes(page, () => page.getByTestId('ie-download').click());
+    [px] = await probePixels(page, png.bytes, [[30, 20]]);
+    expect(px!.slice(0, 3)).toEqual([0, 255, 0]);
+    expect(Math.abs(px![3]! - 0x40)).toBeLessThanOrEqual(2);
+
+    // And the keyword that paints nothing at all.
+    await page.getByTestId('ie-sel-color').fill('transparent');
+    await page.getByTestId('ie-sel-color').blur();
+    png = await downloadBytes(page, () => page.getByTestId('ie-download').click());
+    [px] = await probePixels(page, png.bytes, [[30, 20]]);
+    expect(px![3]).toBe(0);
+
+    // Session-only: none of this touched the database.
+    expect(await app.dumpAll()).toEqual(before);
+  });
+
+  test('the alpha slider edits the colour, and picking a new one keeps the alpha', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/image-editor/');
+    const before = await app.dumpAll();
+    await blankWithFill(page);
+
+    await page.getByTestId('ie-sel-color').fill('#ff0000');
+    await page.getByTestId('ie-sel-color').blur();
+    // A native colour input cannot express alpha, so the slider owns it.
+    await page.getByTestId('ie-sel-color-alpha').fill('25');
+    await expect(page.getByTestId('ie-sel-color')).toHaveValue('#ff000040');
+
+    let png = await downloadBytes(page, () => page.getByTestId('ie-download').click());
+    let [px] = await probePixels(page, png.bytes, [[30, 20]]);
+    expect(Math.abs(px![3]! - 64)).toBeLessThanOrEqual(2);
+
+    // Picking a colour used to flatten alpha back to 100%; it must not.
+    await page.getByTestId('ie-sel-color-pick').fill('#0000ff');
+    await expect(page.getByTestId('ie-sel-color')).toHaveValue('#0000ff40');
+    await expect(page.getByTestId('ie-sel-color-alpha')).toHaveValue('25');
+
+    png = await downloadBytes(page, () => page.getByTestId('ie-download').click());
+    [px] = await probePixels(page, png.bytes, [[30, 20]]);
+    expect(px!.slice(0, 3)).toEqual([0, 0, 255]);
+    expect(Math.abs(px![3]! - 64)).toBeLessThanOrEqual(2);
+
+    // Back to fully opaque, and the 8-digit hex collapses to 6.
+    await page.getByTestId('ie-sel-color-alpha').fill('100');
+    await expect(page.getByTestId('ie-sel-color')).toHaveValue('#0000ff');
+
+    expect(await app.dumpAll()).toEqual(before);
+  });
+
+  test('colour alpha and layer opacity multiply', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/image-editor/');
+    const before = await app.dumpAll();
+    await blankWithFill(page);
+
+    await page.getByTestId('ie-sel-color').fill('rgb(255 0 0 / 50%)');
+    await page.getByTestId('ie-sel-color').blur();
+    await page.getByTestId('ie-sel-opacity').fill('50');
+
+    const png = await downloadBytes(page, () => page.getByTestId('ie-download').click());
+    const [px] = await probePixels(page, png.bytes, [[30, 20]]);
+    // 50% of 50% is about 64/255, not 128.
+    expect(Math.abs(px![3]! - 64)).toBeLessThanOrEqual(3);
+
+    expect(await app.dumpAll()).toEqual(before);
+  });
+
+  test('an unparseable colour paints NOTHING — never a black rectangle', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/image-editor/');
+    const before = await app.dumpAll();
+    await blankWithFill(page);
+
+    // Canvas ignores an unassignable fillStyle and keeps the context's own —
+    // opaque black in a fresh buffer. A field that invites `transparent` and
+    // `red` invites typos too, so the layer is skipped instead.
+    await page.getByTestId('ie-sel-color').fill('notacolor');
+    await page.getByTestId('ie-sel-color').blur();
+    await expect(page.getByTestId('ie-sel-color')).toHaveAttribute('aria-invalid', 'true');
+
+    const png = await downloadBytes(page, () => page.getByTestId('ie-download').click());
+    const [px] = await probePixels(page, png.bytes, [[30, 20]]);
+    expect(px![3]).toBe(0);
+
+    expect(await app.dumpAll()).toEqual(before);
+  });
+
+  test('a transparent layer is a real, recolourable layer — including a blank canvas background', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/image-editor/');
+    const before = await app.dumpAll();
+    await page.getByTestId('ie-blank-w').fill('60');
+    await page.getByTestId('ie-blank-h').fill('40');
+    await page.getByTestId('ie-blank-transparent').check();
+    await page.getByTestId('ie-blank-create').click();
+
+    // A transparent canvas used to start with NO layers, which made its
+    // background the one thing in the document you could not edit.
+    await expect(rowNamed(page, 'Background')).toHaveCount(1);
+    await rowNamed(page, 'Background').click();
+    await expect(page.getByTestId('ie-sel-color')).toHaveValue('transparent');
+
+    let png = await downloadBytes(page, () => page.getByTestId('ie-download').click());
+    let [px] = await probePixels(page, png.bytes, [[30, 20]]);
+    expect(px![3]).toBe(0);
+
+    // Recolour it and it behaves like any other fill.
+    await page.getByTestId('ie-fill-white').click();
+    png = await downloadBytes(page, () => page.getByTestId('ie-download').click());
+    [px] = await probePixels(page, png.bytes, [[30, 20]]);
+    expect(px).toEqual([255, 255, 255, 255]);
+
+    // "+ Transparent layer" adds another one that paints nothing.
+    await page.getByTestId('ie-add-transparent').click();
+    await expect(rowNamed(page, 'Transparent')).toHaveCount(1);
+    await expect(page.getByTestId('ie-sel-color')).toHaveValue('transparent');
+    png = await downloadBytes(page, () => page.getByTestId('ie-download').click());
+    [px] = await probePixels(page, png.bytes, [[30, 20]]);
+    expect(px).toEqual([255, 255, 255, 255]); // still the white below it
+
+    expect(await app.dumpAll()).toEqual(before);
+  });
+
+  test('JPG says so before it flattens transparency onto white', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/image-editor/');
+    const before = await app.dumpAll();
+    await blankWithFill(page);
+
+    await page.getByTestId('ie-sel-color').fill('rgb(255 0 0 / 50%)');
+    await page.getByTestId('ie-sel-color').blur();
+    // PNG keeps alpha, so there is nothing to warn about.
+    await expect(page.getByTestId('ie-jpg-alpha-note')).toHaveCount(0);
+
+    await page.getByTestId('ie-format').selectOption('jpg');
+    await expect(page.getByTestId('ie-jpg-alpha-note')).toContainText('flattened onto white');
+
+    const jpg = await downloadBytes(page, () => page.getByTestId('ie-download').click());
+    expect(jpg.name).toMatch(/\.jpg$/);
+    const [px] = await probePixels(page, jpg.bytes, [[30, 20]]);
+    // 50% red over white: opaque, and lightened exactly the way the note says.
+    expect(px![3]).toBe(255);
+    expect(px![0]).toBeGreaterThan(240);
+    expect(Math.abs(px![1]! - 127)).toBeLessThanOrEqual(6);
+
+    // An opaque document does not get the warning at all.
+    await page.getByTestId('ie-fill-black').click();
+    await expect(page.getByTestId('ie-jpg-alpha-note')).toHaveCount(0);
+
+    expect(await app.dumpAll()).toEqual(before);
+  });
+});

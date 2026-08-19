@@ -108,7 +108,7 @@ Kinds, as the UI names them:
 | --- | --- | --- | --- |
 | image | `image` | content | Decoded bitmap drawn into `(x, y, width, height)`, turned `quarter` × 90° CW. `fileName` is the export-name source. |
 | group | `group` | content (host) | No geometry of its own; renders its children as a stack. |
-| fill / Background | `fill` | content | `fillRect` over the whole canvas. A blank canvas's background is one, named `Background`. |
+| fill / Background | `fill` | content | `fillRect` over the whole canvas, in any CSS colour the parser accepts — including `transparent`, a name, `#rrggbbaa` or `rgb(r g b / a)`. A blank canvas's background is one, named `Background`, transparent or not. |
 | brush | `stroke` mode `paint` | content | Quadratic-smoothed polyline, round caps; a single point paints a dot. |
 | eraser | `stroke` mode `erase` | effect | Same stroke drawn with `destination-out`. |
 | restore | `stroke` mode `restore` | effect | Stamps the target's *pristine* pixels back under the stroke shape (see pipeline). |
@@ -178,7 +178,7 @@ State lives in `ImageEditorApp.svelte`: `doc`, `layers`, `selectedId`, `tool` (`
 
 Start and import:
 
-- `startBlank`: `doc` = clamped size (`clampCanvas`, 1–8192), `background: null`; the color becomes a real `fill` layer named `Background` unless "Transparent" is checked (then `layers` starts empty).
+- `startBlank`: `doc` = clamped size (`clampCanvas`, 1–8192), `background: null`; the colour becomes a real `fill` layer named `Background`. Checking "Transparent" makes that layer `color: 'transparent'` rather than skipping it, so the background of a transparent canvas is editable like any other layer (before v0.2.0 it produced no layers at all).
 - `addImageFile` decodes with `decodeToCanvas`. The **first** image (no `doc` yet) sets the canvas size, `sourceName`, the export stem, and triggers `readExif`. Every image becomes an `ImageLayer` at `(0, 0)` with its decoded size, inserted by `addLayer`, then selected.
 - `clearSession` (`New session`) confirms when layers exist, then nulls the document. It does not reset `history` (see undo).
 

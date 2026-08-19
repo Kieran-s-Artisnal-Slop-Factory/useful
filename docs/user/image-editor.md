@@ -82,5 +82,7 @@ The **Export** card takes a **File name**, a format of PNG or JPG (with a qualit
 - **A background mask is a snapshot of that moment.** It covers the image's rectangle as it was when the model ran; editing the image afterwards does not re-run it. Remove the mask and run it again if the image has changed a lot.
 - **The numeric size boxes on an image resize the image alone.** Only the on-canvas handles carry its sub-layers (a crop, a mask) along with it.
 - Colour fills have no outline to click, so select them from the layer list rather than the canvas.
+- A colour fill takes any CSS colour you can write — `transparent`, `rebeccapurple`, `#ff000080`, `rgb(255 0 0 / 50%)` — plus a slider for how see-through it is, and Transparent/White/Black shortcuts. The colour's own transparency and the layer's opacity multiply, and the layer list shows only the opacity, so a 50%-transparent colour at 50% opacity is a quarter visible.
+- Type something that is not a colour and the layer paints nothing at all (the box turns red). That is deliberate: it used to paint solid black over your picture.
 - A crop rectangle under 4 × 4 px and an arrow shorter than about 8 px are ignored, so a stray click does not add an invisible layer.
-- JPG exports flatten transparency onto white and clipboard copies are always PNG, exactly as in the other image tools.
+- JPG exports flatten transparency onto white and clipboard copies are always PNG, exactly as in the other image tools. When the picture actually has see-through pixels and JPG is selected, the export card says so before you click.

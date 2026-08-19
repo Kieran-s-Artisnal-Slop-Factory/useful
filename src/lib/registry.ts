@@ -110,7 +110,10 @@ export const REGISTRY: ToolDef[] = [
     id: 'image-converter',
     name: 'Image converter',
     description: 'SVG, AVIF, WebP, TIFF, PNG or JPG in — PNG or JPG out',
-    aliases: ['convert image', 'svg to png', 'webp to png', 'avif to jpg', 'tiff', 'heic', 'png to jpg', 'jpg to png'],
+    // No 'heic' alias: the converter rejects HEIC (no browser decoder), and an
+    // alias that lands you on a tool which refuses your file is worse than no
+    // result at all.
+    aliases: ['convert image', 'svg to png', 'webp to png', 'avif to jpg', 'tiff', 'png to jpg', 'jpg to png'],
     category: 'Images',
     route: '/tools/image-converter/',
     icon: 'image',

@@ -35,11 +35,13 @@ export interface DragData {
 export interface DropZone {
   /** Which payloads this zone wants. Defaults to everything. */
   accepts?: (data: DragData) => boolean;
-  /** Pointer moved over this zone (fires on every move — keep it cheap). */
-  onOver?: (data: DragData, event: PointerEvent) => void;
+  /** Pointer moved over this zone (fires on every move — keep it cheap).
+   * `node` is the zone's own element: the event is the window-level pointer
+   * move, so its `currentTarget` is NOT the zone and cannot be measured. */
+  onOver?: (data: DragData, event: PointerEvent, node: HTMLElement) => void;
   /** Pointer left this zone, or the drag ended elsewhere. */
   onLeave?: (data: DragData) => void;
-  onDrop: (data: DragData, event: PointerEvent) => void;
+  onDrop: (data: DragData, event: PointerEvent, node: HTMLElement) => void;
 }
 
 export interface DraggableOptions {
@@ -146,7 +148,7 @@ export function draggable(node: HTMLElement, options: DraggableOptions) {
     const next = zoneAt(event.clientX, event.clientY, current.data);
     if (hovered && hovered.node !== next?.node) hovered.zone.onLeave?.(current.data);
     hovered = next;
-    next?.zone.onOver?.(current.data, event);
+    if (next) next.zone.onOver?.(current.data, event, next.node);
   }
 
   function onPointerUp(event: PointerEvent) {
@@ -160,7 +162,7 @@ export function draggable(node: HTMLElement, options: DraggableOptions) {
     // user just moved. Swallow exactly one.
     suppressClick = true;
     target?.zone.onLeave?.(current.data);
-    target?.zone.onDrop(current.data, event);
+    if (target) target.zone.onDrop(current.data, event, target.node);
   }
 
   function onCancel(event: PointerEvent) {

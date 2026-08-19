@@ -4,6 +4,7 @@
   import ColorField from '../ColorField.svelte';
   import Explainer from '../Explainer.svelte';
   import { copyPng, downloadBlob } from '../../lib/exportFile';
+  import { resolveFillStyle } from '../../lib/gen/color';
   import { href } from '../../lib/paths';
   import { draggable, dropzone, type DragData } from '../../lib/dragdrop';
   import { DecodeError, decodeToCanvas, encodeCanvas, formatBytes, type TargetFormat } from '../../lib/img/convert';
@@ -273,6 +274,7 @@
     const d = doc;
     if (!el || !d) return;
     const comp = renderDocument(d, layers);
+    compositeHasAlpha = detectAlpha(comp);
     el.width = comp.width;
     el.height = comp.height;
     const ctx = el.getContext('2d')!;
@@ -361,7 +363,17 @@
     doc = { width: clampCanvas(blankW), height: clampCanvas(blankH), background: null };
     // The background is a real (fill) layer, so it can be recolored, hidden,
     // reordered, or deleted like anything else.
-    layers = blankTransparent ? [] : [{ ...layerDefaults('Background'), kind: 'fill', color: blankBg || '#ffffff' }];
+    // Always a real fill layer, transparent or not, so the background can be
+    // recoloured, hidden, reordered or deleted like anything else. A
+    // transparent canvas used to start with NO layers at all, which made its
+    // background the one thing in the document you could not edit.
+    layers = [
+      {
+        ...layerDefaults('Background'),
+        kind: 'fill',
+        color: blankTransparent ? 'transparent' : blankBg || '#ffffff',
+      },
+    ];
     selectedId = null;
     sourceName = '';
     exportName = 'image';
@@ -486,10 +498,50 @@
     }
   }
 
-  function addFillLayer() {
-    const f: FillLayer = { ...layerDefaults('Color fill'), kind: 'fill', color: toolColor };
+  /**
+   * Does the rendered picture actually contain see-through pixels? Read from
+   * the composite rather than guessed from the layer tree, because a
+   * transparent layer that something opaque covers is not transparency — and a
+   * warning that never turns off is a warning nobody reads.
+   *
+   * The composite is sampled through a 64x64 downscale: cheap regardless of
+   * canvas size, and resampling AVERAGES alpha, so any hole anywhere drags its
+   * sample below opaque instead of being missed between sample points.
+   */
+  let compositeHasAlpha = $state(false);
+  let alphaProbe: HTMLCanvasElement | null = null;
+
+  function detectAlpha(composite: HTMLCanvasElement): boolean {
+    const size = 64;
+    alphaProbe ??= document.createElement('canvas');
+    alphaProbe.width = size;
+    alphaProbe.height = size;
+    const ctx = alphaProbe.getContext('2d', { willReadFrequently: true })!;
+    ctx.clearRect(0, 0, size, size);
+    ctx.drawImage(composite, 0, 0, size, size);
+    const { data } = ctx.getImageData(0, 0, size, size);
+    for (let i = 3; i < data.length; i += 4) if (data[i]! < 250) return true;
+    return false;
+  }
+
+  /**
+   * A colour safe to paint a swatch with. An unparseable string resolves to
+   * nothing rather than to black, so the dot agrees with the canvas — which
+   * skips drawing that layer entirely.
+   */
+  function swatchOf(color: string): string {
+    return resolveFillStyle(color) ?? 'transparent';
+  }
+
+  function addFillLayer(color = toolColor, name = 'Color fill') {
+    const f: FillLayer = { ...layerDefaults(name), kind: 'fill', color };
     addLayer(f);
     selectedId = f.id;
+  }
+
+  /** A fill that paints nothing — a hole to draw into, or a tint slot to fill later. */
+  function addTransparentLayer() {
+    addFillLayer('transparent', 'Transparent');
   }
 
   function addGroup() {
@@ -1097,6 +1149,12 @@
               <button class="btn" data-testid="ie-copy" onclick={copyAsPng}>Copy (always PNG)</button>
             </div>
             <p class="muted small" aria-live="polite" data-testid="ie-feedback">{feedback ?? ''}</p>
+            {#if exportFormat === 'jpg' && compositeHasAlpha}
+              <p class="muted small" data-testid="ie-jpg-alpha-note">
+                JPG cannot store transparency: anything see-through in this
+                picture will be flattened onto white.
+              </p>
+            {/if}
             <p class="muted small" data-testid="ie-meta-note">
               {#if embedActive}
                 This JPG will carry ONLY the edited fields below — never GPS or the
@@ -1216,7 +1274,8 @@
         <Card title="Layers">
           <div class="stack">
             <div class="row wrap">
-              <button class="btn btn-sm" data-testid="ie-add-fill" onclick={addFillLayer}>+ Color fill</button>
+              <button class="btn btn-sm" data-testid="ie-add-fill" onclick={() => addFillLayer()}>+ Color fill</button>
+              <button class="btn btn-sm" data-testid="ie-add-transparent" onclick={addTransparentLayer}>+ Transparent layer</button>
               <button class="btn btn-sm" data-testid="ie-add-group" onclick={addGroup}>+ Group</button>
               {#if selected}
                 <button class="btn btn-sm" data-testid="ie-wrap-group" onclick={wrapInGroup}>Wrap selected in group</button>
@@ -1267,9 +1326,9 @@
                       {#if layer.kind === 'group'}
                         <span class="kind-glyph" aria-hidden="true">▣</span>
                       {:else if layer.kind === 'fill'}
-                        <span class="dot" style={`background:${layer.color}`}></span>
+                        <span class="dot checkerboard"><span class="dot-fill" style={`background:${swatchOf(layer.color)}`}></span></span>
                       {:else}
-                        <span class="dot" style={`background:${'color' in layer ? layer.color : 'transparent'}`}></span>
+                        <span class="dot checkerboard"><span class="dot-fill" style={`background:${'color' in layer ? swatchOf(layer.color) : 'transparent'}`}></span></span>
                       {/if}
                       <span class="name-text">{layerLabel(layer)}</span>
                       {#if layer.opacity < 100 || layer.blend !== 'normal'}
@@ -1443,10 +1502,27 @@
                   </div>
                 </div>
               {:else if selected.kind === 'fill'}
-                <div class="row wrap">
-                  <ColorField testid="ie-sel-color" bind:value={selected.color} ariaLabel="Fill color" fallback="#ffffff" />
-                  <p class="muted small self-end">
+                <div class="stack tight">
+                  <ColorField
+                    testid="ie-sel-color"
+                    bind:value={selected.color}
+                    ariaLabel="Fill color"
+                    fallback="#ffffff"
+                    alpha
+                    showSwatch
+                  />
+                  <div class="row wrap">
+                    <span class="muted small">Presets:</span>
+                    <button class="btn btn-sm" data-testid="ie-fill-transparent" onclick={() => (selected.color = 'transparent')}>Transparent</button>
+                    <button class="btn btn-sm" data-testid="ie-fill-white" onclick={() => (selected.color = '#ffffff')}>White</button>
+                    <button class="btn btn-sm" data-testid="ie-fill-black" onclick={() => (selected.color = '#000000')}>Black</button>
+                  </div>
+                  <p class="muted small">
                     Covers the whole canvas. Nested under a layer it tints only that layer.
+                    Any CSS colour works — <code>transparent</code>, <code>rebeccapurple</code>,
+                    <code>#ff000080</code>, <code>rgb(255 0 0 / 50%)</code>. The colour's own
+                    transparency and the layer's opacity multiply, and the layer list only
+                    shows the opacity.
                   </p>
                 </div>
               {:else if selected.kind === 'group'}
@@ -1784,6 +1860,15 @@
     border-radius: var(--radius-full);
     border: 1px solid var(--border-color);
     flex: none;
+    /* The checkerboard shows wherever the colour is see-through. */
+    overflow: hidden;
+    background-size: 8px 8px;
+  }
+
+  .dot-fill {
+    display: block;
+    width: 100%;
+    height: 100%;
   }
 
   .layer-actions {

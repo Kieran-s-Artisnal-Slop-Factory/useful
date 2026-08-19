@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { allFormats, NAMED_COLORS, parseCssColor, type ParsedColor } from './color';
+import {
+  allFormats,
+  colorFamily,
+  NAMED_COLORS,
+  parseCssColor,
+  resolveFillStyle,
+  setAlpha,
+  type ParsedColor,
+} from './color';
 
 const rgb255 = (c: ParsedColor): number[] => c.rgb.map((v) => Math.round(v * 255));
 
@@ -124,5 +132,119 @@ describe('NAMED_COLORS', () => {
     expect(Object.keys(NAMED_COLORS)).toHaveLength(148);
     expect(NAMED_COLORS.rebeccapurple).toBe('#663399');
     expect(NAMED_COLORS.gray).toBe(NAMED_COLORS.grey);
+  });
+});
+
+describe('colorFamily', () => {
+  it('names the spelling a color was written in', () => {
+    expect(colorFamily('#f00')).toBe('hex');
+    expect(colorFamily('#ff000080')).toBe('hex');
+    expect(colorFamily('rgb(255 0 0)')).toBe('rgb');
+    expect(colorFamily('rgba(255,0,0,0.5)')).toBe('rgb');
+    expect(colorFamily('hsl(0 100% 50%)')).toBe('hsl');
+    expect(colorFamily('hwb(0 0% 0%)')).toBe('hwb');
+    expect(colorFamily('lab(50 40 30)')).toBe('lab');
+    expect(colorFamily('lch(50 40 30)')).toBe('lch');
+    expect(colorFamily('oklab(0.6 0.1 0.1)')).toBe('oklab');
+    expect(colorFamily('oklch(0.6 0.2 30)')).toBe('oklch');
+    expect(colorFamily('  REBECCAPURPLE ')).toBe('named');
+    expect(colorFamily('transparent')).toBe('transparent');
+  });
+
+  it('returns null for anything it cannot place', () => {
+    expect(colorFamily('')).toBeNull();
+    expect(colorFamily('   ')).toBeNull();
+    expect(colorFamily('notacolor')).toBeNull();
+    expect(colorFamily('#ff00')).toBe('hex'); // 4-digit hex IS valid (#rgba)
+    expect(colorFamily('#gg0000')).toBeNull();
+    expect(colorFamily('color-mix(in srgb, red, blue)')).toBeNull();
+  });
+});
+
+describe('setAlpha', () => {
+  it('keeps hex as hex, 8-digit only while translucent', () => {
+    expect(setAlpha('#ff0000', 0.5)).toBe('#ff000080');
+    expect(setAlpha('#ff0000', 1)).toBe('#ff0000');
+    expect(setAlpha('#ff000080', 1)).toBe('#ff0000');
+    expect(setAlpha('#ff000080', 0)).toBe('#ff000000');
+    expect(setAlpha('#f00', 0.5)).toBe('#ff000080');
+  });
+
+  it('re-emits every functional family in its own syntax', () => {
+    expect(setAlpha('rgb(255 0 0)', 0.5)).toBe('rgb(255 0 0 / 0.5)');
+    expect(setAlpha('rgba(255, 0, 0, 0.25)', 1)).toBe('rgb(255 0 0)');
+    expect(setAlpha('hsl(0 100% 50%)', 0.5)).toMatch(/^hsl\(.* \/ 0\.5\)$/);
+    expect(setAlpha('hwb(0 0% 0%)', 0.5)).toMatch(/^hwb\(.* \/ 0\.5\)$/);
+    expect(setAlpha('lab(54.29 80.8 69.89)', 0.5)).toMatch(/^lab\(.* \/ 0\.5\)$/);
+    expect(setAlpha('lch(54.29 106.84 40.86)', 0.5)).toMatch(/^lch\(.* \/ 0\.5\)$/);
+    expect(setAlpha('oklab(0.628 0.2249 0.1258)', 0.5)).toMatch(/^oklab\(.* \/ 0\.5\)$/);
+    expect(setAlpha('oklch(0.628 0.2577 29.23)', 0.5)).toMatch(/^oklch\(.* \/ 0\.5\)$/);
+  });
+
+  it('gives a named color the only spelling that can carry alpha, and takes it back', () => {
+    expect(setAlpha('rebeccapurple', 0.5)).toBe('rgb(102 51 153 / 0.5)');
+    expect(setAlpha('rebeccapurple', 1)).toBe('rebeccapurple');
+    // The user's own spelling of the name survives — cyan must not become aqua.
+    expect(setAlpha('CYAN', 1)).toBe('cyan');
+  });
+
+  it('handles transparent, which is only ever alpha 0', () => {
+    expect(setAlpha('transparent', 0)).toBe('transparent');
+    expect(setAlpha('transparent', 1)).toBe('#000000');
+    expect(setAlpha('transparent', 0.5)).toBe('#00000080');
+  });
+
+  it('clamps out-of-range alpha and leaves unparseable input alone', () => {
+    expect(setAlpha('#ff0000', 5)).toBe('#ff0000');
+    expect(setAlpha('#ff0000', -1)).toBe('#ff000000');
+    expect(setAlpha('notacolor', 0.5)).toBe('notacolor');
+    expect(setAlpha('', 0.5)).toBe('');
+    expect(setAlpha('   ', 0.5)).toBe('   ');
+  });
+
+  it('round-trips: whatever it emits parses back to the alpha it was given', () => {
+    const inputs = [
+      '#ff0000',
+      'rgb(12 34 56)',
+      'hsl(200 50% 40%)',
+      'hwb(90 10% 20%)',
+      'lab(50 40 30)',
+      'lch(50 40 30)',
+      'oklab(0.6 0.1 0.1)',
+      'oklch(0.6 0.2 30)',
+      'rebeccapurple',
+      'transparent',
+    ];
+    for (const input of inputs) {
+      for (const a of [0, 0.25, 0.5, 1]) {
+        const out = setAlpha(input, a);
+        const back = parseCssColor(out);
+        expect(back, `${input} @ ${a} → ${out}`).not.toBeNull();
+        expect(Math.abs(back!.alpha - a), `${input} @ ${a} → ${out}`).toBeLessThan(0.005);
+      }
+    }
+  });
+});
+
+describe('resolveFillStyle', () => {
+  it('normalizes anything paintable to rgb() with its alpha', () => {
+    expect(resolveFillStyle('red')).toBe('rgb(255 0 0)');
+    expect(resolveFillStyle('#ff000080')).toBe('rgb(255 0 0 / 0.502)');
+    expect(resolveFillStyle('transparent')).toBe('rgb(0 0 0 / 0)');
+    expect(resolveFillStyle('  OKLCH(0.628 0.2577 29.23)  ')).toMatch(/^rgb\(/);
+  });
+
+  it('returns null for anything that is not a color, so nothing paints black by accident', () => {
+    expect(resolveFillStyle('notacolor')).toBeNull();
+    expect(resolveFillStyle('')).toBeNull();
+    expect(resolveFillStyle('   ')).toBeNull();
+    expect(resolveFillStyle('#12345')).toBeNull();
+    expect(resolveFillStyle('rgb(255 0)')).toBeNull();
+  });
+
+  it('clips an out-of-gamut color rather than refusing it', () => {
+    const out = resolveFillStyle('oklch(0.9 0.4 140)');
+    expect(out).not.toBeNull();
+    expect(out).toMatch(/^rgb\(\d+ \d+ \d+\)$/);
   });
 });

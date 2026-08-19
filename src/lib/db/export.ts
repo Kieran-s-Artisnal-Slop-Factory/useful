@@ -150,10 +150,14 @@ function foldFieldMerged(local: SyncFields, incoming: SyncFields): SyncFields | 
   return merged as unknown as SyncFields;
 }
 
-/** Load a backup. Defaults to a full restore; pass 'merge' to fold it in. */
+/**
+ * Load a backup. Defaults to the NON-destructive fold; pass 'replace' for a
+ * full restore, which clears every store first. The default is deliberate: a
+ * caller that forgets the argument should not wipe the device's data.
+ */
 export async function importData(
   envelope: ExportEnvelope,
-  mode: ImportMode = 'replace'
+  mode: ImportMode = 'merge'
 ): Promise<ImportResult> {
   if (
     typeof envelope !== 'object' ||

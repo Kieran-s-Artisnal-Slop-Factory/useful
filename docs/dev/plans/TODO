@@ -3,14 +3,14 @@
       the features that plan covers; they stay unchecked until the phase that builds them ships.
       Sketches copied to `docs/dev/plans/sketches/`. Sixteen open questions (Q1-Q16) are listed in the
       plan with a default for each — answering them is the only thing blocking any phase.
-      - [ ] Scheduler
-            - [ ] Add the ability to have recurrent events
-            - [ ] Week/day calendar views
-      - [ ] Image editor
-            - [ ] color fill layers 
-                  - [ ] have alpha channel capabilities (RGBA, HEX+alpha, etc.)
-                        - [ ] Add the ability to add transparent layers
-                  - [ ] Add the ability to specify CSS colors (e.g. transparent, red, black, etc.)
+      - [x] Scheduler  (DONE 2026-08-19)
+            - [x] Add the ability to have recurrent events  (plan Phase 2)
+            - [x] Week/day calendar views  (plan Phase 3)
+      - [x] Image editor  (DONE 2026-08-19 — plan Phase 1)
+            - [x] color fill layers 
+                  - [x] have alpha channel capabilities (RGBA, HEX+alpha, etc.)
+                        - [x] Add the ability to add transparent layers
+                  - [x] Add the ability to specify CSS colors (e.g. transparent, red, black, etc.)
       - [ ] Add a notebook section
             - [ ] Use the markdown editor from retoken to create a notebook
             - [ ] Should have all the features from re-token, with the abilty to use wiki-link style links to link between documents, and be able to export to PDF, markdown or HTML

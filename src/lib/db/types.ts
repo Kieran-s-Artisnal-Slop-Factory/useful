@@ -15,12 +15,12 @@ export interface SyncFields {
   server_seq: number | null; // server sync cursor (null = never synced)
   /**
    * Per-field last-write-wins timestamps (column -> UTC ISO 8601). Present
-   * only on stores flagged `fieldMerge` below; written by repo.patch/put.
-   * NOTE: the stamps are only WRITTEN today — no merge path consumes them yet.
-   * Backup merge-import (export.ts) is still whole-row LWW; per-field folding
-   * lands with the first phase that puts real fields on a fieldMerge store
-   * (see plan-phases.md Phase 1). Until then this is groundwork, not a
-   * guarantee.
+   * only on stores flagged `fieldMerge` below; written by repo.patch/put and
+   * CONSUMED by `foldFieldMerged` in export.ts — a merge-import of a
+   * field-merged store reconciles column by column (newer stamp wins, stamp
+   * maps union) rather than whole-row, so two devices that edited different
+   * preference fields both keep their edit. Covered by the "per-field merge
+   * folding" group in tests/local/data.spec.ts.
    */
   field_updated_at?: Record<string, string>;
 }
@@ -44,6 +44,12 @@ export interface Preferences extends SyncFields {
   auto_remember_based_on_last_value?: boolean;
   /** Last-used scheduler view. */
   scheduler_view?: 'list' | 'board' | 'calendar';
+  /** Last-used calendar sub-view. Deliberately a SEPARATE field: writing
+   * 'week' into scheduler_view would make an older build fall back to the
+   * list without saying why. */
+  scheduler_calendar_view?: 'month' | 'week' | 'day';
+  /** First day of the week in every calendar grid: 0 = Sunday, 1 = Monday. */
+  scheduler_week_start?: 0 | 1;
   /** Last-used timezone pair on the converter. */
   tz_last_from?: string;
   tz_last_to?: string;
@@ -93,16 +99,37 @@ export interface Stopwatch extends SyncFields {
   state: 'idle' | 'running' | 'paused';
 }
 
-/** A calendar event. No workflow, no recurrence (recurrence is TODO-only). */
+/**
+ * A calendar event. Recurring events expand VIRTUALLY: the rule lives here and
+ * occurrences are computed at render and scan time (src/lib/scheduler/
+ * occurrences.ts), never written. Events are never "completed", so the
+ * spawn-on-complete trick todos use has no trigger — and page load, the only
+ * other candidate, must not write.
+ */
 export interface Event extends SyncFields {
   title: string;
   description_md: string;
-  /** UTC ISO start instant. */
+  /** UTC ISO start instant. For a series this is the anchor AND its first
+   * occurrence; the wall time it shows locally is re-applied to every later
+   * one, so a 09:00 meeting stays 09:00 across a DST boundary. */
   start: string;
-  /** Optional UTC ISO end instant (>= start). */
+  /** Optional UTC ISO end instant (>= start). A series re-applies this
+   * duration to every occurrence. */
   end: string | null;
   all_day: boolean;
   notify: boolean;
+  /** Repeat rule, or null for a one-off. Shared shape with todos. */
+  recurrence: RecurrenceRule | null;
+  /** Occurrence start instants (UTC ISO) that were cancelled — iCal's EXDATE.
+   * NOT tombstones: `all()` hides tombstoned rows, so a skipped occurrence
+   * would become a hole nobody could see or undo. */
+  exdates: string[];
+  /** Set on a "detached" row: the series this occurrence was pulled out of.
+   * The row is an ordinary event in every other way. */
+  series_id: string | null;
+  /** The series instant this detached row stands in for; the expander skips
+   * that instant on the parent so the two never both render. */
+  original_start: string | null;
 }
 
 export type TodoStatus = 'todo' | 'in_progress' | 'completed';
@@ -111,9 +138,15 @@ export type TodoPriority = 'low' | 'medium' | 'high' | 'urgent';
 /** Recurrence rule, stored ON the todo (donetick-style — no full RRULE).
  * Completing a recurring todo creates exactly ONE successor inside the same
  * user action; occurrences are never materialized on render. */
-export type RecurrenceRule =
+export type RecurrenceRule = (
   | { kind: 'every'; interval: number; unit: 'days' | 'weeks' | 'months' }
-  | { kind: 'weekdays'; days: number[] }; // 0 = Sunday … 6 = Saturday
+  | { kind: 'weekdays'; days: number[] } // 0 = Sunday … 6 = Saturday
+) & {
+  /** Inclusive local end date 'YYYY-MM-DD'; absent/null = forever. No
+   * occurrence COUNT: a virtual expander would have to count from the anchor
+   * on every render to honour one. */
+  until?: string | null;
+};
 
 export interface Todo extends SyncFields {
   title: string;
@@ -193,7 +226,9 @@ export const STORES: Record<string, StoreDef> = {
   preferences: { indexes: [], singleton: true, fieldMerge: true },
   timers: { indexes: [] },
   stopwatch: { indexes: [], singleton: true },
-  events: { indexes: [{ name: 'start' }] },
+  // series_id: a series has to be able to find the occurrences that were
+  // pulled out of it — to render them, and to take them with it when it goes.
+  events: { indexes: [{ name: 'start' }, { name: 'series_id' }] },
   // fieldMerge: status changed on one device and description on another must
   // both survive a future sync/merge.
   todos: { indexes: [{ name: 'status' }, { name: 'due_date' }], fieldMerge: true },

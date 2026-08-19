@@ -30,7 +30,7 @@ The same panel the app offers once after you install it: a checklist of download
 
 It does not contain the theme, the sidebar's collapsed state, the developer unlock, or anything you downloaded for offline use. Images are never stored by the app, so they are never in a backup either. The SQL playground's live database is not in the file — only the text needed to rebuild it, if you saved a snapshot.
 
-**Import JSON** loads a backup back in. Before picking the file, choose how it should be applied:
+**Import JSON** loads a backup back in. **Merge** is preselected; switch to **Restore** before picking the file if you want the destructive one:
 
 | Mode | What happens |
 |---|---|
@@ -61,7 +61,7 @@ Every one of those values is written only when you do something: pick a zone, mo
 
 - **This browser profile is the only copy.** There is no account and no server. A different browser, a different profile, a private window, or another device is a different, empty copy of the app. Nothing syncs between them — moving data means exporting a backup and importing it on the other side.
 - **Clearing site data erases everything.** "Clear browsing data", "Remove site data" and similar cleanup tools take the whole database with them. Persistent storage protects against the browser evicting data on its own when disk space runs low; it does not protect against a deliberate clear, and the browser can refuse the request.
-- **Import defaults to Restore, not Merge.** The Restore button is preselected, and Restore *replaces* the data on this device for everything the file covers. If you meant to fold two devices together, click **Merge** before choosing the file. The confirmation dialog spells out which one you are about to run — read it.
+- **Restore replaces, and it is one click away.** Merge is the preselected mode, so an accidental import folds rather than wipes — but if you click **Restore**, everything the file covers is emptied first. The confirmation dialog spells out which of the two you are about to run — read it.
 - **A backup from a newer version of the app will not import into an older build.** It is refused outright with a message naming both versions, even if the difference would not have mattered. Backups from *older* versions import fine. If you keep an old copy of the app on another device, export from the old one and import into the new one, not the other way round.
 - **Deleted items leave a marker behind.** Deleting a timer, TODO or document strips its contents immediately but keeps a small record that it existed and when it went. That record rides along in backups. It is what stops a merge from resurrecting something you deleted afterwards — and it means the number of items an import reports can be larger than the number of things you can see.
 - **Merge keeps the newer copy, and a tie keeps what is already here.** If the same item was edited on both sides at the same instant, the local copy wins. If nothing in the file is newer, the import reports everything as skipped and changes nothing.

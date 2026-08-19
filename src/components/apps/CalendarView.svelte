@@ -1,6 +1,9 @@
 <script lang="ts">
   import type { Event as CalendarEvent, Todo } from '../../lib/db/types';
   import { describeRule } from '../../lib/scheduler/recurrence';
+  import { occurrencesBetween, type Occurrence } from '../../lib/scheduler/occurrences';
+  import { DAY_NAMES } from '../../lib/scheduler/recurDraft';
+  import { leadingBlanks, weekdayOrder } from '../../lib/scheduler/timegrid';
   import { renderMarkdown } from '../../lib/markdown';
   import { draggable, dropzone, type DragData } from '../../lib/dragdrop';
 
@@ -9,6 +12,8 @@
   let {
     events,
     todos,
+    anchor = $bindable(),
+    weekStart = 0,
     oneventclick,
     ontodoclick,
     ondayclick,
@@ -16,15 +21,29 @@
   }: {
     events: CalendarEvent[];
     todos: Todo[];
-    oneventclick: (ev: CalendarEvent) => void;
+    /** Anchor date 'YYYY-MM-DD' — the month containing it is the one shown.
+     * Bindable so switching to week/day lands where you were looking. */
+    anchor: string;
+    /** 0 = Sunday, 1 = Monday. */
+    weekStart?: number;
+    /** Clicking an entry hands back the OCCURRENCE, not the row: a series has
+     * many, and which one you clicked decides what "this event" means. */
+    oneventclick: (occ: Occurrence) => void;
     ontodoclick: (t: Todo) => void;
     ondayclick: (date: string) => void;
-    ondropitem: (type: 'todo' | 'event', id: string, date: string) => void;
+    /** `occStart` is the instant of the dragged occurrence (null for todos). */
+    ondropitem: (type: 'todo' | 'event', id: string, date: string, occStart: string | null) => void;
   } = $props();
 
   const today = new Date();
-  let year = $state(today.getFullYear());
-  let month = $state(today.getMonth()); // 0-11
+  const parseDate = (key: string) => {
+    const [y, m, d] = key.split('-').map(Number);
+    return new Date(y!, m! - 1, d!);
+  };
+  // The month on screen follows the shared anchor, so month/week/day switches
+  // land on the same dates.
+  let year = $derived(parseDate(anchor).getFullYear());
+  let month = $derived(parseDate(anchor).getMonth()); // 0-11
 
   const pad = (n: number) => String(n).padStart(2, '0');
   const dateKey = (y: number, m: number, d: number) => `${y}-${pad(m + 1)}-${pad(d)}`;
@@ -39,19 +58,29 @@
     date: string;
     day: number;
     inMonth: boolean;
-    events: CalendarEvent[];
+    events: Occurrence[];
     todos: Todo[];
   }
+
+  /** Identity of one occurrence — unique even when a series repeats daily. */
+  const occKey = (occ: Occurrence): string => occ.event.id + '@' + occ.start;
 
   let monthLabel = $derived(
     new Date(year, month, 1).toLocaleDateString(undefined, { month: 'long', year: 'numeric' })
   );
 
   let cells: Cell[] = $derived.by(() => {
-    const eventsByDate = new Map<string, CalendarEvent[]>();
-    for (const ev of events) {
-      const key = localDateOf(ev.start);
-      eventsByDate.set(key, [...(eventsByDate.get(key) ?? []), ev]);
+    // The grid always shows 42 days starting on the Sunday on or before the
+    // 1st. Expanding exactly that range keeps the work proportional to what is
+    // on screen — and expansion is pure, so drawing still writes nothing.
+    const first = new Date(year, month, 1);
+    const gridStart = new Date(year, month, 1 - leadingBlanks(first.getDay(), weekStart));
+    const gridEnd = new Date(gridStart.getFullYear(), gridStart.getMonth(), gridStart.getDate() + 42);
+
+    const eventsByDate = new Map<string, Occurrence[]>();
+    for (const occ of occurrencesBetween(events, gridStart.getTime(), gridEnd.getTime())) {
+      const key = localDateOf(occ.start);
+      eventsByDate.set(key, [...(eventsByDate.get(key) ?? []), occ]);
     }
     const todosByDate = new Map<string, Todo[]>();
     for (const t of todos) {
@@ -59,11 +88,9 @@
       todosByDate.set(t.due_date, [...(todosByDate.get(t.due_date) ?? []), t]);
     }
 
-    const first = new Date(year, month, 1);
-    const start = new Date(year, month, 1 - first.getDay()); // back to Sunday
     const out: Cell[] = [];
     for (let i = 0; i < 42; i++) {
-      const d = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i);
+      const d = new Date(gridStart.getFullYear(), gridStart.getMonth(), gridStart.getDate() + i);
       const key = dateKey(d.getFullYear(), d.getMonth(), d.getDate());
       out.push({
         date: key,
@@ -78,13 +105,11 @@
 
   function shift(delta: number) {
     const d = new Date(year, month + delta, 1);
-    year = d.getFullYear();
-    month = d.getMonth();
+    anchor = dateKey(d.getFullYear(), d.getMonth(), 1);
   }
 
   function goToday() {
-    year = today.getFullYear();
-    month = today.getMonth();
+    anchor = todayKey;
   }
 
   // ---- drag-and-drop rescheduling (pointer-based: see src/lib/dragdrop.ts —
@@ -93,7 +118,20 @@
 
   function onDrop(data: DragData, date: string) {
     dragOverDate = null;
-    if (data.kind === 'todo' || data.kind === 'event') ondropitem(data.kind, data.id, date);
+    if (data.kind === 'todo') {
+      ondropitem('todo', data.id, date, null);
+      return;
+    }
+    if (data.kind !== 'event') return;
+    // Event drags carry `<rowId>@<occurrenceStart>` - the row alone cannot say
+    // WHICH occurrence of a series was picked up. Row ids are UUIDs, so the
+    // last '@' is unambiguous.
+    const at = data.id.lastIndexOf('@');
+    if (at === -1) {
+      ondropitem('event', data.id, date, null);
+      return;
+    }
+    ondropitem('event', data.id.slice(0, at), date, data.id.slice(at + 1));
   }
 
   // ---- wiki-style hover previews
@@ -107,7 +145,7 @@
   let preview: Preview | null = $state(null);
   let previewTimer: ReturnType<typeof setTimeout> | null = null;
 
-  function showPreview(e: MouseEvent | FocusEvent, item: { kind: 'todo'; t: Todo } | { kind: 'event'; ev: CalendarEvent }) {
+  function showPreview(e: MouseEvent | FocusEvent, item: { kind: 'todo'; t: Todo } | { kind: 'event'; occ: Occurrence }) {
     if (previewTimer) clearTimeout(previewTimer);
     const target = e.currentTarget as HTMLElement;
     previewTimer = setTimeout(() => {
@@ -131,15 +169,21 @@
           html: t.description_md.trim() ? renderMarkdown(t.description_md) : '',
         };
       } else {
-        const ev = item.ev;
-        const start = new Date(ev.start);
+        const ev = item.occ.event;
+        const start = new Date(item.occ.start);
         preview = {
           x,
           y,
           title: ev.title,
-          meta: ev.all_day
-            ? 'all day'
-            : start.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }),
+          meta: [
+            ev.all_day
+              ? 'all day'
+              : start.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }),
+            ev.recurrence ? describeRule(ev.recurrence) : null,
+            item.occ.detached ? 'changed for this day' : null,
+          ]
+            .filter(Boolean)
+            .join(' · '),
           html: ev.description_md.trim() ? renderMarkdown(ev.description_md) : '',
         };
       }
@@ -162,8 +206,8 @@
   </div>
 
   <div class="grid" role="grid" aria-label={monthLabel}>
-    {#each ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as name (name)}
-      <div class="dow" role="columnheader">{name}</div>
+    {#each weekdayOrder(weekStart) as day (day)}
+      <div class="dow" role="columnheader">{DAY_NAMES[day]}</div>
     {/each}
     {#each cells as cell (cell.date)}
       <div
@@ -186,26 +230,27 @@
         <button class="day" aria-label={'Add event on ' + cell.date} onclick={() => ondayclick(cell.date)}>
           {cell.day}
         </button>
-        {#each cell.events as ev (ev.id)}
+        {#each cell.events as occ (occKey(occ))}
           <button
             class="entry event"
             data-testid="cal-event"
+            data-occurrence={occ.start}
             use:draggable={{
-              data: { kind: 'event', id: ev.id },
-              label: ev.title,
+              data: { kind: 'event', id: occKey(occ) },
+              label: occ.event.title,
               handle: '.entry',
               onStart: hidePreview,
             }}
-            onmouseenter={(e) => showPreview(e, { kind: 'event', ev })}
+            onmouseenter={(e) => showPreview(e, { kind: 'event', occ })}
             onmouseleave={hidePreview}
-            onfocus={(e) => showPreview(e, { kind: 'event', ev })}
+            onfocus={(e) => showPreview(e, { kind: 'event', occ })}
             onblur={hidePreview}
             onclick={() => {
               hidePreview();
-              oneventclick(ev);
+              oneventclick(occ);
             }}
           >
-            {ev.all_day ? '' : new Date(ev.start).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }) + ' '}{ev.title}
+            {occ.event.all_day ? '' : new Date(occ.start).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }) + ' '}{occ.event.title}{occ.event.recurrence ? ' ↻' : ''}
           </button>
         {/each}
         {#each cell.todos as t (t.id)}

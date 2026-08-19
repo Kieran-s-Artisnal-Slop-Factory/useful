@@ -407,6 +407,116 @@ export function allFormats(color: ParsedColor): ColorFormats {
   };
 }
 
+/* ------------------------------------------------------- alpha editing --- */
+
+/** Which CSS spelling a color string is written in. */
+export type ColorFamily =
+  | 'hex'
+  | 'rgb'
+  | 'hsl'
+  | 'hwb'
+  | 'lab'
+  | 'lch'
+  | 'oklab'
+  | 'oklch'
+  | 'named'
+  | 'transparent';
+
+/**
+ * The syntax family of a color string, or null when it isn't one we parse.
+ * Used to re-emit an edited color in the spelling the user wrote it in.
+ */
+export function colorFamily(input: string): ColorFamily | null {
+  const s = input.trim().toLowerCase();
+  if (s.length === 0) return null;
+  if (s === 'transparent') return 'transparent';
+  if (s.startsWith('#')) return parseHex(s) === null ? null : 'hex';
+
+  const fn = s.match(/^([a-z]+)\(/);
+  if (fn) {
+    switch (fn[1]) {
+      case 'rgb':
+      case 'rgba':
+        return 'rgb';
+      case 'hsl':
+      case 'hsla':
+        return 'hsl';
+      case 'hwb':
+        return 'hwb';
+      case 'lab':
+        return 'lab';
+      case 'lch':
+        return 'lch';
+      case 'oklab':
+        return 'oklab';
+      case 'oklch':
+        return 'oklch';
+      default:
+        return null;
+    }
+  }
+  return NAMED_COLORS[s] ? 'named' : null;
+}
+
+/**
+ * Return `input` with its alpha replaced, written in the SAME family it came
+ * in as — hex stays hex (8-digit while translucent), `oklch()` stays `oklch()`.
+ * Unparseable input is returned untouched so a half-typed value is never eaten.
+ *
+ * Two spellings cannot carry alpha and so have documented exits: a named color
+ * becomes `rgb(r g b / a)` while translucent and keeps its name at alpha 1, and
+ * `transparent` (which is only ever alpha 0) becomes hex once made opaque.
+ */
+export function setAlpha(input: string, alpha: number): string {
+  const parsed = parseCssColor(input);
+  if (parsed === null) return input;
+
+  const a = clamp01(alpha);
+  const f = allFormats({ rgb: parsed.rgb, alpha: a });
+
+  switch (colorFamily(input) ?? 'hex') {
+    case 'transparent':
+      return a === 0 ? 'transparent' : f.hex;
+    case 'named':
+      // Keep the user's own spelling of the name rather than the canonical
+      // one — `cyan` should not silently become `aqua`.
+      return a >= 1 ? input.trim().toLowerCase() : f.rgb;
+    case 'rgb':
+      return f.rgb;
+    case 'hsl':
+      return f.hsl;
+    case 'hwb':
+      return f.hwb;
+    case 'lab':
+      return f.lab;
+    case 'lch':
+      return f.lch;
+    case 'oklab':
+      return f.oklab;
+    case 'oklch':
+      return f.oklch;
+    case 'hex':
+    default:
+      return f.hex;
+  }
+}
+
+/**
+ * A canvas-safe `fillStyle` for a user-typed color, or null when the string is
+ * not a color at all.
+ *
+ * Canvas silently paints an unassignable `fillStyle` with whatever the context
+ * last had — opaque black in a fresh context — so a text field that invites
+ * `transparent` and `red` needs a guard before it invites typos too. The
+ * returned string is the normalized `rgb(r g b / a)` form rather than the
+ * user's text, so what the canvas paints is exactly what the preview swatch
+ * showed, in a spelling every engine accepts.
+ */
+export function resolveFillStyle(input: string): string | null {
+  const parsed = parseCssColor(input);
+  return parsed === null ? null : allFormats(parsed).rgb;
+}
+
 /* -------------------------------------------------------- named colors --- */
 
 /** The CSS named colors (Color 4 §6.1). Verified against the browser. */

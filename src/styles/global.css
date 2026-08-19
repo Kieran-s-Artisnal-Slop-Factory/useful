@@ -413,3 +413,13 @@ body.dragging {
   user-select: none;
   cursor: grabbing;
 }
+
+/* Transparency checkerboard — the conventional "this pixel is see-through"
+   backdrop, behind image previews, color swatches and editor canvases. Set a
+   background on the element itself and it will composite over this, so a
+   translucent color reads honestly instead of blending into the page. */
+.checkerboard {
+  background:
+    repeating-conic-gradient(var(--border-color) 0% 25%, transparent 0% 50%) 0 0 /
+    16px 16px;
+}

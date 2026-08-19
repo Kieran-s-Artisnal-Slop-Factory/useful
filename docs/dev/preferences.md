@@ -39,6 +39,8 @@ Writers, one per tool: [TimersApp.svelte](../../src/components/apps/TimersApp.sv
 | `timer_alarm_seconds` | `number` (1–25) `[integer]` | ring for `MAX_ALARM_SECONDS` = 25 | `PreferencesApp.saveAlarmSeconds` | the number input's `change`, clamped to 1–25 and written only when it differs from the stored value |
 | `auto_remember_based_on_last_value` | `boolean` | on (`?? true`) | `PreferencesApp` | ticking the box |
 | `scheduler_view` | `'list' \| 'board' \| 'calendar'` `[text]` | the list view | `SchedulerApp.setView` | clicking a view button |
+| `scheduler_calendar_view` | `'month'` / `'week'` / `'day'` `[text]` | the month grid | `SchedulerApp.setCalView` | picking a calendar range. A separate field from `scheduler_view` on purpose: an older build reading `'week'` there would fall back to the list |
+| `scheduler_week_start` | `0` (Sunday) or `1` (Monday) `[integer]` | Sunday | `PreferencesApp` | choosing a week start; read by the month AND week grids |
 | `tz_last_from` | `string` (IANA zone) | the browser's own zone | `TimezonesApp.remember` | picking a zone from search, "my zone", or swap |
 | `tz_last_to` | `string` (IANA zone) | the browser's own zone | `TimezonesApp.remember` | as above |
 | `photo_last_format` | `'mft' \| 'apsc' \| 'apsc-canon' \| 'ff'` `[text]` | `mft` (the page's own initial value) | `PhotographyApp.rememberFormat` | changing the set-A sensor-format `<select>` |

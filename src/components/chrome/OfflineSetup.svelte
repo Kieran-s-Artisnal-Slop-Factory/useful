@@ -20,21 +20,37 @@
 
   let dialog = $state<HTMLDialogElement | null>(null);
   let open = $state(false);
+  /** Guards the write, so the same answer is never recorded twice. */
+  let answered = false;
 
   async function offer() {
     if (open) return;
     const prefs = await getSingleton<Preferences>('preferences');
     if (prefs?.offline_prompt_seen) return;
+    answered = false;
     open = true;
     // Wait for the element to exist before showing it.
     queueMicrotask(() => dialog?.showModal());
   }
 
-  /** Remember that we asked — whichever way it was answered. */
+  /**
+   * Remember that we asked — whichever way it was answered, and by whichever
+   * exit. "Not now", Escape, and finishing the download all land here: the
+   * question was put to someone and they dealt with it, so asking again would
+   * be nagging. Escape used to leave no trace at all, which meant the offer
+   * came back on the next launch.
+   */
+  async function recordAnswer() {
+    if (answered) return;
+    answered = true;
+    await putSingleton<Partial<Preferences>>('preferences', { offline_prompt_seen: true });
+  }
+
+  /** Dismiss and remember. */
   async function close() {
     open = false;
     dialog?.close();
-    await putSingleton<Partial<Preferences>>('preferences', { offline_prompt_seen: true });
+    await recordAnswer();
   }
 
   onMount(() => {
@@ -51,14 +67,17 @@
     class="offline-dialog"
     data-testid="offline-dialog"
     aria-labelledby="offline-title"
-    onclose={() => (open = false)}
+    onclose={() => {
+      open = false;
+      void recordAnswer();
+    }}
   >
     <h2 id="offline-title">Make it work offline?</h2>
     <p class="muted small">
       The app is installed. It already works without a network for anything you
       have visited — this fetches the rest, so nothing is missing later.
     </p>
-    <OfflinePanel />
+    <OfflinePanel onfinished={() => void recordAnswer()} />
     <div class="row end">
       <button class="btn" data-testid="offline-dismiss" onclick={close}>Not now</button>
     </div>

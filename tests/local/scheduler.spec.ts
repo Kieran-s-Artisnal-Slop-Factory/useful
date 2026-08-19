@@ -582,3 +582,551 @@ test.describe('events + calendar', () => {
     expect(await app.dumpAll()).toEqual(before);
   });
 });
+
+/**
+ * Phase 2 — recurring EVENTS. Occurrences are virtual: the rule lives on one
+ * row and the calendar computes the rest, so the invariants worth testing are
+ * "how many rows did that cost" and "did drawing write anything at all".
+ */
+test.describe('recurring events', () => {
+  /** Create a weekly event on the given date, from the UI. */
+  async function createWeekly(app: import('./helpers/app').App, title: string, date: string, time = '09:00') {
+    const { page } = app;
+    await page.getByTestId('scheduler-new-event').click();
+    await page.getByTestId('event-title').fill(title);
+    await page.getByTestId('event-date').fill(date);
+    await page.getByTestId('event-time').fill(time);
+    await page.getByTestId('event-recur').selectOption('every');
+    await page.getByTestId('event-every-n').fill('1');
+    await page.getByTestId('event-every-unit').selectOption('weeks');
+    await page.getByTestId('event-save').click();
+    await expect.poll(async () => (await app.dump('events')).length).toBeGreaterThan(0);
+  }
+
+  test('one row draws every occurrence, and drawing writes nothing', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/scheduler/');
+    await createWeekly(app, 'Standup', '2024-06-03');
+
+    // ONE row — the whole point of expanding virtually.
+    expect(await app.dump('events')).toHaveLength(1);
+
+    await page.getByTestId('view-calendar').click();
+    await gotoMonth(app, 'June 2024');
+    // June 2024 has Mondays on 3, 10, 17, 24 — and the grid's trailing week
+    // reaches July 1, which is a Monday too.
+    await expect(page.getByTestId('cal-event')).toHaveCount(5);
+
+    // Browsing months expands more occurrences and still writes nothing.
+    const before = await app.dumpAll();
+    await page.getByTestId('cal-next').click();
+    await expect(page.getByTestId('cal-event').first()).toBeVisible();
+    await page.getByTestId('cal-prev').click();
+    await page.reload();
+    await gotoMonth(app, 'June 2024');
+    await expect(page.getByTestId('cal-event')).toHaveCount(5);
+    expect(await app.dumpAll()).toEqual(before);
+  });
+
+  test('deleting one occurrence changes only the series row', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/scheduler/');
+    await createWeekly(app, 'Standup', '2024-06-03');
+    await page.getByTestId('view-calendar').click();
+    await gotoMonth(app, 'June 2024');
+
+    const before = await app.dumpAll();
+    const seriesId = String((await app.dump('events'))[0]!.id);
+    page.once('dialog', (d) => void d.accept());
+    await page.getByTestId('cal-event').nth(2).click(); // June 17
+    await expect(page.getByTestId('modal-when')).toContainText('Jun 17, 2024');
+    await expect(page.getByTestId('event-scope-this')).toBeChecked();
+    await page.getByTestId('modal-delete').click();
+
+    await expect(page.getByTestId('cal-event')).toHaveCount(4);
+    // Exactly one row touched: the parent, whose exdates grew by one.
+    assertIsolatedDelta(before, await app.dumpAll(), [{ store: 'events', id: seriesId }]);
+    const row = (await app.dump('events'))[0] as Record<string, unknown>;
+    // Derived, not hard-coded: the suite runs in whatever zone the machine is
+    // set to, and 09:00 local is a different instant in each one.
+    expect(row.exdates).toEqual([new Date('2024-06-17T09:00').toISOString()]);
+    expect(await app.dump('events')).toHaveLength(1);
+  });
+
+  test('dragging one occurrence detaches it: one NEW row, series untouched', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/scheduler/');
+    await createWeekly(app, 'Standup', '2024-06-03');
+    await page.getByTestId('view-calendar').click();
+    await gotoMonth(app, 'June 2024');
+
+    const before = await app.dumpAll();
+    const seriesRow = (await app.dump('events'))[0] as Record<string, unknown>;
+    await pointerDrag(
+      page,
+      page.getByTestId('cal-event').nth(1), // June 10
+      page.locator('[data-testid="cal-cell"][data-date="2024-06-12"]')
+    );
+
+    await expect.poll(async () => (await app.dump('events')).length).toBe(2);
+    const rows = (await app.dump('events')) as Record<string, unknown>[];
+    const detached = rows.find((r) => r.series_id)!;
+    expect(detached.series_id).toBe(seriesRow.id);
+    expect(detached.original_start).toBe(new Date('2024-06-10T09:00').toISOString());
+    expect(String(detached.start)).toContain('2024-06-12');
+    expect(detached.recurrence).toBeNull();
+    // The parent row is byte-identical — the override shadows its occurrence.
+    const parent = rows.find((r) => !r.series_id)!;
+    expect(parent).toEqual(seriesRow);
+    assertIsolatedDelta(before, await app.dumpAll(), [{ store: 'events', id: String(detached.id) }]);
+
+    // Still five entries: the moved one replaced June 10, it did not add to it.
+    await expect(page.getByTestId('cal-event')).toHaveCount(5);
+    await expect(
+      page.locator('[data-testid="cal-cell"][data-date="2024-06-10"] [data-testid="cal-event"]')
+    ).toHaveCount(0);
+    await expect(
+      page.locator('[data-testid="cal-cell"][data-date="2024-06-12"] [data-testid="cal-event"]')
+    ).toHaveCount(1);
+    assertInvariants(await app.dumpAll(), 'after detaching an occurrence');
+  });
+
+  test('"this and following" ends the old series and starts a new one — two rows', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/scheduler/');
+    await createWeekly(app, 'Standup', '2024-06-03');
+    await page.getByTestId('view-calendar').click();
+    await gotoMonth(app, 'June 2024');
+
+    const before = await app.dumpAll();
+    const seriesId = String((await app.dump('events'))[0]!.id);
+    await page.getByTestId('cal-event').nth(2).click(); // June 17
+    await page.getByTestId('modal-edit').click();
+    await page.getByTestId('event-scope-edit-following').check();
+    await page.getByTestId('event-title').fill('Standup (new time)');
+    await page.getByTestId('event-time').fill('10:00');
+    await page.getByTestId('event-save').click();
+
+    await expect.poll(async () => (await app.dump('events')).length).toBe(2);
+    const rows = (await app.dump('events')) as Record<string, unknown>[];
+    const oldSeries = rows.find((r) => r.id === seriesId)!;
+    const newSeries = rows.find((r) => r.id !== seriesId)!;
+    expect((oldSeries.recurrence as Record<string, unknown>).until).toBe('2024-06-16');
+    expect(newSeries.title).toBe('Standup (new time)');
+    expect(String(newSeries.start)).toContain('2024-06-17');
+    assertIsolatedDelta(before, await app.dumpAll(), [
+      { store: 'events', id: seriesId },
+      { store: 'events', id: String(newSeries.id) },
+    ]);
+
+    // June still shows five, but the last three are the new series.
+    await expect(page.getByTestId('cal-event')).toHaveCount(5);
+    await expect(page.getByTestId('cal-event').nth(0)).toContainText('9:00');
+    await expect(page.getByTestId('cal-event').nth(2)).toContainText('10:00');
+  });
+
+  test('"all events" edits the series in one row and leaves overrides alone', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/scheduler/');
+    await createWeekly(app, 'Standup', '2024-06-03');
+    await page.getByTestId('view-calendar').click();
+    await gotoMonth(app, 'June 2024');
+    // Detach June 10 first, so there is an override to protect.
+    await pointerDrag(
+      page,
+      page.getByTestId('cal-event').nth(1),
+      page.locator('[data-testid="cal-cell"][data-date="2024-06-12"]')
+    );
+    await expect.poll(async () => (await app.dump('events')).length).toBe(2);
+    const detachedTitle = ((await app.dump('events')) as Record<string, unknown>[]).find((r) => r.series_id)!
+      .title;
+
+    const before = await app.dumpAll();
+    const seriesId = ((await app.dump('events')) as Record<string, unknown>[]).find((r) => !r.series_id)!.id;
+    await page.locator('[data-testid="cal-cell"][data-date="2024-06-03"] [data-testid="cal-event"]').click();
+    await page.getByTestId('modal-edit').click();
+    await page.getByTestId('event-scope-edit-all').check();
+    await page.getByTestId('event-title').fill('Team standup');
+    await page.getByTestId('event-save').click();
+
+    await expect.poll(async () => {
+      const rows = (await app.dump('events')) as Record<string, unknown>[];
+      return rows.find((r) => !r.series_id)!.title;
+    }).toBe('Team standup');
+    // Google semantics: the occurrence someone deliberately changed keeps its
+    // own title, and only the series row was written.
+    const rows = (await app.dump('events')) as Record<string, unknown>[];
+    expect(rows.find((r) => r.series_id)!.title).toBe(detachedTitle);
+    assertIsolatedDelta(before, await app.dumpAll(), [{ store: 'events', id: String(seriesId) }]);
+  });
+
+  test('deleting the whole series takes its overrides with it', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/scheduler/');
+    await createWeekly(app, 'Standup', '2024-06-03');
+    await page.getByTestId('view-calendar').click();
+    await gotoMonth(app, 'June 2024');
+    await pointerDrag(
+      page,
+      page.getByTestId('cal-event').nth(1),
+      page.locator('[data-testid="cal-cell"][data-date="2024-06-12"]')
+    );
+    await expect.poll(async () => (await app.dump('events')).length).toBe(2);
+
+    page.once('dialog', (d) => void d.accept());
+    await page.locator('[data-testid="cal-cell"][data-date="2024-06-03"] [data-testid="cal-event"]').click();
+    await page.getByTestId('event-scope-all').check();
+    await page.getByTestId('modal-delete').click();
+
+    // Both rows tombstoned in the same action — a detached row whose parent is
+    // a tombstone would be an orphan the FK check rejects. (`dump` is a RAW
+    // dump: a soft delete leaves the row behind with `deleted_at` set.)
+    await expect
+      .poll(async () => (await app.dump('events')).filter((r) => r.deleted_at !== null).length)
+      .toBe(2);
+    await expect(page.getByTestId('cal-event')).toHaveCount(0);
+    assertInvariants(await app.dumpAll(), 'after deleting a series');
+  });
+
+  test('an until date ends the series, and a plain event still behaves like one', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/scheduler/');
+    await page.getByTestId('scheduler-new-event').click();
+    await page.getByTestId('event-title').fill('Sprint');
+    await page.getByTestId('event-date').fill('2024-06-03');
+    await page.getByTestId('event-time').fill('09:00');
+    await page.getByTestId('event-recur').selectOption('every');
+    await page.getByTestId('event-every-n').fill('1');
+    await page.getByTestId('event-every-unit').selectOption('weeks');
+    await page.getByTestId('event-until').fill('2024-06-17');
+    await page.getByTestId('event-save').click();
+    await expect.poll(async () => (await app.dump('events')).length).toBe(1);
+
+    await page.getByTestId('view-calendar').click();
+    await gotoMonth(app, 'June 2024');
+    // June 3, 10, 17 — inclusive of the until date, and nothing after it.
+    await expect(page.getByTestId('cal-event')).toHaveCount(3);
+
+    // A one-off event still moves by patching itself, not by detaching.
+    const before = await app.dumpAll();
+    await page.getByTestId('scheduler-new-event').click();
+    await page.getByTestId('event-title').fill('One off');
+    await page.getByTestId('event-date').fill('2024-06-25');
+    await page.getByTestId('event-save').click();
+    await expect.poll(async () => (await app.dump('events')).length).toBe(2);
+    const plain = ((await app.dump('events')) as Record<string, unknown>[]).find((r) => r.title === 'One off')!;
+    await pointerDrag(
+      page,
+      page.locator('[data-testid="cal-cell"][data-date="2024-06-25"] [data-testid="cal-event"]'),
+      page.locator('[data-testid="cal-cell"][data-date="2024-06-26"]')
+    );
+    await expect.poll(async () => {
+      const rows = (await app.dump('events')) as Record<string, unknown>[];
+      return String(rows.find((r) => r.id === plain.id)!.start);
+    }).toContain('2024-06-26');
+    expect(await app.dump('events')).toHaveLength(2); // patched in place, no new row
+    void before;
+  });
+
+  test('a recurring event due right now raises a banner, with no writes', async ({ app }) => {
+    const { page } = app;
+    // Anchor the series exactly one week before THIS INSTANT, seconds included:
+    // occurrences preserve the anchor's sub-minute offset, so today's lands on
+    // the current second and is comfortably inside the 60s fire window however
+    // slow the page load is. (Zeroing the seconds instead makes this flaky —
+    // starting the test at :59 leaves the window closing before the page is up.)
+    const anchor = new Date(Date.now() - 7 * 86_400_000);
+    await app.call('rawPut', 'events', {
+      id: 'rec-1',
+      updated_at: new Date().toISOString(),
+      deleted_at: null,
+      server_seq: null,
+      title: 'Weekly sync',
+      description_md: '',
+      start: anchor.toISOString(),
+      end: null,
+      all_day: false,
+      notify: true,
+      recurrence: { kind: 'every', interval: 1, unit: 'weeks', until: null },
+      exdates: [],
+      series_id: null,
+      original_start: null,
+    });
+    await app.goto('/tools/scheduler/');
+    const before = await app.dumpAll();
+    await expect(page.getByTestId('timer-notice')).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId('timer-notice')).toContainText('Weekly sync');
+    // The scan expands occurrences in memory and never materialises one.
+    expect(await app.dumpAll()).toEqual(before);
+  });
+});
+
+/**
+ * Phase 3 — week and day grids. The month grid answers "what is happening this
+ * month"; these answer "what is happening today", which needs a position down
+ * the day and therefore an overlap rule, a snap, and a time on every drop.
+ *
+ * Dates here are relative to the CURRENT week rather than fixed: the week grid
+ * steps a week at a time, so walking it back to a hard-coded month would take
+ * hundreds of clicks and would silently match the same month in the wrong year.
+ */
+const pad2 = (n: number) => String(n).padStart(2, '0');
+const localKey = (d: Date) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+
+/** A date in the current Sunday-start week: 0 = Sunday … 6 = Saturday. */
+function dayOfThisWeek(index: number): string {
+  const now = new Date();
+  const sunday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - now.getDay());
+  return localKey(new Date(sunday.getFullYear(), sunday.getMonth(), sunday.getDate() + index));
+}
+
+test.describe('week and day views', () => {
+  async function createTimed(
+    app: import('./helpers/app').App,
+    title: string,
+    date: string,
+    time: string,
+    endTime?: string
+  ) {
+    const { page } = app;
+    await page.getByTestId('scheduler-new-event').click();
+    await page.getByTestId('event-title').fill(title);
+    await page.getByTestId('event-date').fill(date);
+    await page.getByTestId('event-time').fill(time);
+    if (endTime) {
+      await page.locator('#event-end-date').fill(date);
+      await page.locator('#event-end-time').fill(endTime);
+    }
+    await page.getByTestId('event-save').click();
+    await expect.poll(async () => (await app.dump('events')).length).toBeGreaterThan(0);
+  }
+
+  test('the switcher moves between month, week and day, writing only the preference', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/scheduler/');
+    await page.getByTestId('view-calendar').click();
+    await expect
+      .poll(async () => (await app.get('preferences', 'singleton'))?.scheduler_view)
+      .toBe('calendar');
+
+    const before = await app.dumpAll();
+    await page.getByTestId('cal-view-week').click();
+    await expect(page.getByTestId('tg-col')).toHaveCount(7);
+    await expect(page.getByTestId('tg-slot')).toHaveCount(24 * 7);
+    await page.getByTestId('cal-view-day').click();
+    await expect(page.getByTestId('tg-col')).toHaveCount(1);
+    await expect(page.getByTestId('tg-slot')).toHaveCount(24);
+    await page.getByTestId('cal-view-month').click();
+    await expect(page.getByTestId('cal-cell')).toHaveCount(42);
+
+    // Navigating the grids draws a lot and writes nothing but the sub-view.
+    await page.getByTestId('cal-view-week').click();
+    await page.getByTestId('cal-next').click();
+    await page.getByTestId('cal-prev').click();
+    await page.getByTestId('cal-today').click();
+    assertIsolatedDelta(before, await app.dumpAll(), [{ store: 'preferences', id: 'singleton' }]);
+    expect((await app.get('preferences', 'singleton'))?.scheduler_calendar_view).toBe('week');
+
+    // Remembered in its OWN field, so an older build still reads
+    // `scheduler_view` and shows the month grid rather than falling back to a list.
+    await page.reload();
+    await expect(page.getByTestId('tg-col')).toHaveCount(7);
+  });
+
+  test('the calendar keeps its place when you switch between month, week and day', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/scheduler/');
+    await page.getByTestId('view-calendar').click();
+    // Two months back in the month grid…
+    await page.getByTestId('cal-prev').click();
+    await page.getByTestId('cal-prev').click();
+    const monthLabel = (await page.getByTestId('cal-label').textContent())!;
+    const [monthName] = monthLabel.split(' ');
+
+    // …and the week grid opens in that month, not back at today.
+    await page.getByTestId('cal-view-week').click();
+    const weekLabel = (await page.getByTestId('cal-label').textContent())!;
+    expect(weekLabel).toContain(monthName!.slice(0, 3));
+  });
+
+  test('timed entries sit at their time, and overlapping ones share the width', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/scheduler/');
+    const day = dayOfThisWeek(3);
+    await createTimed(app, 'Alpha', day, '10:00', '11:30');
+    await createTimed(app, 'Beta', day, '10:30', '12:00');
+    await createTimed(app, 'Solo', day, '15:00', '16:00');
+
+    await page.getByTestId('view-calendar').click();
+    await page.getByTestId('cal-view-week').click();
+
+    const alpha = page.getByTestId('cal-event').filter({ hasText: 'Alpha' });
+    const beta = page.getByTestId('cal-event').filter({ hasText: 'Beta' });
+    const solo = page.getByTestId('cal-event').filter({ hasText: 'Solo' });
+
+    // 10:00 is 600/1440 of the day; 90 minutes is 6.25% of it.
+    expect(await alpha.getAttribute('style')).toContain('top: 41.6667%');
+    expect(await beta.getAttribute('style')).toContain('top: 43.75%');
+    expect(await alpha.getAttribute('style')).toContain('height: 6.25%');
+    // The two that overlap split the column; the one that does not keeps it all.
+    expect(await alpha.getAttribute('style')).toContain('width: 50%');
+    expect(await beta.getAttribute('style')).toContain('width: 50%');
+    expect(await beta.getAttribute('style')).toContain('left: 50%');
+    expect(await solo.getAttribute('style')).toContain('width: 100%');
+  });
+
+  test('all-day events and dated TODOs go in the lane above the hours', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/scheduler/');
+    const day = dayOfThisWeek(3);
+    await page.getByTestId('scheduler-new-event').click();
+    await page.getByTestId('event-title').fill('Holiday');
+    await page.getByTestId('event-date').fill(day);
+    await page.getByTestId('event-all-day').check();
+    await page.getByTestId('event-save').click();
+    await expect.poll(async () => (await app.dump('events')).length).toBe(1);
+
+    await page.getByTestId('scheduler-new-todo').click();
+    await page.getByTestId('todo-title').fill('Pack');
+    await page.getByTestId('todo-due').fill(day);
+    await page.getByTestId('todo-save').click();
+    await expect.poll(async () => (await app.dump('todos')).length).toBe(1);
+
+    await page.getByTestId('view-calendar').click();
+    await page.getByTestId('cal-view-week').click();
+
+    const lane = page.locator(`[data-testid="tg-allday"][data-date="${day}"]`);
+    await expect(lane.getByTestId('cal-event')).toHaveText(/Holiday/);
+    await expect(lane.getByTestId('cal-todo')).toHaveText(/Pack/);
+    // Nothing all-day is positioned down the hours column.
+    await expect(page.locator('[data-testid="tg-col"] [data-testid="cal-event"]')).toHaveCount(0);
+  });
+
+  test('dropping onto a slot sets the time as well as the day — one row', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/scheduler/');
+    const from = dayOfThisWeek(2);
+    const to = dayOfThisWeek(4);
+    await createTimed(app, 'Move me', from, '09:00', '10:00');
+    await page.getByTestId('view-calendar').click();
+    await page.getByTestId('cal-view-week').click();
+
+    const before = await app.dumpAll();
+    const id = String((await app.dump('events'))[0]!.id);
+    const target = page.locator(`[data-testid="tg-col"][data-date="${to}"]`);
+    await target.scrollIntoViewIfNeeded();
+    const box = (await target.boundingBox())!;
+    const source = page.getByTestId('cal-event').first();
+    const src = (await source.boundingBox())!;
+    // A third of the way down the column is 08:00.
+    const dropY = box.y + box.height / 3;
+    await page.mouse.move(src.x + src.width / 2, src.y + src.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(src.x + src.width / 2 + 8, src.y + src.height / 2 + 8, { steps: 2 });
+    await page.mouse.move(box.x + box.width / 2, dropY, { steps: 6 });
+    await expect(page.getByTestId('tg-snapline')).toBeVisible();
+    await page.mouse.up();
+
+    await expect
+      .poll(async () => String(((await app.dump('events'))[0] as Record<string, unknown>).start))
+      .toContain(to);
+    const row = (await app.dump('events'))[0] as Record<string, unknown>;
+    const start = new Date(String(row.start));
+    expect(start.getHours()).toBe(8);
+    expect(start.getMinutes() % 15).toBe(0); // snapped to the quarter hour
+    // The duration came with it.
+    expect(Date.parse(String(row.end)) - Date.parse(String(row.start))).toBe(60 * 60_000);
+    assertIsolatedDelta(before, await app.dumpAll(), [{ store: 'events', id }]);
+  });
+
+  test('a slot click opens the create form already filled in', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/scheduler/');
+    await page.getByTestId('view-calendar').click();
+    await page.getByTestId('cal-view-day').click();
+    const date = await page.getByTestId('tg-col').first().getAttribute('data-date');
+    await page.locator('[data-testid="tg-slot"][data-hour="9"]').click();
+    await expect(page.getByTestId('event-date')).toHaveValue(date!);
+    await expect(page.getByTestId('event-time')).toHaveValue('09:00');
+  });
+
+  test('the week can start on Monday, in every grid', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/scheduler/');
+    await page.getByTestId('view-calendar').click();
+    // Sunday by default, in both grids.
+    await expect(page.locator('.dow').first()).toHaveText('Sun');
+    await page.getByTestId('cal-view-week').click();
+    const firstColumn = await page.getByTestId('tg-col').first().getAttribute('data-date');
+    expect(new Date(firstColumn + 'T00:00').getDay()).toBe(0);
+
+    await app.goto('/preferences/');
+    const before = await app.dumpAll();
+    await page.getByTestId('pref-scheduler_week_start').selectOption('1');
+    await expect
+      .poll(async () => (await app.get('preferences', 'singleton'))?.scheduler_week_start)
+      .toBe(1);
+    assertIsolatedDelta(before, await app.dumpAll(), [{ store: 'preferences', id: 'singleton' }]);
+
+    await app.goto('/tools/scheduler/');
+    await page.getByTestId('view-calendar').click();
+    await expect(page.locator('.dow').first()).toHaveText('Mon');
+    await page.getByTestId('cal-view-week').click();
+    const mondayFirst = await page.getByTestId('tg-col').first().getAttribute('data-date');
+    expect(new Date(mondayFirst + 'T00:00').getDay()).toBe(1);
+  });
+
+  test('an entry drags with a finger in the week grid', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/scheduler/');
+    const from = dayOfThisWeek(2);
+    const to = dayOfThisWeek(5);
+    await createTimed(app, 'Touchable', from, '09:00');
+    await page.getByTestId('view-calendar').click();
+    await page.getByTestId('cal-view-week').click();
+
+    await touchDrag(
+      page,
+      page.getByTestId('cal-event').first(),
+      page.locator(`[data-testid="tg-col"][data-date="${to}"]`)
+    );
+    await expect
+      .poll(async () => String(((await app.dump('events'))[0] as Record<string, unknown>).start))
+      .toContain(to);
+  });
+
+  test('a recurring series draws in the week grid too, and drawing writes nothing', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/scheduler/');
+    // Anchored on the Monday of this week: Mon..Sat is six of the seven days.
+    await page.getByTestId('scheduler-new-event').click();
+    await page.getByTestId('event-title').fill('Daily standup');
+    await page.getByTestId('event-date').fill(dayOfThisWeek(1));
+    await page.getByTestId('event-time').fill('09:00');
+    await page.getByTestId('event-recur').selectOption('every');
+    await page.getByTestId('event-every-n').fill('1');
+    await page.getByTestId('event-every-unit').selectOption('days');
+    await page.getByTestId('event-save').click();
+    await expect.poll(async () => (await app.dump('events')).length).toBe(1);
+
+    await page.getByTestId('view-calendar').click();
+    await page.getByTestId('cal-view-week').click();
+    await expect(page.getByTestId('cal-event')).toHaveCount(6);
+
+    // Snapshot AFTER the sub-view preference has been written, so what is being
+    // measured is the drawing, not the click that got us here.
+    const before = await app.dumpAll();
+    await page.getByTestId('cal-next').click();
+    await page.getByTestId('cal-prev').click();
+    await expect(page.getByTestId('cal-event')).toHaveCount(6);
+    await page.reload();
+    await expect(page.getByTestId('cal-event')).toHaveCount(6);
+    expect(await app.dumpAll()).toEqual(before);
+
+    // The day view shows today's one occurrence — unless today is the Sunday
+    // before the anchor, when there is none yet.
+    await page.getByTestId('cal-view-day').click();
+    const isSundayBeforeAnchor = new Date().getDay() === 0;
+    await expect(page.getByTestId('cal-event')).toHaveCount(isSundayBeforeAnchor ? 0 : 1);
+  });
+});
