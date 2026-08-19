@@ -1,309 +1,197 @@
-- [x] begin working on phase 1 of `plan-phases.md`
-  - [x] Check off work as you go
-  - [x] GeoNames city→timezone dataset (downloaded + bundled; regenerate with
-    `tools/build-city-dataset.mjs`)
+- [ ] Create a planning document for version 0.2.0 in `docs/dev/plans/version-2.md` which contains plans for the following features split up into logical phases (do not start the features yet):
+      - [ ] Scheduler
+            - [ ] Add the ability to have recurrent events
+            - [ ] Week/day calendar views
+      - [ ] Image editor
+            - [ ] color fill layers 
+                  - [ ] have alpha channel capabilities (RGBA, HEX+alpha, etc.)
+                        - [ ] Add the ability to add transparent layers
+                  - [ ] Add the ability to specify CSS colors (e.g. transparent, red, black, etc.)
+      - [ ] Add a notebook section
+            - [ ] Use the markdown editor from retoken to create a notebook
+            - [ ] Should have all the features from re-token, with the abilty to use wiki-link style links to link between documents, and be able to export to PDF, markdown or HTML
+      - [ ] `generators`
+            - [ ] Secrets; generate secrets for various purposes
+                  - [ ] UUID
+                  - [ ] JWT
+                  - [ ] WPA
+                  - [ ] and all the other types on https://randomkeygen.com/
+            - [ ] Napkin Math; A system for self-documenting back of the envelope style calculations
+                  - [ ] Use Mathlive https://mathlive.io/mathfield/ for doing the entry, it will give you a parse tree you can get the variables with easily
+                        - [ ] You can find a svelte starting point here: https://mathlive.io/mathfield/guides/svelte/
+                        - [ ] The compute engine may be helpful: https://mathlive.io/compute-engine/
+                        - [ ] This does add some complications
+                              - [ ] There are several math operations that exist, you can use the MathML parsing to figure out which operation, but you will need more than just a basic add, multiply divide, etc.
+                              - [ ] The variable names will by default be split out into separate letters (e.g. `"count"` becomes `"c", "o","n","u","t"` which are not even in order sometimes). Below is a starter component that addresses this one way:
+```svelte
+<script lang="ts">
+  import "mathlive";
+  import "https://esm.run/@cortex-js/compute-engine"
+  import type {
+    MathfieldElement,
+    MathfieldElementAttributes
+  } from "mathlive";
 
-## Session status (handoff notes — updated 2026-08-15)
+  type Props = {
+    value?: string;
+  } & Partial<MathfieldElementAttributes>;
 
-Done and fully green (51 unit + 60 Playwright, trust gate 5/5; nothing committed yet):
-- [x] Phase 0 (shell/registry/palette/data-layer groundwork) + blueprint redesign
-- [x] Phase 1 (timers incl. looping alarm + editable preferences + auto-remember,
-      stopwatch, timezones incl. GeoNames city lookup) — DB v3
-- [x] Phase 2 core (scheduler: list/board/calendar, recurrence, comments,
-      due notifications) — DB v4
+  let { value = $bindable(), ...rest }: Props = $props();
 
-Scheduler UI increment (spec'd in plan.md §2.3.4–2.3.6 and plan-phases.md
-Phase 2 item 6) — DONE, all green (51 unit + 65 Playwright, trust gate 5/5):
-- [x] Convert TODO/event create to a <dialog> modal
-- [x] Read/Update modal (read-first, rendered markdown + attributes + comments,
-      pencil → edit) opened from calendar entries, list titles, board card titles
-- [x] Calendar drag-and-drop rescheduling (events keep time-of-day, end shifts
-      by the same delta; todos move due_date; same-day drop writes nothing)
-- [x] Wiki-style hover previews on calendar entries (rendered markdown)
-- [x] Update/extend Playwright specs + CHANGELOG entry
+  const config = {
+    "smart-mode": true,
+    "placeholder": "\\textbf{enter calculation}",
+    "smart-fence": true
+  };
 
-Follow-up fixes (2026-08-15, all green — 51 unit + 68 Playwright, gate 5/5):
-- [x] Modal centered + enlarged (the global `* { margin: 0 }` reset was
-      killing the dialog's UA auto-centering — `dialog { margin: auto }`)
-- [x] Prism syntax highlighting in rendered markdown (statically bundled,
-      blueprint token palette in global.css)
-- [x] Board drag-and-drop (cross-column = same path as buttons incl.
-      recurrence complete; in-column positional reorder; one write per drop)
+  let data = $state("");
 
-Phase 3 (Calculators, 2026-08-14) — DONE:
-- [x] Number conversion (bases + bit-width ops, BigInt, explainers)
-- [x] Photography (total-light equivalents w/ 1/3-stop snapping incl. Canon
-      1.6; exact light-stop comparison; format remembered in preferences)
-- [x] File transfer (decimal units, bits-vs-bytes explicit, overhead %)
-- [x] Registry Calculators category + icons, SW shell + cache v6,
-      `photo_last_format` pref (types + schema mirror + README), CHANGELOG
-- [x] Unit tests (calc tables) + Playwright calculators.spec.ts (zero-write
-      pages, isolated preferences delta, keyboard explainers)
-
-Phase 4 (Generators, 2026-08-14) — DONE (incl. renaming the number-conversion
-tool to "Programming" per user request; route/id unchanged):
-- [x] Colors (CSS Color 4 conversions hand-rolled + browser-verified named
-      table), Gradients, Glassmorphism (pure builder fns shared with previews)
-- [x] Regex snippets (Go/Rust/JS/Python escaping + flag mapping + RE2
-      construct warnings), QR create (qrcode pkg; PNG/SVG download/copy via
-      new shared src/lib/exportFile.ts) + read (qr-scanner; camera
-      feature-detected, upload fallback)
-- [x] Registry Generators category + icons, SW shell + cache v7, CHANGELOG
-- [x] Unit tests (color round-trips, builders, regexgen, qr svg) + Playwright
-      generators.spec.ts
-
-Generator follow-ups (user request, 2026-08-14) — DONE:
-- [x] QR: custom code/background colors + inverted/low-contrast warning
-- [x] Regex: live tester (segments, not innerHTML) + filterable symbol
-      reference (regexRef.ts / regexTester.ts)
-- [x] Glassmorphism: 8 presets (frosted x3, dark, iOS clear, 3 color tints),
-      opacities as %
-- [x] Colors → **Themes** (route/id unchanged): HSL-wheel harmonies
-      (harmony.ts) + CSS theme builder (theme.ts — up-to-5 swatch,
-      light-dark(), WCAG on-colors, padding/radius, component preview)
-
-UI refinement round (user request, 2026-08-14) — DONE:
-- [x] Shared ColorField (text + synced picker) in gradient stops, glass tint,
-      theme role slots
-- [x] Themes: per-role light AND dark overrides (contrast-aware dark
-      derivation), per-scheme WCAG contrast warnings vs the theme background
-- [x] Regex: group color-coding via `d`-flag indices (marks + table chips,
-      named groups merged with their numbers)
-
-Drag + role-cards round (user request, 2026-08-14) — DONE:
-- [x] Scheduler "drag broke" root-caused to the (already fixed) Prism
-      hydration crash; calendar drag verified green. List view had NO drag —
-      added rank-based drag-reorder (shared with board order, completed sink
-      to bottom, end-drop strip); list due-date auto-sort replaced by manual
-      order.
-- [x] 4 new real-interaction Playwright drag tests (list reorder / no-op /
-      end strip / board-order parity + calendar hover-preview-then-drag).
-- [x] Theme builder roles now render as individual cards.
-
-Phase 5 (Images, 2026-08-14) — DONE:
-- [x] Converter (matrix per plan §3.3: svg/avif/webp/tiff→png/jpg, png↔jpg;
-      utif2 TIFF w/ graceful failure; SVG raster width; JPG flatten-to-white)
-- [x] Resizer (dims + aspect lock, percent mode), Compressor (quality,
-      longest-edge cap, before/after sizes) — src/lib/img/convert.ts core
-- [x] `convert_jpg_quality` pref (types + schema mirror + README), Images
-      registry category + icons, SW shell + cache v8, CHANGELOG
-- [x] Unit tests (matrix/dims/quality/filename math) + images.spec.ts
-      (fixture uploads incl. generated TIFFs — tools/build-image-fixtures.mjs
-      — downloads verified by magic bytes; AVIF rides the WebP native-decode
-      branch, no in-browser AVIF encoder exists for a fixture)
-
-Phase 6 (SVG editor, 2026-08-14) — DONE:
-- [x] src/lib/svg/ (model/build/history): generalized icon-editor seed —
-      arbitrary canvas, per-layer w/h + fill/stroke, bezier lines, editable
-      polygons, pasted-SVG hardening ported, pure undo/redo stack
-- [x] SvgEditorApp: doc browser, on-canvas select/drag/resize/vertex handles
-      (rotation-aware), keyboard (arrows/Delete/ctrl+z/y), debounced autosave
-      via patch, resume-last-doc (`svg_last_doc_id` pref), SVG/PNG/JPG export
-- [x] DB v5 `svg_documents` (types + migration + TABLES mirror + README),
-      registry + pen-tool icon, SW shell + cache v9, CHANGELOG
-- [x] Unit tests (build/model/history) + svg-editor.spec.ts (isolated deltas,
-      byte-identical reload via assertSameDb, zero-write exports, tombstone)
-
-Phase 7 (Raster image editor, 2026-08-14) — DONE:
-- [x] src/lib/raster/ (model/transform/render/exif): non-destructive
-      rotate/crop with pure layer remapping, stroke/arrow/text/adjust layers,
-      EXIF field mapping (exifr read; piexifjs JPEG write, lazy)
-- [x] ImageEditorApp: session-only (ZERO DB writes — no repo imports), brush/
-      eraser/arrow/text/darken/lighten/blur/crop/rotate tools, layer list,
-      EXIF viewer + strip-default + edited-tags-into-JPG (GPS never), PNG/JPG
-      export + copy-as-PNG (superseded by the Cleanup redesign below —
-      layer tree, per-layer effects, blend/opacity, zoom, blank canvas)
-- [x] Registry + brush icon, page in SW shell (v9 bump shared with Phase 6),
-      CHANGELOG, deps exifr + piexifjs (+ local .d.ts)
-- [x] Unit tests (transform/exif) + image-editor.spec.ts (dims after
-      draw/rotate/crop, EXIF re-parsed from exported bytes, strip-all,
-      whole-session zero-write invariant)
-
-Cleanup (2026-08-14) — DONE:
-
-- [x] for image based testing I added a bunch of test files to `/tests/local/fixtures`
-      (the AVIF now drives a real converter test; the others are available
-      for future specs — the multi-MB PNGs are deliberately unused in the
-      suite to keep runs fast)
-- [x] Image converter
-  - [x] The image converter does not resize the preview to the aspect ratio of the image correctly
-    - [x] I tested this with `photo-1780071611689-55d7b5ace40a.avif` and saw it being broken
-    - [x] adapt the preview pane size or if not possible use `object-fit: contain;`
-      (root cause: flex `align-items: stretch` on the `<img>` — fixed with
-      `align-self: flex-start` + `object-fit: contain`)
-- [x] Image compressor
-  - [x] The image compressor should support a target percentage or filesize (with a notice saying it may not be possible)
-      (src/lib/img/targetSize.ts — quality-then-dimensions search, honest
-      "NOT reachable" outcome)
-- [x] Image editor (redesigned: src/lib/raster/model.ts two-level layer tree,
-      render.ts per-layer buffers)
-  - [x] should support either upload to start (current) or starting from an empty canvas (set resolution)
-    - [x] First uploaded image should be the base layer, and set the initial canvas size
-  - [x] Canvas should be re-sizeable
-  - [x] Should support image-based layers
-  - [x] Tools should operate per-layer (e.g. I should be able to crop an image layer that does not crop the whole canvas)
-    - [x] Should become sub-layers (e.g. an eraser layer only effeects the layer it's directly under in the heirarchy)
-      - [x] Should be draggable under other layers, and deleteable
-      - [x] If an eraser layer or crop is dragged to top layer it should effect layers below it
-  - [x] Layers should have settings
-      - [x] Opacity
-      - [x] Blend modes
-        - [x] Soft light
-        - [x] Hard light
-        - [x] color
-        - [x] multiply
-        - [x] Overlay; Combines Multiply and Screen for contrast enhancement.
-  - [x] Add ability to zoom in and out of the canvas for more accurate brush work
-  - [x] Should be able to set the image name and format when downloading
-- [x] SVG Editor
-  - [x] In polygon mode, add the ability for each point to also support bezier interpolation with handles between it and the next point
-  - [x] Add the ability to take one shape and use it to subtract from another shape (e.g. a horizontal line through a square would result in a layer that is two rectangles (top and bottom) split where the line went through the square)
-    - [x] If simpler, the shape can be converted to a pasted SVG layer that doesn't need the same parametric controls as a normal shape does (meaning after the split instead of a layer with two rectangles and the same square controls it's just a pasted svg with the split baked into it)
-      (done this way: luminance mask + flood filter, baked into a pasted-SVG
-      layer — works for any cutter kind)
-
-Review-round fixes (adversarial review of phases 6/7, 2026-08-14) — DONE:
-- [x] SVG editor: ColorField edits now commit (new `oncommit` prop), null
-      numerics revert to last committed, colors XML-escaped, empty
-      background = transparent, pagehide/visibility save flush, doSave race
-      guard, sync keydown registration, stale vertex index, true-bbox hit
-      test, export width guard
-- [x] Image editor: clampRect edge-intersect, blur context padding,
-      pointerId-pinned gestures, discard-confirm covers crop/rotate,
-      ResizeObserver dash scale, keyboard paths (numeric crop, coord fields)
-- [x] Specs: GPS fixture really carries GPS, zero-write window starts before
-      page load, crop bounds two-sided
+  function init(node: MathfieldElement) {
+    /*
+     * Turn sequences such as:
+     *
+     *   months
+     *   count
+     *   totalCount
+     *   item_42
+     *
+     * into single MathLive symbols.
+     */
     
+    node.onInlineShortcut = (_mf, s) => {
+      if (/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(s)) {
+        return `\\mathit{${s}}`;
+      }
 
+      return undefined;
+    };
 
-Image editor round 2 (user request, 2026-08-15) — DONE:
-- [x] Scale tool for image layers with on-canvas handles (corners aspect-
-      locked, edges one axis; sub-layers scale along — scaleLayerTree)
-- [x] Layer file names truncate (ellipsis; list no longer scrolls sideways)
-- [x] Blank-canvas background is a fill layer ("Background")
-- [x] Color-fill layer kind (top level = backdrop; nested = tints parent
-      only — content children are clipped to their parent's alpha)
-- [x] Drag-n-drop anywhere in the tree: above/below/into zones on rows
-- [x] Group layers (any depth, hold images; wrap-selected + empty group)
-- [x] Recursive tree helpers (locate/flatten/move/remove, isWithin) + unit
-      tests; render.ts recursive (renderInto/renderLayerBuffer)
+    if (value) {
+      node.value = value;
+    }
 
-Phase 8 (Background remover, 2026-08-15) — DONE, incl. the image-editor
-integration requested below:
-- [x] Model + runtime vendored, licenses verified: u2netp (U²-Net small,
-      Apache-2.0, 4.4MB) + onnxruntime-web wasm/loader (MIT, 11.2MB) into
-      public/models/ + public/ort/ via `tools/build-bg-assets.mjs`
-      (PROVENANCE.txt records sources/licenses/sha256). RMBG + @imgly
-      rejected on licensing.
-- [x] src/lib/bg/: pipeline.ts (pure — resample, U²-Net normalization by
-      image max, mask rescale, cutoff/feather, alpha apply), runtime.ts
-      (progress download into the `useful-models-v1` cache, ORT session),
-      canvas.ts (canvas glue)
-- [x] BackgroundRemoverApp: not-downloaded/ready states + progress + remove,
-      live preview w/ checkerboard, cutoff + feather + transparent-or-colour
-      background, mask view, PNG/JPG export + copy, editor fallback link
-- [x] Image editor: "Remove background" on image layers → nested `mask`
-      layer kind (render.ts stencil, transform.ts geometry, invertible,
-      deletable, scales/rotates with its parent)
-- [x] SW: page in SHELL, cache v10, cache-first rule for models/+ort/ in a
-      bucket the version purge never touches; assets excluded from precache
-- [x] Registry + scissors icon, CHANGELOG, README offline section
-- [x] Tests: 24 unit (pipeline w/ mocked runner) + mask geometry unit tests;
-      Playwright background-remover.spec.ts (3 cases incl. a run with the
-      browser offline) + image-editor mask case — all zero-write
+    const handleInput = () => {
+      value = node.value;
 
-Suite status: 297 unit + 134 Playwright green, trust gate 5/5.
+      data = JSON.stringify(
+        JSON.parse(node.getValue("math-json")),
+        null,
+        2
+      );
+    };
 
-Cleanup (2026-08-15) — DONE:
+    node.addEventListener("input", handleInput);
 
-- [x] Timers
-  - [x] I just noticed in the export JSON that deleted timers are showing up. Make sure references to deleted timers are properly cleared out
-        (root cause: softDelete tombstoned the row IN PLACE, keeping every
-        field. repo.ts now keeps only sync bookkeeping — id/updated_at/
-        deleted_at/server_seq/field stamps — and DB **v6** sweeps tombstones
-        already stored, leaving their clocks untouched so the cleanup can
-        never beat another device's edit. Covered in data.spec.ts, including
-        the migration itself via a hand-built v5 database + new `closeDb`
-        test hook.)
-- [x] Scheduler
-  - [x] The drag and drop for all three views is broken
-        (root cause: HTML5 drag-and-drop — `draggable="true"` + dataTransfer —
-        which NEVER fires for touch or pen; a mouse-driven suite could not see
-        it. Replaced with pointer events in the new `src/lib/dragdrop.ts`
-        (`use:draggable` / `use:dropzone`): 5px threshold so clicks stay
-        clicks, controls inside a row still work, grab handles own the gesture
-        on touch (⠿ on list rows and board cards, entries themselves in the
-        calendar), Escape cancels, own drag ghost. Specs converted to real
-        pointer drags + 3 new CDP touch-drag cases.)
-- [x] Image editor
-  - [x] Add ctrl+z to undo and ctrl+y to redo the last operation (and add buttons near the zoom controls)
-        (src/lib/raster/history.ts — snapshots deep-copy the tree but SHARE
-        the bitmaps; discrete actions are their own step, gestures/typing
-        coalesce on a 400ms pause; ↶/↷ next to the zoom controls, ctrl+z /
-        ctrl+y / ctrl+shift+z, ignored inside text fields)
-  - [x] Add a way to paint out parts of what you erased (e.g. I want to un-erase part of what I erased)
-        (new `restore` stroke mode + Restore tool: render.ts keeps a pristine
-        copy of the target and stamps it back through the stroke)
-  - [x] Add a similar mechanism to un-erase parts of the background remover
-        (the same brush over a mask layer — one mechanism, both cases)
-- [x] Background remover
-  - [x] Add a mechanism to un-erase parts of the mask
-        (bring-back / cut-away brushes painted on the preview, kept as their
-        own layer so the sliders and re-runs don't wipe them; `applyPaint` is
-        pure + unit-tested; "Clear touch-ups" restores the model's mask)
-- [x] Also converted the image editor's layer-tree drag to the pointer engine
-      (same dead-on-touch defect) — the specs' existing mouse drags still pass.
+    // Initialize
+    data = JSON.stringify(
+      JSON.parse(node.getValue("math-json")),
+      null,
+      2
+    );
 
-Suite status after the cleanup round: 314 unit + 142 Playwright green,
-trust gate 5/5 (run `npm test` — a `--reporter=list` override skips the gate).
+    return {
+      destroy() {
+        node.removeEventListener("input", handleInput);
+      }
+    };
+  }
+</script>
 
+<math-field
+  use:init
+  {...rest}
+  {...config}
+></math-field>
 
-Improvements (2026-08-15) — DONE:
+<pre><code>{data}</code></pre>
 
-- [x] When someone installs as a PWA add a modal popup to ask them if they want to download ALL necessary files to be fully offline capable
-      (OfflineSetup.svelte — fires on `appinstalled` AND on a first run in
-      standalone display-mode, asked once, remembered in
-      `offline_prompt_seen`. The shared OfflinePanel also lives in
-      Settings → Offline. src/lib/offline.ts lists the bundles with sizes;
-      the app's own chunks are crawled by the SW through a new `useful-warm`
-      message (unpaced, progress reported), the model reuses the Phase 8
-      loader, and each SQL engine is booted once — which both caches and
-      proves it. Covered by offline.spec.ts, including a real
-      network-off load of a never-visited page.)
-- [x] Add one more category called playgrounds this is for coding playgrounds and other interactive tools
-  - [x] Add a database playground using the database playground from retoken
-        (ported src/lib/sql/* — SQLite + PGlite behind one worker protocol —
-        plus CodeMirror editor; the DataTable/filter library was NOT ported,
-        so the table browser is this app's own markup with a 200-row cap.
-        Persistence rebuilt on the data layer: DB **v7** `sql_playgrounds`,
-        one row per engine (buffer + SQL snapshot), engine remembered in
-        preferences. Registry gains the Playgrounds category + database icon;
-        SW shell + cache v11.)
+<style>
+  math-field {
+    min-width: 50%;
+  }
 
-Phase 9 (Hardening & release, 2026-08-15) — DONE:
-- [x] Accessibility sweep: a11y.spec.ts audits EVERY registered page for
-      accessible names, form labels, image alt text, one h1 and no skipped
-      heading levels, plus AA token contrast in both themes and keyboard paths
-      (palette, disclosures). Two real fixes fell out: dark `--color-danger`
-      was 4.0:1 on the card surface (now 4.8:1) and card titles were h3 under
-      h1 (now h2; the theme preview's mock h4 became styled text).
-- [x] Offline audit: offline.spec.ts downloads the app, cuts the network and
-      loads a page the profile never visited.
-- [x] Performance/precache: payload.spec.ts watches the network — the home
-      page and light tools pull none of the heavy bundles, the playground
-      loads only the picked engine, and the install precache stays shell-only.
-- [x] Docs: README gains a "What's in it" overview and the offline/engine
-      notes; Tables section covers `sql_playgrounds`.
-- [x] Release: CHANGELOG 0.1.0 dated 2026-08-15 (VERSION stays 0.1.0 — this
-      is the first release, and the standing rule only bumps once a dated
-      version exists).
-
-Suite status at release: 338 unit + 183 Playwright green, trust gate 5/5.
+  pre {
+    white-space: pre-wrap;
+  }
+</style>
+```
+                  - [ ] I have attached an SVG (`napkinMath.excalidraw.svg`) with the UI sketched out, it is meant to be a guide, but ask questions and clarifications if there are changes that would make it better
+                  - [ ] The user enters in an equation in plaintext, and form input fields appear to do future calculations with
+                        - [ ] e.g. user types `((months*cost_per_month)*12)*years`
+                              - [ ] 3 inputs appear as "fields" where you can set information (data type, required, etc.)
+                                    - [ ] A calculation section appears allowing them to add values to each field as a specific calculation and see the result.
+                                          - [ ] user can then type in values for those 3 and see the results
+                                    - [ ] They can then store each instance of a calculation
+                                    - [ ] They can then generate several different types of code based on the calculation tempaltes
+                        - [ ] User can then store this template for later use
+                              - [ ] Set a template name and description to make it easier to find
+                              - [ ] Accessed via a collapsible sidebar that stores the template library
+                              - [ ] Exportable later via a JSON interface
+                        - [ ] The export and import section includes
+                              - [ ] Export
+                                    - [ ] A copyable JSON text field with the JSON for the current calculation template (not the calculations themselves)
+                                    - [ ] Options to download all templates
+                                    - [ ]  Options to donload all calculations (the actual calculations themselves from the earlier section)
+                                    - [ ] Code Generator
+                                          - [ ] Ability to generate code based on calculations
+                                                - [ ] A few options
+                                                      - [ ] "Normal"; Turn calculations into plain functions with docstrings
+                                                            - [ ] Languages
+                                                                  - [ ] Python
+                                                                  - [ ] Javascript
+                                                                  - [ ] Go
+                                                                  - [ ] Rust
+                                                      - [ ] "Webcomponent"; A javascript webcomponent that includes a similar UI to the "calculations" section; An interactive set of form fields that shows you the calculation template (as a read-only rendered math representation), and then as you type it shows you the result of the caclculation.
+                                                            - [ ] UI should be plain form field that reactively updates, no framework, and no CSS, but should be easily styleable
+                              - [ ] Import
+                                    - [ ] Ability to copy in JSON text to import either a template or calculations for the currently loaded template
+                                          - [ ] Need validation for both to avoid code injections, and malformed input
+                                    - [ ] Ability to import from a file (for either a template or calculations)
+            - [ ] Add the sprite editor from retoken
+            - [ ] Add a logo generator that implements the Generators and badge modes of the logo generator from retoken
+            - [ ] `SQL playground`; 
+                  - [ ] use retoken's DataTable (filters, CSV, cursor paging) for improved display and features
+      - [ ] `playgrounds`
+            - [ ] Add a configuration playground
+                  - [ ] Has 2 modes
+                        - [ ] Parse
+                              - [ ] I have attached an SVG (`configurationPlaygroundParseMode.excalidraw.svg`) with the UI sketched out, it is meant to be a guide, but ask questions and clarifications if there are changes that would make it better
+                              - [ ] Used to parse out a JSON/YAML file
+                                    - [ ] Validation
+                                    - [ ] Linting/prettify
+                                    - [ ] Schema Extraction
+                                          - [ ] Extract out the schema visually to understand it
+                                    - [ ] Code generation
+                                          - [ ] Used to generate either
+                                                - [ ] A parser
+                                                - [ ] A generator
+                                                      - [ ] A faker-style generation for the objects in the language to test with
+                                          - [ ] Two types of languages
+                                                - [ ] "Normal"; Create plain functions and classes with docstrings
+                                                      - [ ] Languages
+                                                            - [ ] Python
+                                                            - [ ] Javascript
+                                                            - [ ] Go
+                                                            - [ ] Rust
+                                                - [ ] "Webcomponent"; A javascript webcomponent that includes a similar UI to the "schema" section; for the parser, you paste in a JSON file, and get it validated, with a table showing the value for each attribute. For the generator you get a webcomponent where you can specify the number of samples to generate, hit a plain HTML form button, and it gives you the text of that many JSON/yaml objects in the correct schema
+                                                      - [ ] UI should be plain form field that reactively updates, no framework, and no CSS, but should be easily styleable
+                        - [ ] Create
+                              - [ ] I have attached an SVG (`configurationPlaygroundCreateMode.excalidraw.svg`) with the UI sketched out, it is meant to be a guide, but ask questions and clarifications if there are changes that would make it better
+                              - [ ] Used to create JSON/YAML schemas
+                              - [ ] A table similar to the parse mode, but you can add rows, and select which data types for each field from a drop-down select
+                              - [ ] Code generator
+                                    - [ ] Lets you do the same code generation as the create mode
+                              - [ ] Examples
+                                    - [ ] Lets you dynamically create more examples of the same schema
+- [ ] Document all existing systems
+      - [ ] `docs/dev`
+            - [ ] For developer/maintainer information about each system
+                  - [ ] Include mermaid diagrams and simple explanations for any complex systems
+                  - [ ] Make sure to include "overview" explanations like the localstorage layer, prefferences storage, service worker, etc.
+      - [ ]`docs/user` 
+            - [ ] User documentation on how to use features. Mostly important for specifying "gotchas" people should know about
 
 Next: whatever comes after 0.1.0. Notes:
-- Week/day calendar views deliberately deferred.
-- retoken's DataTable (filters, CSV, cursor paging) is the obvious follow-up
-  for the SQL playground's browser if it starts feeling cramped.
 - Subagent workflows may fail on a monthly spend limit — work inline if so.
 - Suites: `npm test` (Playwright, builds prod + trust gate — do NOT pass
   `--reporter=list`, it overrides the config and skips the gate) and
