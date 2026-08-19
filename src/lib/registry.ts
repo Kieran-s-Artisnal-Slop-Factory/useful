@@ -203,6 +203,15 @@ export const REGISTRY: ToolDef[] = [
     icon: 'database',
   },
   {
+    id: 'logo-generator',
+    name: 'Logo generator',
+    description: 'Seeded avatars, identicons, and icon or emoji badges',
+    aliases: ['logo', 'icon', 'avatar', 'identicon', 'dicebear', 'jdenticon', 'badge', 'app icon', 'favicon'],
+    category: 'Generators',
+    route: '/tools/logo-generator/',
+    icon: 'hexagon',
+  },
+  {
     id: 'secrets',
     name: 'Secrets',
     description: 'Passwords, API keys, JWT secrets, UUIDs and Wi-Fi passphrases',

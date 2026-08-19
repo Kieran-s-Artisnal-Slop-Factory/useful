@@ -123,8 +123,17 @@
     };
   });
 
-  let modalTodo = $derived(modal?.type === 'todo' && modal.id ? todos.find((t) => t.id === modal!.id) ?? null : null);
-  let modalEvent = $derived(modal?.type === 'event' && modal.id ? events.find((e) => e.id === modal!.id) ?? null : null);
+  // Read `modal` into a local before the lookup: narrowing a captured `$state`
+  // variable does not survive into the `find` callback, so the assertion the
+  // one-liner needed was hiding a genuine type error rather than proving one.
+  let modalTodo = $derived.by(() => {
+    const m = modal;
+    return m?.type === 'todo' && m.id ? (todos.find((t) => t.id === m.id) ?? null) : null;
+  });
+  let modalEvent = $derived.by(() => {
+    const m = modal;
+    return m?.type === 'event' && m.id ? (events.find((e) => e.id === m.id) ?? null) : null;
+  });
   /** The occurrence the modal was opened from — a series row is not enough. */
   let modalOccurrence: Occurrence | null = $state(null);
   /** Does this modal need to ask "this / following / all"? */
@@ -1168,7 +1177,7 @@
       {weekStart}
       oneventclick={(occ) => openOccurrenceRead(occ)}
       ontodoclick={(t) => openTodoRead(t)}
-      onslotclick={(date, time) => openEventCreate(date, time)}
+      onslotclick={(date, time) => openEventCreate(date, time ?? undefined)}
       ondropitem={(type, id, date, occStart, time) => void dropOnDate(type, id, date, occStart, time)}
     />
   {/if}

@@ -1,0 +1,8 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import LogoGeneratorApp from '../../components/apps/LogoGeneratorApp.svelte';
+---
+
+<Layout title="Logo generator">
+  <LogoGeneratorApp client:only="svelte" />
+</Layout>

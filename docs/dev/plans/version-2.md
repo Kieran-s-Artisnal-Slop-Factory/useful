@@ -148,7 +148,7 @@ and the phases below are written to the answers, not the defaults.
 | 3 ✅ | Scheduler: week + day views | — | 2 prefs | **DONE 2026-08-19.** Built on Phase 2's expander |
 | 4 ✅ | Secrets generator | — | — | **DONE 2026-08-19.** |
 | 5 ✅ | Sprite editor (port) | — | v9 | **DONE 2026-08-19.** |
-| 6 | Logo generator (port) | `@dicebear/*`, `jdenticon`, `lucide-static` | — | |
+| 6 ✅ | Logo generator (port) | `@dicebear/*`, `jdenticon`, `lucide-static` | — | **DONE 2026-08-19.** |
 | 7 | DataTable + SQL playground | — | — | Adds `src/lib/table/` |
 | 8 | Napkin math | `mathlive`, `@cortex-js/compute-engine` | v10 | Adds `src/lib/codegen/` |
 | 9 | Configuration playground | `yaml`, `@codemirror/lang-json`, `@codemirror/lang-yaml` | v11 | Extends `src/lib/codegen/` |
@@ -550,7 +550,7 @@ exactly one row; export writes nothing; a document survives a backup round trip.
 
 ---
 
-## Phase 6 — Logo generator (port)
+## Phase 6 — Logo generator (port) — DONE (2026-08-19)
 
 **Goal:** retoken's logo designer, restricted to the two modes the TODO asks for.
 
@@ -600,6 +600,18 @@ downloads carry the right mime and filename, engines do **not** load until their
 tab is opened (a payload assertion), and the page writes nothing.
 
 **Docs:** `docs/dev/tools/logo-generator.md`, `docs/user/logo-generator.md`.
+
+**Outcome:** [logo.ts](../../../src/lib/gen/logo.ts) +
+[LogoGeneratorApp.svelte](../../../src/components/apps/LogoGeneratorApp.svelte),
+19 unit tests and 8 specs. Two deviations from the plan above, both deliberate:
+
+- **DiceBear loads with the page**, not on a tab click, because Generators /
+  DiceBear *is* the default view — the alternative is an empty page until a
+  button is pressed. Jdenticon and Lucide stay behind their controls, and the
+  payload suite asserts all three (none appear on any other page).
+- The licence split is **14 / 13 / 4** as predicted, but it is now enforced: a
+  unit test reads `node_modules/@dicebear/*/package.json` and fails if an
+  upgrade relicenses a style or adds an unlabelled one.
 
 **CHANGELOG:** Features; Other for the dependency/licence note.
 

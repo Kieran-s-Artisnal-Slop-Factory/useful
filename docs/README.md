@@ -35,6 +35,7 @@ Per tool, under [`dev/tools/`](dev/tools/):
 [image editor](dev/tools/image-editor.md) ·
 [sprite editor](dev/tools/sprite-editor.md) ·
 [secrets](dev/tools/secrets.md) ·
+[logo generator](dev/tools/logo-generator.md) ·
 [SQL playground](dev/tools/sql-playground.md)
 
 ## For users — [`user/`](user/)
@@ -53,6 +54,7 @@ the app.
 | [calculators.md](user/calculators.md) | Number bases, photography equivalence, file-transfer times |
 | [generators.md](user/generators.md) | Themes and colours, gradients, glassmorphism, regex, QR |
 | [secrets.md](user/secrets.md) | Passwords, keys, tokens and identifiers |
+| [logo-generator.md](user/logo-generator.md) | Seeded avatars, identicons, and icon or emoji badges |
 | [images.md](user/images.md) | Converter, resizer, compressor, background remover |
 | [svg-editor.md](user/svg-editor.md) | The layered vector editor |
 | [image-editor.md](user/image-editor.md) | The layered raster editor (session-only — read the gotchas) |

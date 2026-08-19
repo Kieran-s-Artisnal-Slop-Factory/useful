@@ -2,6 +2,26 @@
 
 ## Features
 
+- **Logo generator** (`/tools/logo-generator/`): square logos, app icons and
+  avatars, ported from [retoken](https://github.com/Descent098/retoken)'s icon
+  designer. **Generators** turn text into a picture — 31 DiceBear avatar styles
+  or a Jdenticon identicon with its own hue, saturation, lightness, background
+  and padding controls — and **Badge** composes one from a Lucide icon or an
+  emoji on a coloured tile. Download SVG or PNG at any size, copy either to the
+  clipboard, or hand the result to the SVG editor as a document to take apart.
+  Nothing is stored: the output is a pure function of the settings, so the page
+  writes to the database only when you press "Open in SVG editor".
+  - Retoken's **Upload** and **SVG editor** tabs are not ported. This app already
+    has image tools and a far better vector editor — both forks of the same
+    lineage — so the logo hands off rather than carrying a second, weaker builder.
+  - **The tool tells you what each style's licence asks for.** 14 of the 31
+    DiceBear styles are MIT; 13 carry CC BY 4.0 artwork that must be credited
+    wherever the logo appears; and 4 (avataaars and bottts, in both variants) ship
+    under a bespoke "free for personal and commercial use" notice that is not an
+    open-source licence. The map is committed data, because a browser cannot read
+    `package.json` — so a unit test reads the installed packages and fails when an
+    upgrade relicenses a style, rather than letting an owed attribution disappear.
+
 - **Sprite editor** (`/tools/sprite-editor/`): pixel art on a character grid,
   ported from [retoken](https://github.com/Descent098/retoken). Every character
   in the grid paints one colour and the legend says which, so a sprite is a
@@ -122,6 +142,15 @@
 
 ## Other
 
+- New dependencies for the logo generator: `@dicebear/core` + `@dicebear/collection`
+  (MIT code; 31 styles as one 2.0 MB lazy chunk, 672 KB gzip), `jdenticon` (MIT,
+  328 KB chunk) and `lucide-static` (ISC, ~2,000 icons, 826 KB chunk). All three
+  sit behind `import()` and each memo is cleared on failure, so a flaky fetch
+  retries instead of wedging the tab; only DiceBear arrives with the page,
+  because its avatar is the default view. The service worker's background crawl
+  precaches them, so the **offline footprint grows by roughly 2.8 MB**.
+- Service worker: `tools/logo-generator/` added to the precached shell, cache
+  bumped to **v14**.
 - The **EFF Long Wordlist** (7,776 words, CC BY 3.0 US) is vendored for the
   passphrase generator by a new `tools/build-wordlist.mjs`, which refuses to
   write unless it parses exactly 7,776 unique words. It is 78 KB and only one

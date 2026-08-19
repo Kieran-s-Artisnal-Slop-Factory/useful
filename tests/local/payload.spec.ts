@@ -22,6 +22,10 @@ const HEAVY = [
   { label: 'CodeMirror', match: /codemirror|lezer/i },
   // 78 KB for one card on the secrets page — it must arrive on its own.
   { label: 'EFF word list', match: /wordlist/i },
+  // The three logo engines: 2.0 MB, 826 KB and 328 KB of chunk between them.
+  { label: 'DiceBear', match: /dicebear/i },
+  { label: 'Lucide icons', match: /lucide/i },
+  { label: 'Jdenticon', match: /jdenticon/i },
 ];
 
 /** Record every request URL the page makes while `work` runs. */
@@ -91,6 +95,20 @@ test.describe('payload discipline', () => {
     expect(urls.filter((u) => /u2netp|\.wasm/i.test(u)), 'model or wasm fetched on page load').toEqual(
       []
     );
+  });
+
+  test('the logo generator loads only the engine its open tab needs', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/');
+    // Generators/DiceBear is the default view, so that engine is genuinely in
+    // use the moment the page paints. The other two are not, and 1.1 MB of
+    // chunk between them is exactly the kind of freight that must wait.
+    const urls = await watch(page, async () => {
+      await page.goto('/tools/logo-generator/');
+      await expect(page.getByTestId('logo-styles')).toBeVisible();
+    });
+    expect(urls.filter((u) => /lucide/i.test(u)), 'Lucide loaded before the Badge tab').toEqual([]);
+    expect(urls.filter((u) => /jdenticon/i.test(u)), 'Jdenticon loaded unasked').toEqual([]);
   });
 
   test('the SQL playground loads one engine, not both', async ({ app }) => {

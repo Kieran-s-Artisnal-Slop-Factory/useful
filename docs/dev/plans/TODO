@@ -155,7 +155,9 @@
                                     - [ ] Ability to import from a file (for either a template or calculations)
             - [x] Add the sprite editor from retoken  (DONE 2026-08-19 — plan Phase 5; under Images beside the
                   SVG editor, since it owns documents like the other editors)
-            - [ ] Add a logo generator that implements the Generators and badge modes of the logo generator from retoken
+            - [x] Add a logo generator that implements the Generators and badge modes of the logo generator from retoken
+                  (DONE 2026-08-19 — plan Phase 6; Upload and its own SVG-editor tab left out, "Open in SVG editor"
+                  hands off to this app's editor instead)
             - [ ] `SQL playground`; 
                   - [ ] use retoken's DataTable (filters, CSV, cursor paging) for improved display and features
       - [ ] `playgrounds`

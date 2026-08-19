@@ -18,7 +18,8 @@ their own browser.
   and light stops, file-transfer times.
 - **Generators** — theme builder and colour conversion, gradients,
   glassmorphism, regex snippets for four languages, QR create and read,
-  secrets (passwords, keys, tokens, identifiers).
+  secrets (passwords, keys, tokens, identifiers), logos (seeded avatars and
+  identicons, or an icon/emoji badge).
 - **Playgrounds** — a SQL playground running real SQLite or Postgres in the
   tab.
 
