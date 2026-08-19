@@ -975,7 +975,7 @@ test.describe('week and day views', () => {
     expect(await solo.getAttribute('style')).toContain('width: 100%');
   });
 
-  test('all-day events and dated TODOs go in the lane above the hours', async ({ app }) => {
+  test('all-day events and TODOs with no time go in the lane above the hours', async ({ app }) => {
     const { page } = app;
     await app.goto('/tools/scheduler/');
     const day = dayOfThisWeek(3);
@@ -1093,6 +1093,117 @@ test.describe('week and day views', () => {
     await expect
       .poll(async () => String(((await app.dump('events'))[0] as Record<string, unknown>).start))
       .toContain(to);
+  });
+
+  test('a TODO with a time sits at that time, and gains its place the moment one is set', async ({ app }) => {
+    // The bug this covers: a TODO created without a time correctly went in the
+    // all-day lane, and STAYED there after a time was added, because the grid
+    // sorted todos by "has a due date" rather than "has a time of day".
+    const { page } = app;
+    await app.goto('/tools/scheduler/');
+    const day = dayOfThisWeek(3);
+    await page.getByTestId('scheduler-new-todo').click();
+    await page.getByTestId('todo-title').fill('I need to do thing');
+    await page.getByTestId('todo-due').fill(day);
+    await page.getByTestId('todo-save').click();
+    await expect.poll(async () => (await app.dump('todos')).length).toBe(1);
+
+    await page.getByTestId('view-calendar').click();
+    await page.getByTestId('cal-view-week').click();
+    const lane = page.locator(`[data-testid="tg-allday"][data-date="${day}"]`);
+    // No time yet: the lane is the only place it can go.
+    await expect(lane.getByTestId('cal-todo')).toHaveText(/I need to do thing/);
+    await expect(page.locator('[data-testid="tg-col"] [data-testid="cal-todo"]')).toHaveCount(0);
+
+    // Give it one.
+    await page.getByTestId('cal-todo').click();
+    await page.getByTestId('modal-edit').click();
+    await page.getByTestId('todo-due-time').fill('06:00');
+    await page.getByTestId('todo-save').click();
+
+    // It leaves the lane and lands at 06:00 — 360/1440 of the day.
+    await expect(lane.getByTestId('cal-todo')).toHaveCount(0);
+    const timed = page.locator(`[data-testid="tg-col"][data-date="${day}"] [data-testid="cal-todo"]`);
+    await expect(timed).toHaveCount(1);
+    expect(await timed.getAttribute('style')).toContain('top: 25%');
+    await expect(timed).toContainText('06:00');
+
+    // And clearing the time puts it back.
+    await timed.click();
+    await page.getByTestId('modal-edit').click();
+    await page.getByTestId('todo-due-time').fill('');
+    await page.getByTestId('todo-save').click();
+    await expect(lane.getByTestId('cal-todo')).toHaveCount(1);
+  });
+
+  test('a timed TODO shares the width with an event at the same time', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/scheduler/');
+    const day = dayOfThisWeek(3);
+    await createTimed(app, 'Meeting', day, '09:00', '10:00');
+    await page.getByTestId('scheduler-new-todo').click();
+    await page.getByTestId('todo-title').fill('Prep');
+    await page.getByTestId('todo-due').fill(day);
+    await page.getByTestId('todo-due-time').fill('09:00');
+    await page.getByTestId('todo-save').click();
+    await expect.poll(async () => (await app.dump('todos')).length).toBe(1);
+
+    await page.getByTestId('view-calendar').click();
+    await page.getByTestId('cal-view-week').click();
+    // Packed together, not on top of each other: events and timed TODOs go
+    // through one overlap pass.
+    const meeting = page.getByTestId('cal-event').filter({ hasText: 'Meeting' });
+    const prep = page.getByTestId('cal-todo').filter({ hasText: 'Prep' });
+    expect(await meeting.getAttribute('style')).toContain('width: 50%');
+    expect(await prep.getAttribute('style')).toContain('width: 50%');
+    expect(await prep.getAttribute('style')).toContain('left: 50%');
+  });
+
+  test('dropping a TODO in the all-day lane takes its time away; dropping on an hour gives it one', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/scheduler/');
+    const from = dayOfThisWeek(2);
+    const to = dayOfThisWeek(4);
+    await page.getByTestId('scheduler-new-todo').click();
+    await page.getByTestId('todo-title').fill('Movable');
+    await page.getByTestId('todo-due').fill(from);
+    await page.getByTestId('todo-due-time').fill('09:00');
+    await page.getByTestId('todo-save').click();
+    await expect.poll(async () => (await app.dump('todos')).length).toBe(1);
+    const id = String((await app.dump('todos'))[0]!.id);
+
+    await page.getByTestId('view-calendar').click();
+    await page.getByTestId('cal-view-week').click();
+
+    // Into the lane: the time goes, because the lane means "no time".
+    let before = await app.dumpAll();
+    await pointerDrag(
+      page,
+      page.getByTestId('cal-todo').first(),
+      page.locator(`[data-testid="tg-allday"][data-date="${to}"]`)
+    );
+    await expect
+      .poll(async () => (await app.dump('todos'))[0]!.due_time)
+      .toBeNull();
+    expect((await app.dump('todos'))[0]!.due_date).toBe(to);
+    assertIsolatedDelta(before, await app.dumpAll(), [{ store: 'todos', id }]);
+
+    // Back onto the hours: it gets a time again, snapped to the quarter hour.
+    before = await app.dumpAll();
+    const target = page.locator(`[data-testid="tg-col"][data-date="${from}"]`);
+    const box = (await target.boundingBox())!;
+    const src = (await page.getByTestId('cal-todo').first().boundingBox())!;
+    await page.mouse.move(src.x + src.width / 2, src.y + src.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(src.x + src.width / 2 + 8, src.y + src.height / 2 + 8, { steps: 2 });
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 6 });
+    await page.mouse.up();
+
+    await expect
+      .poll(async () => (await app.dump('todos'))[0]!.due_time)
+      .toMatch(/^\d{2}:(00|15|30|45)$/);
+    expect((await app.dump('todos'))[0]!.due_date).toBe(from);
+    assertIsolatedDelta(before, await app.dumpAll(), [{ store: 'todos', id }]);
   });
 
   test('a recurring series draws in the week grid too, and drawing writes nothing', async ({ app }) => {

@@ -98,8 +98,14 @@
     return `${left} – ${right}, ${last.getFullYear()}`;
   });
 
+  /** Anything that can be positioned down the hours: an event occurrence, or a
+   * TODO that has a time of day. */
+  type TimedEntry =
+    | { kind: 'event'; occ: Occurrence }
+    | { kind: 'todo'; todo: Todo };
+
   interface Placed {
-    occ: Occurrence;
+    entry: TimedEntry;
     topPct: number;
     heightPct: number;
     column: number;
@@ -116,8 +122,19 @@
   }
 
   const occKey = (occ: Occurrence): string => occ.event.id + '@' + occ.start;
+  const entryKey = (entry: TimedEntry): string =>
+    entry.kind === 'event' ? occKey(entry.occ) : 'todo:' + entry.todo.id;
   const minutesInto = (iso: string, dayStart: Date): number =>
     (new Date(iso).getTime() - dayStart.getTime()) / 60_000;
+
+  /** Minutes from local midnight for an 'HH:MM' string, or null if unusable. */
+  function minutesOfTime(time: string | null): number | null {
+    if (!time || !/^\d{2}:\d{2}$/.test(time)) return null;
+    const h = Number(time.slice(0, 2));
+    const m = Number(time.slice(3));
+    if (!Number.isFinite(h) || !Number.isFinite(m)) return null;
+    return h * 60 + m;
+  }
 
   let grid: Column[] = $derived.by(() => {
     const from = new Date(firstDate.getFullYear(), firstDate.getMonth(), firstDate.getDate());
@@ -141,27 +158,42 @@
         else timedOccs.push(occ);
       }
 
-      const spans = timedOccs.map((occ) => {
-        const startMin = minutesInto(occ.start, dayStart);
-        const endMin = occ.end ? minutesInto(occ.end, dayStart) : startMin;
-        return normalizeSpan({ startMin, endMin });
-      });
+      // A TODO with a time of day belongs at that time, beside the events —
+      // only an undated-time TODO has nowhere to go but the lane. It has no
+      // duration, so normalizeSpan gives it the minimum height.
+      const dayTodos = todos.filter((t) => t.due_date === col.date);
+      const laneTodos: Todo[] = [];
+      const timedTodos: { todo: Todo; startMin: number }[] = [];
+      for (const t of dayTodos) {
+        const startMin = minutesOfTime(t.due_time);
+        if (startMin === null) laneTodos.push(t);
+        else timedTodos.push({ todo: t, startMin });
+      }
+
+      // Events and timed TODOs are packed TOGETHER, so a 09:00 todo and a
+      // 09:00 meeting sit side by side instead of on top of each other.
+      const entries: TimedEntry[] = [
+        ...timedOccs.map((occ): TimedEntry => ({ kind: 'event', occ })),
+        ...timedTodos.map(({ todo }): TimedEntry => ({ kind: 'todo', todo })),
+      ];
+      const spans = [
+        ...timedOccs.map((occ) => {
+          const startMin = minutesInto(occ.start, dayStart);
+          const endMin = occ.end ? minutesInto(occ.end, dayStart) : startMin;
+          return normalizeSpan({ startMin, endMin });
+        }),
+        ...timedTodos.map(({ startMin }) => normalizeSpan({ startMin, endMin: startMin })),
+      ];
       const placements = packOverlaps(spans);
-      const timed: Placed[] = timedOccs.map((occ, i) => ({
-        occ,
+      const timed: Placed[] = entries.map((entry, i) => ({
+        entry,
         topPct: (spans[i]!.startMin / MINUTES_PER_DAY) * 100,
         heightPct: ((spans[i]!.endMin - spans[i]!.startMin) / MINUTES_PER_DAY) * 100,
         column: placements[i]!.column,
         columns: placements[i]!.columns,
       }));
 
-      return {
-        ...col,
-        timed,
-        allDay,
-        // A dated TODO has no duration, so it belongs in the all-day lane.
-        todos: todos.filter((t) => t.due_date === col.date),
-      };
+      return { ...col, timed, allDay, todos: laneTodos };
     });
   });
 
@@ -184,6 +216,12 @@
     return timeLabel(minuteFromOffset(clientY - rect.top, rect.height));
   }
 
+  /**
+   * `time` semantics, shared with the month grid:
+   *   'HH:MM' — put it at this time
+   *   ''      — it has NO time (dropped in the all-day lane)
+   *   null    — leave whatever time it had (the month grid, which has no hours)
+   */
   function onDropIn(data: DragData, date: string, time: string | null) {
     dragOver = null;
     if (data.kind === 'todo') {
@@ -310,7 +348,7 @@
             onLeave: () => {
               if (dragOver?.date === col.date && dragOver?.time === null) dragOver = null;
             },
-            onDrop: (d) => onDropIn(d, col.date, null),
+            onDrop: (d) => onDropIn(d, col.date, ''),
           }}
         >
           {#each col.allDay as occ (occKey(occ))}
@@ -405,35 +443,65 @@
               <span>{dragOver.time}</span>
             </div>
           {/if}
-          {#each col.timed as placed (occKey(placed.occ))}
-            <button
-              class="entry event timed"
-              data-testid="cal-event"
-              data-occurrence={placed.occ.start}
-              style={`top:${placed.topPct}%; height:${placed.heightPct}%; left:${(placed.column / placed.columns) * 100}%; width:${(1 / placed.columns) * 100}%`}
-              use:draggable={{
-                data: { kind: 'event', id: occKey(placed.occ) },
-                label: placed.occ.event.title,
-                handle: '.entry',
-                onStart: hidePreview,
-              }}
-              onmouseenter={(e) => showPreview(e, { kind: 'event', occ: placed.occ })}
-              onmouseleave={hidePreview}
-              onfocus={(e) => showPreview(e, { kind: 'event', occ: placed.occ })}
-              onblur={hidePreview}
-              onclick={() => {
-                hidePreview();
-                oneventclick(placed.occ);
-              }}
-            >
-              <span class="etime"
-                >{new Date(placed.occ.start).toLocaleTimeString(undefined, {
-                  hour: 'numeric',
-                  minute: '2-digit',
-                })}</span
+          {#each col.timed as placed (entryKey(placed.entry))}
+            {@const box = `top:${placed.topPct}%; height:${placed.heightPct}%; left:${(placed.column / placed.columns) * 100}%; width:${(1 / placed.columns) * 100}%`}
+            {#if placed.entry.kind === 'event'}
+              {@const occ = placed.entry.occ}
+              <button
+                class="entry event timed"
+                data-testid="cal-event"
+                data-occurrence={occ.start}
+                style={box}
+                use:draggable={{
+                  data: { kind: 'event', id: occKey(occ) },
+                  label: occ.event.title,
+                  handle: '.entry',
+                  onStart: hidePreview,
+                }}
+                onmouseenter={(e) => showPreview(e, { kind: 'event', occ })}
+                onmouseleave={hidePreview}
+                onfocus={(e) => showPreview(e, { kind: 'event', occ })}
+                onblur={hidePreview}
+                onclick={() => {
+                  hidePreview();
+                  oneventclick(occ);
+                }}
               >
-              <span class="etitle">{placed.occ.event.title}{placed.occ.event.recurrence ? ' ↻' : ''}</span>
-            </button>
+                <span class="etime"
+                  >{new Date(occ.start).toLocaleTimeString(undefined, {
+                    hour: 'numeric',
+                    minute: '2-digit',
+                  })}</span
+                >
+                <span class="etitle">{occ.event.title}{occ.event.recurrence ? ' ↻' : ''}</span>
+              </button>
+            {:else}
+              {@const t = placed.entry.todo}
+              <button
+                class="entry todo timed"
+                class:done={t.status === 'completed'}
+                data-testid="cal-todo"
+                data-time={t.due_time}
+                style={box}
+                use:draggable={{
+                  data: { kind: 'todo', id: t.id },
+                  label: t.title,
+                  handle: '.entry',
+                  onStart: hidePreview,
+                }}
+                onmouseenter={(e) => showPreview(e, { kind: 'todo', t })}
+                onmouseleave={hidePreview}
+                onfocus={(e) => showPreview(e, { kind: 'todo', t })}
+                onblur={hidePreview}
+                onclick={() => {
+                  hidePreview();
+                  ontodoclick(t);
+                }}
+              >
+                <span class="etime">{t.due_time}</span>
+                <span class="etitle">☐ {t.title}</span>
+              </button>
+            {/if}
           {/each}
         </div>
       {/each}
@@ -603,6 +671,10 @@
     position: absolute;
     border-left: 3px solid var(--color-primary);
     white-space: normal;
+  }
+
+  .entry.todo.timed {
+    border-left-color: var(--color-stamp);
   }
 
   .entry.todo.done {

@@ -4,9 +4,9 @@
 
 - **Week and day calendar views.** The calendar gained Month / Week / Day.
   Week and day lay the hours down the page: timed events sit at their time and
-  are as tall as they are long, events that overlap share the width side by
-  side, and all-day events, multi-day spans and dated TODOs sit in an all-day
-  lane above the hours. Dragging onto the hours sets the **time** as well as the
+  are as tall as they are long, entries that overlap share the width side by
+  side, and all-day events, multi-day spans and TODOs with no time sit in an
+  all-day lane above the hours. Dragging onto the hours sets the **time** as well as the
   day — snapped to the quarter hour, with a line showing where it will land, and
   the event keeps its length — while a drop on the month grid still changes only
   the date. Every empty hour is a real button, so creating an event at a time is
@@ -17,6 +17,11 @@
   month grid and the week grid alike.
 - A multi-day event now appears on every day it covers in the week and day
   grids. The month grid only ever showed it on its start day.
+- A TODO with a time of day sits **at that time** in the week and day grids,
+  beside the events, rather than in the all-day lane — the lane is for things
+  with no time, so a TODO goes there only while it has a date and no time.
+  Adding a time moves it out of the lane immediately, clearing one puts it
+  back, and dragging one into the lane is a way to remove its time.
 - **Events repeat.** A calendar event takes the same repeat rule TODOs have —
   every N days/weeks/months, or chosen weekdays — with an optional end date,
   and every occurrence shows on the calendar marked with a ↻. Only ONE row is

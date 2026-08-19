@@ -69,8 +69,8 @@ The calendar has three ranges, picked with the **Month / Week / Day** buttons ab
 Week and day lay the hours out down the page:
 
 - Timed events sit at their time, sized by how long they last. Events that overlap share the width side by side.
-- All-day events, anything spanning a whole day, and dated TODOs sit in the **all day** lane above the hours — they have no time to be placed at.
-- Drag an entry onto another day or another hour to move it: dropping on the hours sets the time as well as the day (snapped to the quarter hour, with a line showing where it will land), and the event keeps how long it is. Dropping on the month grid changes only the day.
+- All-day events, anything spanning a whole day, and TODOs with a date but **no time** sit in the **all day** lane above the hours. A TODO that does have a time sits at that time alongside the events.
+- Drag an entry onto another day or another hour to move it: dropping on the hours sets the time as well as the day (snapped to the quarter hour, with a line showing where it will land), and an event keeps how long it is. Dropping a TODO in the **all day** lane takes its time away again. Dropping on the month grid changes only the day.
 - Click any empty hour to create an event there, already filled in.
 
 **Week starts on** in Preferences chooses Sunday or Monday, and both the month and week grids follow it.

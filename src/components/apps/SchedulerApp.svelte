@@ -592,12 +592,12 @@
     if (type === 'todo') {
       const t = todos.find((x) => x.id === id);
       if (!t) return;
-      // A drop onto the same date AND time is a no-op, and must not write.
-      if (t.due_date === date && (time === null || t.due_time === time)) return;
-      await patch<Todo>('todos', id, {
-        due_date: date,
-        ...(time === null ? {} : { due_time: time }),
-      });
+      // `time` is 'HH:MM' to set a time, '' to clear it (the all-day lane), or
+      // null to leave it alone (the month grid, which has no hours to drop on).
+      const nextTime = time === null ? t.due_time : time === '' ? null : time;
+      // A drop that changes neither the date nor the time must not write.
+      if (t.due_date === date && t.due_time === nextTime) return;
+      await patch<Todo>('todos', id, { due_date: date, due_time: nextTime });
       await refresh();
       return;
     }
