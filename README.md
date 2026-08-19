@@ -93,6 +93,18 @@ same way — each is fetched the first time it is picked, and cached afterwards.
 The only copy of the data is the browser it was created in. Use Settings →
 Backup to export/import everything as one JSON file.
 
+## Documentation
+
+[docs/](docs/README.md) is the map. [docs/dev/](docs/dev/) documents every
+system for maintainers — start with
+[architecture.md](docs/dev/architecture.md), then the data layer, app shell,
+service worker, notification engine, design system, testing and per-tool pages.
+[docs/user/](docs/user/) documents each feature for users, and every page ends
+in the gotchas that feature carries.
+
+Planning documents live in [docs/dev/plans/](docs/dev/plans/) — they record
+intent at a point in time and are not maintained against the code.
+
 ## Versioning & releases
 
 The current version is the entire content of [VERSION](VERSION) (plain semver,
@@ -129,11 +141,17 @@ major upgrades may change generated-code assumptions.
 
 ## Evolving the schema
 
-The schema lives in two places that must change together:
+The schema lives in three places that must change together:
 
 1. `src/lib/db/types.ts` — entity interfaces + store map.
 2. A new migration appended in `src/lib/db/db.ts` (never edit a shipped
-   migration).
+   migration; guard every `createObjectStore` with
+   `objectStoreNames.contains()`).
+3. The `TABLES` mirror in `tests/local/helpers/schema.ts` — this is what
+   extends the backup round-trip, isolation and invariant suites to the new
+   store. A store missing here is a store nothing tests.
+
+Plus the Tables section above, and [docs/dev/data-layer.md](docs/dev/data-layer.md).
 
 For tables meant to hold ONE logical row (user settings, a profile), use the
 `getSingleton`/`putSingleton` helpers in `src/lib/db/repo.ts` rather than

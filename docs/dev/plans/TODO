@@ -1,4 +1,8 @@
-- [ ] Create a planning document for version 0.2.0 in `docs/dev/plans/version-2.md` which contains plans for the following features split up into logical phases (do not start the features yet):
+- [x] Create a planning document for version 0.2.0 in `docs/dev/plans/version-2.md` which contains plans for the following features split up into logical phases (do not start the features yet):
+      DONE 2026-08-19 — `docs/dev/plans/version-2.md`, twelve phases (0-11). The sub-items below are
+      the features that plan covers; they stay unchecked until the phase that builds them ships.
+      Sketches copied to `docs/dev/plans/sketches/`. Sixteen open questions (Q1-Q16) are listed in the
+      plan with a default for each — answering them is the only thing blocking any phase.
       - [ ] Scheduler
             - [ ] Add the ability to have recurrent events
             - [ ] Week/day calendar views
@@ -183,13 +187,16 @@
                                     - [ ] Lets you do the same code generation as the create mode
                               - [ ] Examples
                                     - [ ] Lets you dynamically create more examples of the same schema
-- [ ] Document all existing systems
-      - [ ] `docs/dev`
-            - [ ] For developer/maintainer information about each system
-                  - [ ] Include mermaid diagrams and simple explanations for any complex systems
-                  - [ ] Make sure to include "overview" explanations like the localstorage layer, prefferences storage, service worker, etc.
-      - [ ]`docs/user` 
-            - [ ] User documentation on how to use features. Mostly important for specifying "gotchas" people should know about
+- [x] Document all existing systems
+      - [x] `docs/dev`
+            - [x] For developer/maintainer information about each system
+                  - [x] Include mermaid diagrams and simple explanations for any complex systems
+                  - [x] Make sure to include "overview" explanations like the localstorage layer, prefferences storage, service worker, etc.
+      - [x] `docs/user`
+            - [x] User documentation on how to use features. Mostly important for specifying "gotchas" people should know about
+      DONE 2026-08-19 — 9 `docs/dev` system pages + 9 `docs/dev/tools` pages + 11 `docs/user` pages + `docs/README.md`
+      index; 39 mermaid diagrams, all parse-checked; every internal link resolved. Each page was written
+      from the source and then fact-checked against it by a second pass.
 
 Next: whatever comes after 0.1.0. Notes:
 - Subagent workflows may fail on a monthly spend limit — work inline if so.

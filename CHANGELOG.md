@@ -4,6 +4,32 @@
 ## Bug Fixes
 ## Other
 
+- **The app is documented.** [docs/](docs/README.md) now carries a page per
+  system for maintainers and a page per feature for users — 9 `docs/dev`
+  overview pages (architecture, data layer, preferences, app shell, design
+  system, service worker and offline, notification engine, testing, build and
+  tooling), 9 `docs/dev/tools` pages, 11 `docs/user` pages that each end in the
+  gotchas that feature carries, and an index. 39 mermaid diagrams cover the
+  flows worth drawing (the backup import algorithm, the service worker's fetch
+  handler and warm crawl, recurrence and rank ordering, the raster compositor,
+  the SQL worker protocol, autosave and its flush paths); every diagram was
+  parsed with mermaid itself and every internal link resolved, mechanically.
+  Each page was written from the source and then fact-checked against it by a
+  second pass, which is where most of the corrections came from.
+- **0.2.0 is planned**: [docs/dev/plans/version-2.md](docs/dev/plans/version-2.md)
+  splits the TODO's feature list into twelve phases that can each cut a release
+  on their own, with the decisions taken up front (self-hosting, lazy engines,
+  virtual recurrence expansion, one sanitized markdown path, `window.print()`
+  for PDF), sixteen open questions each with a default, and per phase: scope,
+  data-model delta, dependencies with their real sizes and licences, tests, docs
+  and CHANGELOG lines. The hand-drawn UI sketches for napkin math and the
+  configuration playground are kept alongside it in
+  [docs/dev/plans/sketches/](docs/dev/plans/sketches/).
+- README: added a Documentation section, and corrected "the schema lives in two
+  places" to three — the `TABLES` mirror in `tests/local/helpers/schema.ts` is
+  what extends the round-trip, isolation and invariant suites to a new store, so
+  a store missing there is a store nothing tests.
+
 # 0.1.0 (2026-08-15)
 
 - Initial release: data model created (`preferences`) and project generated with [local-sync-template](https://github.com/Descent098/local-sync-template).
