@@ -240,6 +240,14 @@ export interface NapkinField {
   name: string;
   /** Label shown beside the input. Defaults to the name. */
   label: string;
+  /**
+   * What this input means, in the author's words.
+   *
+   * Optional, and empty for every field written before it existed — the
+   * `fields` column is JSON, so this needed no migration, which is exactly why
+   * every reader has to tolerate its absence.
+   */
+  description: string;
   type: 'integer' | 'number';
   required: boolean;
   /** Which signs the value may take. */

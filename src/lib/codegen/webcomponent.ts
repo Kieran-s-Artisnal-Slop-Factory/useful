@@ -13,6 +13,7 @@
 import type { NapkinField } from '../db/types';
 import { emitExpression } from './expression';
 import { identifierMap } from './identifiers';
+import { latexToMarkdownMath } from './latex';
 import type { CodeTemplate } from './functions';
 
 /** Escape for an HTML text node or a double-quoted attribute value. */
@@ -86,6 +87,7 @@ export function generateWebComponent(template: CodeTemplate, formulaMarkup?: str
     key: f.name,
     id: names.get(f.name)!,
     label: f.label,
+    description: f.description ?? '',
     step: f.type === 'integer' ? '1' : 'any',
     min: f.sign === 'positive' ? '0' : null,
     required: f.required,
@@ -98,16 +100,22 @@ export function generateWebComponent(template: CodeTemplate, formulaMarkup?: str
       (f) =>
         `      <label part="row">\n` +
         `        <span part="label">${escapeHtml(f.label)}</span>\n` +
+        // The description becomes the input's own title, so it is reachable
+        // by hover and by a screen reader without adding another element the
+        // host page would have to style.
         `        <input part="input" type="number" step="${f.step}"` +
         (f.min !== null ? ` min="${f.min}"` : '') +
+        (f.description ? ` title="${escapeHtml(f.description)}"` : '') +
         ` data-key="${escapeHtml(f.key)}" />\n` +
         `      </label>`
     )
     .join('\n');
 
+  // Without pre-rendered markup the formula is shown as text, so it should be
+  // the readable form rather than the renderer's `\mathrm{}` and `\left(`.
   const formulaBlock = formulaMarkup
     ? `      <div part="formula">${formulaMarkup}</div>`
-    : `      <div part="formula">${escapeHtml(template.formulaLatex)}</div>`;
+    : `      <div part="formula">${escapeHtml(latexToMarkdownMath(template.formulaLatex))}</div>`;
 
   const checks = fieldData
     .map((f) => {
@@ -122,6 +130,29 @@ export function generateWebComponent(template: CodeTemplate, formulaMarkup?: str
     .filter(Boolean)
     .join('\n');
 
+  // A comment that merely NAMES the parts leaves the reader to work out the
+  // selector syntax; one that shows it is the same length and answers the
+  // question. `::part()` is also the only way in — the shadow root means the
+  // host page's own selectors cannot reach these elements at all.
+  const styleHelp = [
+    ' * Styling',
+    ' * --------',
+    ' * The markup is in a shadow root, so the only way in is ::part():',
+    ' *',
+    ' *   <style>',
+    `  *     ${tag}::part(input) { border: 1px solid #888; }`.slice(1),
+    `  *     ${tag}::part(result) { font-weight: 700; }`.slice(1),
+    ' *   </style>',
+    ' *',
+    ' * Parts available:',
+    ' *   - row      one label-and-input pair',
+    ' *   - label    the field name beside its input',
+    ' *   - input    the number box itself',
+    ' *   - formula  the read-only formula above the fields',
+    ' *   - result   the answer',
+    ' *   - error    the message shown when an input breaks a rule',
+  ].join('\n');
+
   return `/**
  * ${escapeHtml(template.name || 'Napkin calculation').replace(/\n/g, ' ')}
  *
@@ -129,8 +160,7 @@ export function generateWebComponent(template: CodeTemplate, formulaMarkup?: str
  * file in a page with <script type="module" src="..."></script> and use
  * <${tag}></${tag}>.
  *
- * Style it from the host page with ::part(row), ::part(label), ::part(input),
- * ::part(formula), ::part(result) and ::part(error).
+${styleHelp}
  */
 ${helperSource.join('\n')}const FIELDS = ${JSON.stringify(
     fieldData.map((f) => ({ key: f.key, label: f.label })),

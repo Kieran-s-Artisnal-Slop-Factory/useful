@@ -21,6 +21,8 @@
   import Card from '../Card.svelte';
   import Explainer from '../Explainer.svelte';
   import MathField from '../MathField.svelte';
+  import CodeBlock from '../CodeBlock.svelte';
+  import CodeInput from '../CodeInput.svelte';
   import { copyText, downloadText } from '../../lib/exportFile';
   import {
     all,
@@ -35,7 +37,13 @@
   } from '../../lib/db/repo';
   import type { NapkinCalculation, NapkinField, NapkinTemplate, Preferences } from '../../lib/db/types';
   import { boxJson, evaluateFormula, parseFormula } from '../../lib/napkin/engine';
-  import { checkValues, describeConstraint, orphanedFields, reconcileFields } from '../../lib/napkin/model';
+  import {
+    checkValues,
+    describeConstraint,
+    normalizeField,
+    orphanedFields,
+    reconcileFields,
+  } from '../../lib/napkin/model';
   import {
     calculationsToJson,
     ImportError,
@@ -75,6 +83,8 @@
   let editingCalcId = $state<string | null>(null);
   let result = $state<number | null>(null);
   let resultNote = $state<string | null>(null);
+  /** Why the last Save could not happen, shown beside the button. */
+  let calcError = $state<string | null>(null);
 
   // ---- chrome --------------------------------------------------------------
   let sidebarOpen = $state(true);
@@ -101,7 +111,32 @@
       : templates
   );
   const problems = $derived(checkValues(fields, readInputs()));
-  const canSaveTemplate = $derived(name.trim().length > 0 && formulaLatex.trim().length > 0);
+  /**
+   * The problems worth showing right now.
+   *
+   * An empty required field is not a mistake, it is a field nobody has reached
+   * yet — complaining about it the moment the formula appears is noise, and it
+   * crowds out the field's own description. The result readout already says
+   * "fill in every input", which is the honest version of the same news.
+   */
+  const shownProblems = $derived.by(() => {
+    const raw = inputs;
+    const out: Record<string, string> = {};
+    for (const [key, problem] of Object.entries(problems)) {
+      const value = raw[key];
+      const touched = value !== undefined && value !== null && String(value).trim() !== '';
+      if (touched) out[key] = problem;
+    }
+    return out;
+  });
+  /**
+   * A formula is all a template needs.
+   *
+   * Requiring a name too is what made "Save calculation" silently refuse: the
+   * button was live, the template had never been written, and the only clue
+   * was a transient line at the far end of a long page.
+   */
+  const canSaveTemplate = $derived(formulaLatex.trim().length > 0 && !!formulaJson);
   const liveJson = $derived(
     templateToJson({ name, description, formulaLatex, formulaJson, fields })
   );
@@ -191,7 +226,8 @@
     description = row.description;
     formulaLatex = row.formula_latex;
     formulaJson = row.formula_json;
-    fields = row.fields.map((f) => ({ ...f }));
+    // A template saved before a property existed comes back without it.
+    fields = row.fields.map(normalizeField);
     inputs = {};
     calcName = '';
     editingCalcId = null;
@@ -214,6 +250,7 @@
     calculations = [];
     calcName = '';
     editingCalcId = null;
+    calcError = null;
     generated = '';
     formulaError = null;
     dropped = [];
@@ -224,7 +261,8 @@
   async function saveTemplate() {
     if (!canSaveTemplate) return;
     const body = {
-      name: name.trim(),
+      // A template saved from the calculation card may never have been named.
+      name: name.trim() || 'Untitled',
       description,
       formula_latex: formulaLatex,
       formula_json: formulaJson,
@@ -255,10 +293,17 @@
   }
 
   async function saveCalculation() {
+    // Saving a calculation means you want to keep this formula, so save the
+    // template first rather than refusing and making the reader guess.
     if (!currentId) {
-      flash('Save the template first.');
-      return;
+      if (!canSaveTemplate) {
+        calcError = 'Write a formula first.';
+        return;
+      }
+      await saveTemplate();
+      if (!currentId) return;
     }
+    calcError = null;
     const values: Record<string, number> = {};
     for (const [key, value] of Object.entries(readInputs())) {
       if (value !== null) values[key] = value;
@@ -436,6 +481,9 @@
     }
   }
 
+  /** The Prism grammar for whatever the Code card is currently showing. */
+  const generatedLanguage = $derived(target === 'webcomponent' ? 'javascript' : target);
+
   const generatedFilename = $derived(
     target === 'webcomponent' ? `${fileStem}.js` : `${fileStem}.${EXTENSIONS[target as Language]}`
   );
@@ -594,16 +642,26 @@
                 class="label-input"
                 data-testid={'napkin-field-label-' + field.name}
                 bind:value={fields[i]!.label}
+                placeholder="Label"
                 aria-label={`Label for ${field.name}`}
               />
-              <select
-                data-testid={'napkin-field-type-' + field.name}
-                bind:value={fields[i]!.type}
-                aria-label={`Type of ${field.name}`}
-              >
-                <option value="number">Number</option>
-                <option value="integer">Whole number</option>
-              </select>
+              <input
+                class="description-input"
+                data-testid={'napkin-field-description-' + field.name}
+                bind:value={fields[i]!.description}
+                placeholder="What it means"
+                aria-label={`Description of ${field.name}`}
+              />
+              <label class="check">
+                <input
+                  type="checkbox"
+                  data-testid={'napkin-field-type-' + field.name}
+                  checked={field.type === 'integer'}
+                  onchange={(e) =>
+                    (fields[i]!.type = e.currentTarget.checked ? 'integer' : 'number')}
+                />
+                <span>No decimals</span>
+              </label>
               <select
                 data-testid={'napkin-field-sign-' + field.name}
                 bind:value={fields[i]!.sign}
@@ -654,9 +712,13 @@
                   bind:value={inputs[field.name]}
                   oninput={recompute}
                 />
-                {#if problems[field.name]}
+                {#if shownProblems[field.name]}
                   <span class="form-error small" data-testid={'napkin-problem-' + field.name}>
-                    {problems[field.name]}
+                    {shownProblems[field.name]}
+                  </span>
+                {:else if field.description}
+                  <span class="muted small" data-testid={'napkin-hint-' + field.name}>
+                    {field.description}
                   </span>
                 {/if}
               </div>
@@ -682,6 +744,9 @@
               <button class="btn btn-sm" data-testid="napkin-save-calc" onclick={saveCalculation}>
                 {editingCalcId ? 'Update' : 'Save'}
               </button>
+              {#if calcError}
+                <span class="form-error small" data-testid="napkin-calc-error">{calcError}</span>
+              {/if}
               {#if editingCalcId}
                 <button
                   class="btn btn-sm"
@@ -753,7 +818,7 @@
           <p class="form-error" data-testid="napkin-generate-error">{generateError}</p>
         {/if}
         {#if generated}
-          <pre class="code" data-testid="napkin-code">{generated}</pre>
+          <CodeBlock code={generated} language={generatedLanguage} testid="napkin-code" />
         {/if}
       </div>
     </Card>
@@ -780,7 +845,7 @@
         </div>
         <!-- The live JSON carries the TEMPLATE only. Sharing a formula should
              not hand over the numbers somebody ran through it. -->
-        <pre class="code json" data-testid="napkin-json">{liveJson}</pre>
+        <CodeBlock code={liveJson} language="json" testid="napkin-json" maxHeight="12rem" />
 
         <div class="row wrap">
           <button class="btn btn-sm" data-testid="napkin-import" onclick={() => runImport(importText)}>
@@ -798,14 +863,14 @@
             onchange={onImportFile}
           />
         </div>
-        <textarea
-          class="import"
-          data-testid="napkin-import-text"
-          rows="3"
+        <CodeInput
           bind:value={importText}
-          aria-label="JSON to import"
+          language="json"
+          rows={4}
+          testid="napkin-import-text"
+          ariaLabel="JSON to import"
           placeholder="Paste a template or a calculations file here."
-        ></textarea>
+        />
         {#if importError}
           <p class="form-error" data-testid="napkin-import-error">{importError}</p>
         {/if}
@@ -963,7 +1028,11 @@
   }
 
   .label-input {
-    width: 10rem;
+    width: 9rem;
+  }
+
+  .description-input {
+    width: 14rem;
   }
 
   .fields li {
@@ -1015,24 +1084,6 @@
     letter-spacing: var(--tracking-label);
     text-transform: uppercase;
     color: var(--text-muted-color);
-  }
-
-  .code {
-    max-height: 22rem;
-    overflow: auto;
-    padding: var(--space-2);
-    border: 1px solid var(--border-color);
-    background: var(--surface-raised-color);
-    font-size: var(--font-size-sm);
-    white-space: pre;
-  }
-
-  .json {
-    max-height: 12rem;
-  }
-
-  .import {
-    width: 100%;
   }
 
   .check {

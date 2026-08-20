@@ -83,6 +83,38 @@ test.describe('napkin math', () => {
     await expect(page.getByTestId('napkin-field')).toHaveCount(2);
   });
 
+  test('saving a calculation saves the unsaved template with it', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/napkin-math/');
+    await expect(page.getByTestId('napkin-no-fields')).toBeVisible({ timeout: 30_000 });
+    // Deliberately NOT saving the template first. Refusing here was the bug:
+    // the button was live, nothing was written, and the only clue was a
+    // transient line at the far end of the page.
+    await typeFormula(page, 'revenue-cost');
+    await page.getByTestId('napkin-input-revenue').fill('10');
+    await page.getByTestId('napkin-input-cost').fill('4');
+    await expect(page.getByTestId('napkin-result')).toHaveText('6');
+    await page.getByTestId('napkin-calc-name').fill('July');
+    await page.getByTestId('napkin-save-calc').click();
+
+    await expect.poll(async () => (await app.dump('napkin_calculations')).length).toBe(1);
+    const templates = await app.dump('napkin_templates');
+    expect(templates).toHaveLength(1);
+    // Unnamed, so it is saved under a placeholder rather than refused.
+    expect(templates[0]!.name).toBe('Untitled');
+    assertInvariants(await app.dumpAll(), 'after saving a calculation with no template');
+  });
+
+  test('with no formula there is nothing to fill in and nothing to save', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/napkin-math/');
+    await expect(page.getByTestId('napkin-no-fields')).toBeVisible({ timeout: 30_000 });
+    // No inputs, so no Save button either — a live button that refuses is
+    // exactly what this card used to get wrong.
+    await expect(page.getByTestId('napkin-save-calc')).toHaveCount(0);
+    expect(await app.dump('napkin_calculations')).toHaveLength(0);
+  });
+
   test('a saved calculation is one row, recallable, and never inside the template file', async ({
     app,
   }) => {
@@ -200,7 +232,7 @@ test.describe('napkin math', () => {
     await page.getByTestId('napkin-name').fill('Unit margin');
     await typeFormula(page, 'revenue/units');
     // Make `units` a positive whole number that cannot be zero.
-    await page.getByTestId('napkin-field-type-units').selectOption('integer');
+    await page.getByTestId('napkin-field-type-units').check();
     await page.getByTestId('napkin-field-sign-units').selectOption('positive');
     await page.getByTestId('napkin-field-nozero-units').check();
 
@@ -230,6 +262,58 @@ test.describe('napkin math', () => {
     await expect(error).toBeVisible();
     // Named, not a silently wrong function.
     await expect(error).toContainText(/Integrate|cannot|formula/i);
+  });
+
+  test('a field description reaches the inputs and the generated code', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/napkin-math/');
+    await expect(page.getByTestId('napkin-no-fields')).toBeVisible({ timeout: 30_000 });
+    await page.getByTestId('napkin-name').fill('Unit margin');
+    await typeFormula(page, 'revenue/units');
+    await page
+      .getByTestId('napkin-field-description-revenue')
+      .fill('Money taken, before any costs');
+
+    // Beside the input, where someone filling it in will see it.
+    await expect(page.getByTestId('napkin-hint-revenue')).toHaveText('Money taken, before any costs');
+
+    for (const language of ['python', 'go', 'rust', 'javascript']) {
+      await page.getByTestId('napkin-language').selectOption(language);
+      await page.getByTestId('napkin-generate').click();
+      await expect(page.getByTestId('napkin-code')).toContainText('Money taken, before any costs');
+    }
+  });
+
+  test('the code and the JSON are syntax-highlighted', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/napkin-math/');
+    await expect(page.getByTestId('napkin-no-fields')).toBeVisible({ timeout: 30_000 });
+    await page.getByTestId('napkin-name').fill('Unit margin');
+    await typeFormula(page, 'revenue/units');
+
+    // Prism emits <span class="token …">; the blueprint inks are global rules.
+    await expect(page.locator('[data-testid="napkin-json"] .token').first()).toBeVisible();
+    await page.getByTestId('napkin-generate').click();
+    await expect(page.locator('[data-testid="napkin-code"] .token.keyword').first()).toBeVisible();
+
+    // The import box highlights what is typed into it, and still round-trips.
+    const json = await page.getByTestId('napkin-json').innerText();
+    await page.getByTestId('napkin-import-text').fill(json);
+    await expect(page.locator('.underlay .token').first()).toBeVisible();
+    await page.getByTestId('napkin-import').click();
+    await expect(page.getByTestId('napkin-feedback')).toContainText('Imported 1 template');
+  });
+
+  test('the formula reaches the generated code as readable maths', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/napkin-math/');
+    await expect(page.getByTestId('napkin-no-fields')).toBeVisible({ timeout: 30_000 });
+    await typeFormula(page, 'revenue/units');
+    await page.getByTestId('napkin-generate').click();
+    const code = await page.getByTestId('napkin-code').innerText();
+    // Markdown maths, not the renderer's markup.
+    expect(code).toContain('$');
+    expect(code).not.toContain('\\mathrm{');
   });
 
   test('no sound is ever fetched, and MathLive stays off every other route', async ({ app }) => {

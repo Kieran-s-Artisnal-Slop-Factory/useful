@@ -51,6 +51,7 @@ function readField(raw: unknown, index: number): NapkinField | null {
   return {
     name,
     label: asString(raw['label'], name).trim() || name,
+    description: asString(raw['description']),
     type: raw['type'] === 'integer' ? 'integer' : 'number',
     required: typeof raw['required'] === 'boolean' ? raw['required'] : base.required,
     sign: raw['sign'] === 'positive' ? 'positive' : 'any',

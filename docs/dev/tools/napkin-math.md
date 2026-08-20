@@ -17,6 +17,9 @@ _Describes the code as of v0.2.0 (unreleased; schema v10) — verify against sou
 | [codegen/functions.ts](../../../src/lib/codegen/functions.ts) | The whole file: docstring, typed parameters, guard clauses, helpers. |
 | [codegen/identifiers.ts](../../../src/lib/codegen/identifiers.ts) | Symbol → a legal identifier, per language, with collision resolution. |
 | [codegen/webcomponent.ts](../../../src/lib/codegen/webcomponent.ts) | The dependency-free custom element. |
+| [codegen/latex.ts](../../../src/lib/codegen/latex.ts) | The mathfield's LaTeX reduced to readable Markdown maths for a comment. |
+| [CodeBlock.svelte](../../../src/components/CodeBlock.svelte) | Read-only source, highlighted by Prism. |
+| [CodeInput.svelte](../../../src/components/CodeInput.svelte) | A textarea with a highlighted underlay, for the import box. |
 | [math/fonts.ts](../../../src/lib/math/fonts.ts) | The vendored KaTeX faces and their offline bundle. |
 | [tools/build-math-assets.mjs](../../../tools/build-math-assets.mjs) | Vendors those faces into `public/math/` with provenance. |
 
@@ -163,9 +166,37 @@ The twenty KaTeX faces (262,804 bytes with their stylesheet) live in their own c
 
 `MATH_FONT_BYTES` is checked by a unit test against `public/math/PROVENANCE.txt`, so a re-vendor that changes sizes fails the suite rather than quietly lying to the download dialog.
 
+## Docstrings follow each language, not one house style
+
+A generated function is read by whoever pastes it, in their own editor, with their own tooling. So each language gets the convention its tooling expects rather than one shape repeated four times:
+
+| | Convention |
+| --- | --- |
+| Python | NumPy style — a summary line, `Parameters` / `Returns` / `Raises` sections, each underlined to exactly its own length |
+| Go | The `speyl/algorithms` house form: a summary line, then `# Parameters` and `# Returns` blocks whose entries are indented one space so godoc renders them as a block |
+| Rust | `///` lines, deliberately terse — the parameter name, its description, and the one constraint a type cannot express. The signature already says `f64`, so nothing repeats it |
+| JavaScript | JSDoc, `@param` and `@returns` |
+
+The formula goes into every one of them through [latex.ts](../../../src/lib/codegen/latex.ts), which strips the markup that only a renderer needs — `\mathrm{}` around each multi-letter name, `\left(` / `\right)` sizing — and wraps the result in `$…$`. It is a readability pass, not a converter: anything it has no rule for is left exactly as it was, because a half-understood rewrite is worse than the raw source.
+
+Two identifier rules worth knowing, both learned from reading the output:
+
+- **Go gets camelCase and an exported name.** `gofmt` will not fix a snake_case identifier and every Go linter flags one, so `total_cost` was not merely un-idiomatic.
+- **`toCamel` goes through snake_case first.** Splitting a name on underscores alone leaves `costPerMonth` as one part, and lowercasing that part gives `costpermonth` — a name nobody typed. This affected JavaScript too.
+
+And one that is a compile error rather than a style note: **Rust cannot compare an `f64` with an integer literal**, so its guard clauses use `0.0`.
+
+## Syntax highlighting
+
+Prism, not CodeMirror. The generated code and the live JSON are read-only output that nobody edits, so an editor would cost a couple of hundred kilobytes and a focus trap for nothing; Prism's grammars are already bundled once for the regex tool and the markdown renderer, and `global.css` already inks `.token.*` in the blueprint palette.
+
+The import box is the awkward one, because it *is* edited. [CodeInput.svelte](../../../src/components/CodeInput.svelte) keeps a real `<textarea>` — native selection, undo, paste, and the accessibility a contenteditable throws away — makes its text transparent while leaving the caret opaque, and puts an identically laid-out `<pre>` underneath. Everything that affects where a glyph lands is declared once for both layers, and the scroll positions are synced.
+
+One detail that is not obvious: the underlay's content ends with an extra newline. A textarea always reserves a line past its content, and without matching it the underlay is exactly one line shorter — which nothing shows until someone scrolls to the bottom and the highlight slides out of step with the text it sits behind.
+
 ## Known limits
 
-- **Numbers only.** MathJSON has no string arithmetic, so a text field could never take part in the formula it is attached to.
+- **Numbers only.** MathJSON has no string arithmetic, so a text field could never take part in the formula it is attached to. A field's *description* is free text, but it is documentation — it never reaches the maths.
 - **One formula per template**, and one result. No intermediate named steps.
 - **Built-in text shortcuts are off**, which is a real loss: `pi` no longer becomes π as you type. Type `\pi` instead, or use the virtual keyboard. The alternative was letting a variable called `sqrtish` silently corrupt the formula.
 - **`\mathrm{}` on a single letter renames it.** The editor's rule only fires on two or more letters, so this cannot happen by typing — but a formula pasted in through the import box can carry it, and `x_upright` is what the engine will call it.

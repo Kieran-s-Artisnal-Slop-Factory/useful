@@ -6,6 +6,7 @@ import type { NapkinField } from '../db/types';
 const field = (name: string, over: Partial<NapkinField> = {}): NapkinField => ({
   name,
   label: name,
+  description: '',
   type: 'number',
   required: true,
   sign: 'any',
@@ -95,8 +96,29 @@ describe('generateWebComponent', () => {
     expect(hostile).toContain('&lt;script&gt;');
   });
 
-  it('shows the formula as plain text when nothing pre-rendered it', () => {
-    expect(source).toContain('\\frac{\\mathrm{revenue}');
+  it('shows the formula as readable text when nothing pre-rendered it', () => {
+    // The renderer-only markup would be gibberish in a plain text node.
+    expect(source).toContain('$\\frac{revenue - cost}{units}$');
+    expect(source).not.toContain('\\mathrm{');
+  });
+
+  it('shows the styling snippet rather than only naming the parts', () => {
+    expect(source).toContain('unit-economics::part(input)');
+    expect(source).toContain('Parts available:');
+    for (const part of ['row', 'label', 'input', 'formula', 'result', 'error']) {
+      expect(source, part).toContain(`- ${part}`);
+    }
+  });
+
+  it('puts a field description on its input as a title', () => {
+    const described = generateWebComponent({
+      ...template,
+      fields: [field('revenue', { description: 'Money taken, before costs' })],
+      formulaJson: 'revenue',
+    });
+    expect(described).toContain('title="Money taken, before costs"');
+    // And omits the attribute entirely when there is nothing to say.
+    expect(source).not.toContain('title=""');
   });
 
   it('drops pre-rendered markup straight in when it is supplied', () => {

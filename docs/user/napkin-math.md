@@ -13,7 +13,8 @@ Type a whole word — `revenue`, `count`, `rate` — and it becomes **one variab
 As soon as the formula has variables, they appear in **Fields**, one row each. For every one you can set:
 
 - a **label**, which is what the input is called;
-- **Number** or **Whole number**;
+- a **description** of what it means, which shows up beside the input *and* in every bit of code you generate;
+- **No decimals**, for a whole number;
 - **Positive or negative**, or **Positive only**;
 - **No zero**, which is separate from the sign — "positive" and "not zero" are two different rules, and you may want either, both, or neither;
 - **Required**.
@@ -26,6 +27,8 @@ Fill in the inputs under **Calculations** and the result updates as you type. If
 
 Give a calculation a name and **Save** it, and it joins the list on the right. Click any saved one to load its numbers back in, then **Update** to change it or **New** to start another.
 
+You do not have to save the template first — saving a calculation saves the formula with it, under **Untitled** if you have not named it yet.
+
 ## Your library
 
 Templates you save appear in the sidebar, with a search box. Click one to open it; the × deletes it, along with every calculation saved against it.
@@ -34,12 +37,13 @@ Templates you save appear in the sidebar, with a search box. Click one to open i
 
 **Code** turns the template into a real function:
 
-- **Python**, **JavaScript**, **Go** or **Rust** — a plain function with a docstring, typed parameters, and a check for each of your field rules, so it refuses what this page refuses.
-- **Web component** — a single `.js` file with no dependencies. Drop it in a page, use its tag, and you have the same calculator with the same rules. Style it from the outside; it brings almost no CSS of its own.
+- **Python**, **JavaScript**, **Go** or **Rust** — a plain function with a docstring in that language's own convention (NumPy sections for Python, `# Parameters` blocks for Go, `///` lines for Rust, JSDoc for JavaScript), typed parameters, your field descriptions, and a check for each field rule, so it refuses what this page refuses.
+  The formula appears in the comment as Markdown maths — `$\(costPerMonth*12\)*years$` rather than the editor's `\left(\mathrm{...}\right)` — so it reads as a formula wherever the comment ends up.
+- **Web component** — a single `.js` file with no dependencies. Drop it in a page, use its tag, and you have the same calculator with the same rules. The file opens with a worked example of how to style it from the host page, and lists every part you can reach.
 
 **Export & import** handles the JSON:
 
-- The box shows the current template's JSON as you type, with **Copy JSON** beside it.
+- The box shows the current template's JSON as you type, syntax-highlighted, with **Copy JSON** beside it. The generated code is highlighted too, and so is the import box as you paste into it.
 - **Download this template**, **Download all templates**, and **Download all calculations** as three separate files.
 - Paste JSON into the import box, or **Choose a file…**, and it loads. Templates and calculation files are told apart automatically.
 

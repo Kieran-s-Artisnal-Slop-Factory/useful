@@ -292,10 +292,14 @@ test.describe('SQL playground — grids', () => {
     const firstPage = await grid.locator('tbody tr').allInnerTexts();
 
     await page.getByTestId('sql-table-rows-next').click();
-    await expect(grid.locator('tbody tr')).toHaveCount(10);
-    const secondPage = await grid.locator('tbody tr').allInnerTexts();
+    // Poll rather than assert once. Page two also has ten rows, so a count
+    // assertion passes the instant it is made and nothing actually waits for
+    // the engine's answer — which is how this read the OLD rows under load.
+    await expect
+      .poll(() => grid.locator('tbody tr').allInnerTexts(), { timeout: 30_000 })
+      .not.toEqual(firstPage);
     // The whole point: page two is DIFFERENT rows, not page one again.
-    expect(secondPage).not.toEqual(firstPage);
+    await expect(grid.locator('tbody tr')).toHaveCount(10);
     await expect(grid).not.toContainText('name 1');
 
     // And the fallback says so rather than pretending it seeked.

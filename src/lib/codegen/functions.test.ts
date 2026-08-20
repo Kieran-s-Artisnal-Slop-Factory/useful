@@ -10,6 +10,7 @@ const LANGUAGES: Language[] = ['python', 'javascript', 'go', 'rust'];
 const field = (name: string, over: Partial<NapkinField> = {}): NapkinField => ({
   name,
   label: name,
+  description: '',
   type: 'number',
   required: true,
   sign: 'any',
@@ -31,9 +32,19 @@ describe('identifierMap', () => {
   });
 
   it('follows each language’s casing', () => {
+    // snake_case for Python and Rust; camelCase for JavaScript and Go, where
+    // gofmt will not fix a snake_case name and every linter flags one.
     expect(identifierMap(['costPerUnit'], 'python').get('costPerUnit')).toBe('cost_per_unit');
+    expect(identifierMap(['costPerUnit'], 'rust').get('costPerUnit')).toBe('cost_per_unit');
     expect(identifierMap(['cost_per_unit'], 'javascript').get('cost_per_unit')).toBe('costPerUnit');
-    expect(identifierMap(['costPerUnit'], 'go').get('costPerUnit')).toBe('cost_per_unit');
+    expect(identifierMap(['cost_per_unit'], 'go').get('cost_per_unit')).toBe('costPerUnit');
+  });
+
+  it('leaves a name that is already camelCase alone', () => {
+    // Splitting on underscores alone leaves `costPerMonth` as one part, and
+    // lowercasing it gives `costpermonth` — a name nobody typed.
+    expect(identifierMap(['costPerMonth'], 'javascript').get('costPerMonth')).toBe('costPerMonth');
+    expect(identifierMap(['costPerMonth'], 'go').get('costPerMonth')).toBe('costPerMonth');
   });
 
   it('does not hand back a reserved word', () => {
@@ -53,7 +64,10 @@ describe('identifierMap', () => {
   it('names the function from the template', () => {
     expect(functionName('Unit economics', 'python')).toBe('unit_economics');
     expect(functionName('Unit economics', 'javascript')).toBe('unitEconomics');
-    expect(functionName('', 'go')).toBe('calculate');
+    // Go marks an export with a leading capital, and a pasted function should
+    // be callable from wherever it lands.
+    expect(functionName('Unit economics', 'go')).toBe('UnitEconomics');
+    expect(functionName('', 'go')).toBe('Calculate');
   });
 });
 
@@ -204,7 +218,7 @@ describe('generateFunction', () => {
     const out = generateFunction(template, 'go');
     expect(out).toContain('package napkin');
     expect(out).toContain('"errors"');
-    expect(out).toContain('func unit_economics(revenue float64, cost float64, units float64) (float64, error) {');
+    expect(out).toContain('func UnitEconomics(revenue float64, cost float64, units float64) (float64, error) {');
     expect(out).toContain('return 0, errors.New("units cannot be zero")');
     expect(out).toContain('return (revenue - cost) / units, nil');
   });
@@ -287,9 +301,103 @@ describe('generateFunction', () => {
     expect(go).not.toContain('\nreturn 0, nil }');
   });
 
-  it('writes the original formula into the comment for every language', () => {
+  it('writes the formula into the comment as Markdown maths, not raw LaTeX', () => {
     for (const language of LANGUAGES) {
-      expect(generateFunction(template, language), language).toContain(template.formulaLatex);
+      const out = generateFunction(template, language);
+      // Readable, and rendered as maths if the comment is lifted into Markdown.
+      expect(out, language).toContain('$\\frac{revenue - cost}{units}$');
+      // The renderer-only markup is gone.
+      expect(out, language).not.toContain('\\mathrm{');
     }
+  });
+
+  describe('per-language docstring conventions', () => {
+    it('Python uses NumPy-style sections with matching underlines', () => {
+      const out = generateFunction(template, 'python');
+      expect(out).toContain('Unit economics');
+      expect(out).toContain('    Parameters\n    ----------');
+      expect(out).toContain('    Returns\n    -------');
+      expect(out).toContain('    revenue : float');
+      expect(out).toContain('    units : int');
+      // The constraints a type cannot express become a Raises section.
+      expect(out).toContain('    Raises\n    ------\n    ValueError');
+      expect(out).toContain('        If units is zero.');
+    });
+
+    it('starts Python at the def when nothing is imported', () => {
+      const plain = generateFunction(
+        { ...template, formulaJson: ['Add', 'revenue', 'cost'], fields: [field('revenue'), field('cost')] },
+        'python'
+      );
+      expect(plain.startsWith('def ')).toBe(true);
+    });
+
+    it('Go uses the # Parameters / # Returns block form', () => {
+      const out = generateFunction(template, 'go');
+      expect(out).toContain('// # Parameters');
+      expect(out).toContain('//  revenue (float64):');
+      expect(out).toContain('// # Returns');
+      expect(out).toContain('//  float64:');
+      expect(out).toContain('//  error: Non-nil when an argument breaks');
+    });
+
+    it('Rust names the parameter and its meaning, and nothing the type says', () => {
+      const out = generateFunction(template, 'rust');
+      expect(out).toContain('/// * `units` — Not negative, not zero');
+      // The signature already says f64; repeating it is noise.
+      expect(out).not.toContain('whole number');
+    });
+
+    it('every language opens with a one-line summary', () => {
+      for (const language of LANGUAGES) {
+        expect(generateFunction(template, language), language).toContain('Unit economics');
+      }
+      // With no name, the description's first sentence stands in.
+      const unnamed = generateFunction({ ...template, name: '' }, 'rust');
+      expect(unnamed).toContain('/// Margin per unit after the per-order cost is spread across the batch.');
+    });
+  });
+
+  describe('field descriptions', () => {
+    const described: CodeTemplate = {
+      ...template,
+      fields: [
+        field('revenue', { description: 'Money taken, before any costs' }),
+        field('cost', { description: 'Everything spent to earn it' }),
+        field('units', { type: 'integer', sign: 'positive', noZero: true }),
+      ],
+    };
+
+    it('puts a field description in every language doc block', () => {
+      for (const language of LANGUAGES) {
+        expect(generateFunction(described, language), language).toContain(
+          'Money taken, before any costs'
+        );
+      }
+    });
+
+    it('joins a description and its constraints into one clause', () => {
+      const both: CodeTemplate = {
+        ...described,
+        fields: [field('revenue', { description: 'Money taken', sign: 'positive' })],
+        formulaJson: 'revenue',
+      };
+      expect(generateFunction(both, 'rust')).toContain('/// * `revenue` — Money taken. Not negative');
+    });
+
+    it('says nothing at all for a field with neither', () => {
+      const bare: CodeTemplate = { ...template, fields: [field('revenue')], formulaJson: 'revenue' };
+      expect(generateFunction(bare, 'rust')).toContain('/// * `revenue`\n');
+    });
+
+    it('escapes a hostile description like any other comment text', () => {
+      const hostile: CodeTemplate = {
+        ...template,
+        fields: [field('revenue', { description: 'ends a block */ then code' })],
+        formulaJson: 'revenue',
+      };
+      const js = generateFunction(hostile, 'javascript');
+      expect(js.indexOf('*/')).toBe(js.lastIndexOf('*/'));
+    });
   });
 });

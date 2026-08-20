@@ -190,6 +190,37 @@
 
 ## Other
 
+- **Napkin math: saving a calculation no longer refuses silently.** The button
+  was live, the template had never been written, and the only clue was a
+  transient line at the far end of a long page. Saving a calculation now saves
+  the formula with it — under "Untitled" if it has no name yet — and a template
+  needs only a formula, not a name.
+- Napkin math: fields gained a **description**, shown beside the input and
+  carried into every language's generated docstring. `NapkinField` is inside a
+  JSON column so this needed no migration, which is exactly why every reader
+  normalises a field it loads.
+- Napkin math: **whole-number** is a "No decimals" checkbox rather than a
+  two-option dropdown, and an untouched required field no longer shows a
+  complaint that crowds out its own description.
+- Napkin math: the generated code, the live template JSON and the import box
+  are **syntax-highlighted**. Prism for the read-only output; the import box
+  keeps a real textarea with a highlighted underlay behind it, so selection,
+  undo and paste all still work.
+- **Generated docstrings follow each language's own convention**: NumPy-style
+  sections for Python, the `# Parameters` block form for Go, terse `///` lines
+  for Rust that leave the type to the signature, JSDoc for JavaScript. The
+  formula is emitted as Markdown maths (`$\(costPerMonth*12\)*years$`) rather
+  than the editor's `\left(\mathrm{...}\right)`.
+- Two generator bugs found by reading the output: **Go identifiers were
+  snake_case** (which `gofmt` will not fix and every linter flags — they are now
+  camelCase with an exported function name), and **`toCamel` destroyed an
+  existing camelCase name**, turning `costPerMonth` into `costpermonth` in both
+  Go and JavaScript. Plus one that would not have compiled at all: **Rust
+  cannot compare an `f64` with an integer literal**, so its guards now use
+  `0.0`.
+- The generated web component's header shows a **worked styling example**
+  instead of naming its parts in prose, and a field description becomes the
+  `title` on its input.
 - Database schema **v10**: new `napkin_templates` (name, description, formula as
   both LaTeX and MathJSON, fields as JSON) and `napkin_calculations`
   (`template_id` FK, name, values, result), plus a

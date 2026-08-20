@@ -20,7 +20,26 @@ export interface TemplateDraft {
 }
 
 export function blankField(name: string): NapkinField {
-  return { name, label: name, type: 'number', required: true, sign: 'any', noZero: false };
+  return {
+    name,
+    label: name,
+    description: '',
+    type: 'number',
+    required: true,
+    sign: 'any',
+    noZero: false,
+  };
+}
+
+/**
+ * Fill in anything a stored field is missing.
+ *
+ * `fields` is a JSON blob, so a template saved before a property existed comes
+ * back without it. Reading one straight into the editor would bind an input to
+ * `undefined` and write it back that way.
+ */
+export function normalizeField(field: NapkinField): NapkinField {
+  return { ...blankField(field.name), ...field, description: field.description ?? '' };
 }
 
 export function blankDraft(): TemplateDraft {

@@ -59,15 +59,26 @@ const toSnake = (name: string): string =>
     .replace(/__+/g, '_')
     .toLowerCase();
 
-/** `cost_per_unit` -> `costPerUnit`, for JavaScript. */
+/**
+ * `cost_per_unit` and `costPerUnit` both become `costPerUnit`.
+ *
+ * Going through snake_case first is what makes the second case work: splitting
+ * a name on underscores alone leaves `costPerMonth` as one part, and
+ * lowercasing that part gives `costpermonth` — a name nobody typed.
+ */
 const toCamel = (name: string): string => {
-  const parts = name.split('_').filter(Boolean);
+  const parts = toSnake(name).split('_').filter(Boolean);
   if (parts.length === 0) return 'v';
-  return parts[0]!.toLowerCase() + parts.slice(1).map((p) => p[0]!.toUpperCase() + p.slice(1)).join('');
+  return parts[0]! + parts.slice(1).map((p) => p[0]!.toUpperCase() + p.slice(1)).join('');
 };
 
+/**
+ * Go and JavaScript both write identifiers in camelCase; Python and Rust use
+ * snake_case. `gofmt` will not fix a snake_case name, and every Go linter
+ * flags one, so this is not cosmetic.
+ */
 const styled = (name: string, language: Language): string =>
-  language === 'javascript' ? toCamel(name) : toSnake(name);
+  language === 'javascript' || language === 'go' ? toCamel(name) : toSnake(name);
 
 /**
  * Map every symbol to a legal, distinct identifier.
@@ -101,7 +112,8 @@ export function functionName(name: string, language: Language): string {
   const styledName = styled(base, language);
   const reserved = RESERVED[language];
   const safe = reserved.has(styledName) ? `${styledName}_` : styledName;
-  // Go exports on a leading capital; a generated helper is easier to paste in
-  // if it is callable from the same package either way, so leave it lower.
+  // Go marks an export with a leading capital, and a generated function is
+  // meant to be called from wherever it is pasted.
+  if (language === 'go') return safe.charAt(0).toUpperCase() + safe.slice(1);
   return safe;
 }

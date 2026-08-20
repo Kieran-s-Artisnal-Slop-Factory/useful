@@ -144,11 +144,25 @@ describe('template import', () => {
     expect(doc.fields[0]).toEqual({
       name: 'a',
       label: 'a',
+      description: '',
       type: 'number',
       required: true,
       sign: 'any',
       noZero: false,
     });
+  });
+
+  it('carries a field description through, and defaults it to empty', () => {
+    const doc = parseTemplate(
+      JSON.stringify({
+        ...good,
+        fields: [{ name: 'a', description: 'Money taken' }, { name: 'b' }],
+      })
+    );
+    expect(doc.fields[0]!.description).toBe('Money taken');
+    // A template written before descriptions existed has none, and reading one
+    // must not leave the property undefined.
+    expect(doc.fields[1]!.description).toBe('');
   });
 
   it('drops a nameless field and a duplicate one', () => {
