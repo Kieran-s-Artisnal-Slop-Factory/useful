@@ -15,7 +15,8 @@ their own browser.
   background remover (on-device segmentation model), layered SVG editor,
   layered raster editor with EXIF viewing/editing, pixel-art sprite editor.
 - **Calculators** — number bases and bit operations, photography equivalence
-  and light stops, file-transfer times.
+  and light stops, file-transfer times, napkin math (a formula becomes a
+  little calculator, and then a function in Python, JavaScript, Go or Rust).
 - **Generators** — theme builder and colour conversion, gradients,
   glassmorphism, regex snippets for four languages, QR create and read,
   secrets (passwords, keys, tokens, identifiers), logos (seeded avatars and
@@ -48,6 +49,11 @@ Everything runs locally: no account, no server, no telemetry.
   byte-identically)
 - `sprites` — named pixel-art documents: grid size, the rows as an array of
   strings, and a character → colour legend. Text only, for the same reason
+- `napkin_templates` — a napkin-math formula: its name and description, the
+  formula as both LaTeX and MathJSON, and one field per free variable with its
+  type and constraints
+- `napkin_calculations` — one set of inputs run through a template, with the
+  result. Keyed to its template, and deleted with it
 - `sql_playgrounds` — one SQL-playground workspace per engine, keyed by the
   engine id (`sqlite` / `pglite`): the editor buffer and an optional SQL
   snapshot of the database. The live database is in a Web Worker's memory; only

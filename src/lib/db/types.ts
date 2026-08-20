@@ -61,6 +61,8 @@ export interface Preferences extends SyncFields {
   svg_last_doc_id?: string;
   /** Last-open sprite-editor document, resumed on reopen. */
   sprite_last_doc_id?: string;
+  /** The napkin-math template to reopen. */
+  napkin_last_template_id?: string;
   /** Last engine picked in the SQL playground ('sqlite' / 'pglite'). */
   sql_last_engine?: string;
   /** True once the post-install "download everything" offer has been made. */
@@ -227,6 +229,45 @@ export interface Sprite extends SyncFields {
   colors: Record<string, string>;
 }
 
+/**
+ * One input to a napkin-math formula, derived from its free variables.
+ *
+ * The type set stays numeric on purpose: MathJSON has no string arithmetic, so
+ * a text field could never take part in the formula it is attached to.
+ */
+export interface NapkinField {
+  /** The Compute Engine symbol this stands for, e.g. `count`. */
+  name: string;
+  /** Label shown beside the input. Defaults to the name. */
+  label: string;
+  type: 'integer' | 'number';
+  required: boolean;
+  /** Which signs the value may take. */
+  sign: 'any' | 'positive';
+  /** Independent of `sign`: "positive, and not zero" is a different rule. */
+  noZero: boolean;
+}
+
+export interface NapkinTemplate extends SyncFields {
+  name: string;
+  description: string;
+  /** The formula as the editor holds it. */
+  formula_latex: string;
+  /** The same formula as MathJSON — what the generator and evaluator read. */
+  formula_json: unknown;
+  /** One entry per free variable, in the order the formula introduces them. */
+  fields: NapkinField[];
+}
+
+export interface NapkinCalculation extends SyncFields {
+  template_id: string;
+  name: string;
+  /** Field name -> the number supplied. */
+  values: Record<string, number>;
+  /** The answer at save time; null when the inputs did not produce one. */
+  result: number | null;
+}
+
 export interface StoreIndex {
   name: string;
   multiEntry?: boolean;
@@ -257,6 +298,10 @@ export const STORES: Record<string, StoreDef> = {
   todo_comments: { indexes: [{ name: 'todo_id' }] },
   svg_documents: { indexes: [] },
   sprites: { indexes: [] },
+  napkin_templates: { indexes: [] },
+  // template_id: a template has to be able to find the calculations run
+  // against it — to list them, and to take them with it when it goes.
+  napkin_calculations: { indexes: [{ name: 'template_id' }] },
   sql_playgrounds: { indexes: [] },
 };
 

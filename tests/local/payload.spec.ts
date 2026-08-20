@@ -26,6 +26,10 @@ const HEAVY = [
   { label: 'DiceBear', match: /dicebear/i },
   { label: 'Lucide icons', match: /lucide/i },
   { label: 'Jdenticon', match: /jdenticon/i },
+  // ~840 KB of editor plus a maths engine, for one page.
+  { label: 'MathLive', match: /mathlive/i },
+  { label: 'Compute Engine', match: /compute-engine/i },
+  { label: 'KaTeX fonts', match: /\/math\/fonts\//i },
 ];
 
 /** Record every request URL the page makes while `work` runs. */
@@ -109,6 +113,26 @@ test.describe('payload discipline', () => {
     });
     expect(urls.filter((u) => /lucide/i.test(u)), 'Lucide loaded before the Badge tab').toEqual([]);
     expect(urls.filter((u) => /jdenticon/i.test(u)), 'Jdenticon loaded unasked').toEqual([]);
+  });
+
+  test('napkin math is the only page that pays for the maths editor', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/');
+    const urls = await watch(page, async () => {
+      await page.goto('/tools/napkin-math/');
+      await expect(page.getByTestId('napkin-no-fields')).toBeVisible({ timeout: 30_000 });
+    });
+    // It DOES arrive here — this is the page that needs it.
+    expect(urls.some((u) => /mathlive/i.test(u)), 'the editor should load on its own page').toBe(
+      true
+    );
+    // And the faces come from our own vendored copies, on demand: the
+    // stylesheet's --ML__static-fonts flag stops MathLive fetching all twenty.
+    const fonts = urls.filter((u) => /\.woff2/i.test(u));
+    for (const url of fonts) expect(url).toContain('/math/fonts/');
+    expect(fonts.length, 'every face was fetched eagerly').toBeLessThan(20);
+    // The keypress sounds are 227 KB nobody asked for.
+    expect(urls.filter((u) => /\.wav/i.test(u)), 'a keypress sound was fetched').toEqual([]);
   });
 
   test('the SQL playground loads one engine, not both', async ({ app }) => {

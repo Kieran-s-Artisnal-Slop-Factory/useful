@@ -37,6 +37,9 @@ self.onmessage = async (event: MessageEvent<SqlRequest>) => {
         await engine.reset();
         reply({ id: msg.id, ok: true, result: undefined });
         break;
+      case 'execDescribed':
+        reply({ id: msg.id, ok: true, result: await engine.execDescribed(msg.sql) });
+        break;
       case 'exec':
         reply({ id: msg.id, ok: true, result: await engine.exec(msg.sql) });
         break;
@@ -49,6 +52,9 @@ self.onmessage = async (event: MessageEvent<SqlRequest>) => {
         break;
       case 'listTables':
         reply({ id: msg.id, ok: true, result: await engine.listTables() });
+        break;
+      case 'tableMeta':
+        reply({ id: msg.id, ok: true, result: await engine.tableMeta(msg.name) });
         break;
       case 'tableData':
         reply({ id: msg.id, ok: true, result: await engine.tableData(msg.name) });

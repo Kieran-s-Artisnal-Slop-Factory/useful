@@ -7,10 +7,15 @@
    *  - persistence goes through the data layer (`sql_playgrounds`, one row per
    *    engine) instead of localStorage, so a workspace rides backup
    *    export/import and the oracle audits every write;
-   *  - the engine choice is remembered in `preferences`;
-   *  - the database browser is this app's own table markup rather than
-   *    retoken's DataTable (filters/CSV/paging are not ported — the browser
-   *    shows a capped page and the editor answers anything more specific).
+   *  - the engine choice is remembered in `preferences`.
+   *
+   * Both grids are retoken's `DataTable`. They run in opposite modes, and the
+   * reason is where the rows already are. The **results** grid filters, sorts,
+   * pages and exports client-side, because `exec` has already returned every
+   * row. The **browser** runs manual: its filter tree compiles to a `WHERE`
+   * clause, sorting compiles to `ORDER BY`, and paging is a keyset seek when
+   * the table has a single-column key — so a million-row table pages without
+   * ever sending a million rows. None of that state is persisted.
    *
    * The engines (SQLite via sqlite-wasm, Postgres via PGlite) run in Web
    * Workers behind one message protocol, so nothing here knows which is which
@@ -21,8 +26,28 @@
   import Card from '../Card.svelte';
   import Explainer from '../Explainer.svelte';
   import SqlEditor from '../SqlEditor.svelte';
+  import DataTable from '../DataTable.svelte';
   import { engines as allEngines } from '../../lib/sql/engines';
-  import type { DatabaseSession, RuntimeAdapter, Row, TableData } from '../../lib/sql/types';
+  import type {
+    DatabaseSession,
+    ResultColumn,
+    RuntimeAdapter,
+    Row,
+    TableData,
+  } from '../../lib/sql/types';
+  import { inferSchema } from '../../lib/sql/infer-schema';
+  import { tableSchemaFrom } from '../../lib/sql/table-schema';
+  import { columnMap, normalizeSchema, type DataRow, type TableQuery } from '../../lib/table/types';
+  import { emptyGroup, type FilterGroup } from '../../lib/table/filter';
+  import {
+    andClauses,
+    quoteIdent,
+    toKeysetOrderBy,
+    toKeysetWhere,
+    toSqlOrderBy,
+    toSqlSearch,
+    toSqlWhere,
+  } from '../../lib/table/to-sql';
   import { indexedDbPlayground } from '../../lib/sql/store';
   import { getSingleton, putSingleton } from '../../lib/db/repo';
   import type { Preferences } from '../../lib/db/types';
@@ -30,8 +55,8 @@
   import { formatBytes } from '../../lib/img/convert';
 
   const ONE_MB = 1024 * 1024;
-  /** Rows the browser renders before it stops and says so. */
-  const BROWSE_CAP = 200;
+  /** Rows a page of the table browser holds. Not persisted, not configurable. */
+  const BROWSE_PAGE = 25;
 
   const store = indexedDbPlayground();
   const choices = allEngines;
@@ -58,6 +83,26 @@
   let tables = $state<string[]>([]);
   let activeTable = $state<string | null>(null);
   let tableView = $state<TableData | null>(null);
+  /** Columns the engine described for the last result set — headers even at 0 rows. */
+  let resultColumns = $state<ResultColumn[]>([]);
+
+  // ---- the table browser's query state. All component-local: filters, sort
+  // and page are deliberately NOT persisted, so loading a page and looking
+  // around still writes nothing at all.
+  let browseFilter = $state<FilterGroup>(emptyGroup('and'));
+  let browseRows = $state<DataRow[]>([]);
+  let browseTotal = $state<number | undefined>(undefined);
+  let browseHasMore = $state(false);
+  let browseBusy = $state(false);
+  let browseNotes = $state<string[]>([]);
+  let browseError = $state<string | null>(null);
+  /** Real, unfiltered row count for the footer note — never on the paging path. */
+  let tableRows = $state(0);
+  /**
+   * Plain, not `$state`: a race guard, not something the template reads. Every
+   * fetch takes a ticket and drops its result if a later one has been issued.
+   */
+  let browseToken = 0;
 
   let saveMsg = $state<string | null>(null);
   let saveError = $state<string | null>(null);
@@ -65,12 +110,192 @@
   let pendingLarge = $state<{ sql: string; bytes: number } | null>(null);
   let includeData = $state(true);
   let canExportBinary = $state(false);
+  let canQuery = $state(false);
+  let canDescribe = $state(false);
+  let canTableMeta = $state(false);
 
   /** Set on unmount so a session that boots afterwards is destroyed, not leaked. */
   let destroyed = false;
   /** Bumped per boot; a boot with a stale token lost a race and must clean up. */
   let bootToken = 0;
   let saveTimer: ReturnType<typeof setTimeout> | undefined;
+
+  const dialect = $derived<'postgres' | 'sqlite'>(active.id === 'pglite' ? 'postgres' : 'sqlite');
+  const resultSchema = $derived(inferSchema(resultRows as DataRow[], resultColumns));
+
+  const browseSchema = $derived(tableSchemaFrom(tableView?.columns ?? []));
+  const browseColumns = $derived(normalizeSchema(browseSchema));
+  const browseLookup = $derived(columnMap(browseColumns));
+  /**
+   * Cursor paging needs a total order to avoid skipping or repeating rows, so
+   * it is only offered when one column alone identifies a row. Everything else
+   * pages by OFFSET.
+   */
+  const keyColumn = $derived(tableView?.keys.length === 1 ? tableView.keys[0]! : null);
+  const useCursor = $derived(!!keyColumn && canQuery);
+  /**
+   * Remount the grid only when the SHAPE changes. Keying on the whole view
+   * would wipe the reader's filter after every Run, and a keyset anchor is a
+   * value in a `>` comparison rather than a row identity, so it stays valid
+   * even if the row it came from is gone.
+   */
+  const browseKey = $derived(
+    `${activeTable}:${(tableView?.columns ?? []).map((c) => c.name).join(',')}`
+  );
+
+  /** PGlite reports `schema.table`; both halves need quoting separately. */
+  function quoteTable(name: string): string {
+    const dot = name.indexOf('.');
+    return dot === -1
+      ? quoteIdent(name)
+      : `${quoteIdent(name.slice(0, dot))}.${quoteIdent(name.slice(dot + 1))}`;
+  }
+
+  /**
+   * Fetch one page of the active table, compiling the grid's own query state
+   * into SQL. This is the manual-mode contract: the grid asks, nothing more.
+   */
+  async function fetchPage(request: TableQuery) {
+    if (!session?.query || !activeTable) return;
+    const mine = ++browseToken;
+    const target = quoteTable(activeTable);
+    browseBusy = true;
+    browseError = null;
+    try {
+      const conditions = toSqlWhere(request.filter as FilterGroup, browseLookup, {
+        dialect,
+        // Both workers register a regexp() implementation, so the `matches`
+        // operator is available on either engine.
+        regex: true,
+      });
+      const search = toSqlSearch(request.search, browseColumns, {
+        dialect,
+        startIndex: conditions.params.length,
+      });
+      const where = andClauses(conditions.where, search.where);
+      const whereSql = where ? ` WHERE ${where}` : '';
+      const params = [...conditions.params, ...search.params];
+
+      // A seek is only ever asked for in cursor mode.
+      const seeking = !!keyColumn && !!request.step;
+
+      if (!seeking) {
+        const counted = await session.query(
+          `SELECT count(*) AS n FROM ${target}${whereSql}`,
+          params
+        );
+        if (mine !== browseToken) return;
+        browseTotal = Number(counted[0]?.['n'] ?? 0);
+      } else {
+        // Cursor mode has no total ON PURPOSE: counting every match is exactly
+        // the full scan the mode exists to avoid, and nothing displays it.
+        browseTotal = undefined;
+      }
+
+      const limit = request.pageSize > 0 ? request.pageSize : BROWSE_PAGE;
+      const offset = (Math.max(1, request.page) - 1) * limit;
+      // One row past the page is how `hasMore` is known without a count.
+      const probe = limit + 1;
+
+      let sql: string;
+      let args: unknown[];
+      if (seeking) {
+        const keysetOrder = toKeysetOrderBy(request.sort, keyColumn!, browseLookup, { dialect });
+        const seek = toKeysetWhere(request.cursor ?? null, request.sort, keyColumn!, browseLookup, {
+          dialect,
+          startIndex: params.length,
+        });
+        browseNotes = [...conditions.unsupported, ...seek.unsupported];
+        if (seek.seekable) {
+          const seekWhere = andClauses(where, seek.where);
+          sql =
+            `SELECT * FROM ${target}${seekWhere ? ` WHERE ${seekWhere}` : ''}` +
+            ` ORDER BY ${keysetOrder} LIMIT ${probe}`;
+          args = [...params, ...seek.params];
+        } else {
+          // The cursor cannot seek past this value — a NULL in the sort column
+          // has no "after the nulls" comparison under NULLS LAST. Serve the
+          // page by OFFSET instead, under the SAME order as the keyset pages,
+          // so its boundaries line up with the pages either side of it rather
+          // than silently re-serving page one.
+          sql =
+            `SELECT * FROM ${target}${whereSql} ORDER BY ${keysetOrder}` +
+            ` LIMIT ${probe} OFFSET ${offset}`;
+          args = params;
+        }
+      } else {
+        const orderBy = toSqlOrderBy(request.sort, browseLookup, { dialect });
+        browseNotes = conditions.unsupported;
+        sql =
+          `SELECT * FROM ${target}${whereSql}${orderBy ? ` ORDER BY ${orderBy}` : ''}` +
+          ` LIMIT ${probe} OFFSET ${offset}`;
+        args = params;
+      }
+
+      const fetched = await session.query(sql, args);
+      if (mine !== browseToken) return;
+      browseRows = fetched.slice(0, limit) as DataRow[];
+      browseHasMore = fetched.length > limit;
+    } catch (err) {
+      if (mine !== browseToken) return;
+      browseError = message(err);
+      browseRows = [];
+      browseHasMore = false;
+    } finally {
+      if (mine === browseToken) browseBusy = false;
+    }
+  }
+
+  /**
+   * The footer note's row count: unfiltered, and off the paging path entirely.
+   * One count per table selection, never one per page.
+   */
+  async function countTable(name: string) {
+    if (!session?.query) {
+      tableRows = tableView?.rows.length ?? 0;
+      return;
+    }
+    try {
+      const counted = await session.query(`SELECT count(*) AS n FROM ${quoteTable(name)}`, []);
+      tableRows = Number(counted[0]?.['n'] ?? 0);
+    } catch {
+      // A table the catalogue lists but cannot be counted (a view over a
+      // missing relation) should not blank the browser.
+      tableRows = tableView?.rows.length ?? 0;
+    }
+  }
+
+  /** Point the browser at a table: reset its query state and fetch page one. */
+  async function openTable(name: string) {
+    if (!session) return;
+    activeTable = name;
+    tableView = canTableMeta
+      ? { ...(await session.tableMeta!(name)), rows: [] }
+      : await session.tableData(name);
+    const fresh = emptyGroup('and');
+    browseFilter = fresh;
+    browseRows = [];
+    browseHasMore = false;
+    browseNotes = [];
+    browseError = null;
+    browseTotal = undefined;
+    await countTable(name);
+    if (canQuery) {
+      // Pass `fresh` rather than reading `browseFilter` back — the grid has not
+      // mounted yet, so nothing else would supply the first page.
+      await fetchPage({
+        search: '',
+        filter: fresh,
+        sort: null,
+        page: 1,
+        pageSize: BROWSE_PAGE,
+        step: keyColumn ? 'first' : undefined,
+        cursor: null,
+      });
+    } else {
+      browseRows = (tableView?.rows ?? []) as DataRow[];
+    }
+  }
 
   function scheduleSave(doc: string) {
     clearTimeout(saveTimer);
@@ -81,8 +306,15 @@
   async function refreshViewer(preferred?: string | null) {
     if (!session) return;
     tables = await session.listTables();
-    activeTable = preferred && tables.includes(preferred) ? preferred : (tables[0] ?? null);
-    tableView = activeTable ? await session.tableData(activeTable) : null;
+    const next = preferred && tables.includes(preferred) ? preferred : (tables[0] ?? null);
+    if (next) {
+      await openTable(next);
+    } else {
+      activeTable = null;
+      tableView = null;
+      browseRows = [];
+      tableRows = 0;
+    }
   }
 
   /** Tear down whatever is running and start `engine` from its saved state. */
@@ -99,12 +331,25 @@
     saveError = null;
     pendingLarge = null;
     resultRows = [];
+    resultColumns = [];
     ranEmpty = false;
     restoredBanner = false;
     tables = [];
     activeTable = null;
     tableView = null;
+    browseFilter = emptyGroup('and');
+    browseRows = [];
+    browseTotal = undefined;
+    browseHasMore = false;
+    browseNotes = [];
+    browseError = null;
+    browseBusy = false;
+    tableRows = 0;
+    browseToken++;
     canExportBinary = false;
+    canQuery = false;
+    canDescribe = false;
+    canTableMeta = false;
 
     try {
       const created = await engine.createSession();
@@ -115,6 +360,9 @@
       }
       session = created;
       canExportBinary = !!created.serialize;
+      canQuery = !!created.query;
+      canDescribe = !!created.execDescribed;
+      canTableMeta = !!created.tableMeta;
       await created.reset();
 
       const saved = await store.load(engine.id);
@@ -155,8 +403,21 @@
     saveMsg = null;
     restoredBanner = false;
     try {
-      resultRows = doc.trim() ? await session.exec(doc) : [];
-      ranEmpty = resultRows.length === 0;
+      if (!doc.trim()) {
+        resultRows = [];
+        resultColumns = [];
+      } else if (canDescribe) {
+        const described = await session.execDescribed!(doc);
+        resultRows = described.rows;
+        resultColumns = described.columns;
+      } else {
+        resultRows = await session.exec(doc);
+        resultColumns = [];
+      }
+      // A described-but-empty SELECT still has columns, so it renders as an
+      // empty GRID. Only a statement with no result set at all gets the
+      // "that ran without returning any rows" line.
+      ranEmpty = resultRows.length === 0 && resultColumns.length === 0;
       await refreshViewer(activeTable);
     } catch (err) {
       sqlError = message(err);
@@ -178,6 +439,7 @@
     sqlError = null;
     saveMsg = null;
     resultRows = [];
+    resultColumns = [];
     ranEmpty = false;
     restoredBanner = false;
     await session.reset();
@@ -306,11 +568,7 @@
     }
   }
 
-  async function showTable(name: string) {
-    if (!session) return;
-    activeTable = name;
-    tableView = await session.tableData(name);
-  }
+  const showTable = (name: string) => void openTable(name);
 
   onMount(async () => {
     // Reading the remembered engine writes nothing — page loads must not.
@@ -326,15 +584,6 @@
     session?.destroy();
   });
 
-  let browseRows = $derived(tableView ? tableView.rows.slice(0, BROWSE_CAP) : []);
-  let resultCols = $derived(resultRows.length > 0 ? Object.keys(resultRows[0]!) : []);
-
-  const cell = (value: unknown): string =>
-    value === null || value === undefined
-      ? 'NULL'
-      : typeof value === 'object'
-        ? JSON.stringify(value)
-        : String(value);
 </script>
 
 <div class="page-header">
@@ -477,30 +726,25 @@
     </div>
   </Card>
 
-  {#if resultRows.length > 0}
+  {#if resultRows.length > 0 || resultColumns.length > 0}
     <Card title="Results">
       {#snippet actions()}
         <span class="muted small" data-testid="sql-result-count">
           {resultRows.length} row{resultRows.length === 1 ? '' : 's'}
         </span>
       {/snippet}
-      <div class="table-wrap">
-        <table class="data-table" data-testid="sql-results">
-          <thead>
-            <tr>{#each resultCols as col (col)}<th>{col}</th>{/each}</tr>
-          </thead>
-          <tbody>
-            {#each resultRows.slice(0, BROWSE_CAP) as row, i (i)}
-              <tr>{#each resultCols as col (col)}<td>{cell(row[col])}</td>{/each}</tr>
-            {/each}
-          </tbody>
-        </table>
-      </div>
-      {#if resultRows.length > BROWSE_CAP}
-        <p class="muted small">
-          Showing the first {BROWSE_CAP} of {resultRows.length} rows — add a LIMIT to narrow it down.
-        </p>
-      {/if}
+      <!-- Client-side: `exec` already returned every row, so filtering,
+           sorting, paging and CSV cost nothing at the protocol level. -->
+      <DataTable
+        testid="sql-results"
+        schema={resultSchema}
+        rows={resultRows as DataRow[]}
+        pageSize={BROWSE_PAGE}
+        pageSizes={[10, 25, 50, 100, 0]}
+        exportFilename="query-results"
+        empty="No rows matched."
+        dense
+      />
     </Card>
   {:else if ranEmpty && !sqlError}
     <p class="muted small" data-testid="sql-no-rows">
@@ -531,34 +775,38 @@
             </button>
           {/each}
         </div>
-        {#if tableView}
-          <div class="table-wrap">
-            <table class="data-table" data-testid="sql-table-rows">
-              <thead>
-                <tr>
-                  {#each tableView.columns as col (col.name)}
-                    <th>
-                      {col.name}
-                      <span class="muted col-type">{col.type}</span>
-                      {#if tableView.keys.includes(col.name)}<span class="muted col-type">PK</span>{/if}
-                    </th>
-                  {/each}
-                </tr>
-              </thead>
-              <tbody>
-                {#each browseRows as row, i (i)}
-                  <tr>
-                    {#each tableView.columns as col (col.name)}<td>{cell(row[col.name])}</td>{/each}
-                  </tr>
-                {/each}
-              </tbody>
-            </table>
-          </div>
+        {#if tableView && activeTable}
+          {#if browseError}
+            <p class="banner error small" role="alert" data-testid="sql-browse-error">
+              {browseError}
+            </p>
+          {/if}
+          {#if browseNotes.length > 0}
+            <p class="banner warn small" data-testid="sql-browse-note">
+              This page counted rows to skip instead of seeking: {browseNotes.join('; ')}.
+            </p>
+          {/if}
+          {#key browseKey}
+            <DataTable
+              testid="sql-table-rows"
+              schema={browseSchema}
+              rows={browseRows}
+              bind:filter={browseFilter}
+              manual={canQuery}
+              pagination={useCursor ? 'cursor' : 'offset'}
+              hasMore={browseHasMore}
+              totalRows={useCursor ? undefined : browseTotal}
+              busy={browseBusy}
+              pageSize={BROWSE_PAGE}
+              pageSizes={[10, 25, 50, 100]}
+              exportFilename={activeTable}
+              empty="This table is empty."
+              dense
+              onQueryChange={(request) => void fetchPage(request)}
+            />
+          {/key}
           <p class="muted small" data-testid="sql-table-note">
-            {tableView.rows.length} row{tableView.rows.length === 1 ? '' : 's'} in {activeTable}{tableView
-              .rows.length > BROWSE_CAP
-              ? ` — showing the first ${BROWSE_CAP}`
-              : ''}
+            {tableRows} row{tableRows === 1 ? '' : 's'} in {activeTable}
           </p>
         {/if}
       </div>
@@ -631,13 +879,6 @@
   .seg-btn:disabled {
     cursor: not-allowed;
     opacity: 0.6;
-  }
-
-  .col-type {
-    font-size: var(--font-size-eyebrow);
-    text-transform: uppercase;
-    letter-spacing: var(--tracking-label);
-    margin-left: var(--space-1);
   }
 
   .visually-hidden {

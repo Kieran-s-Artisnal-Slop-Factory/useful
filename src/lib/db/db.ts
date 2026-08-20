@@ -133,6 +133,18 @@ const MIGRATIONS: Migration[] = [
       db.createObjectStore('sprites', { keyPath: 'id' });
     }
   },
+  // v10 — Phase 8 (Napkin math): formula templates and the calculations run
+  // against them. Both are JSON-native, so they ride backups unchanged.
+  (db) => {
+    if (!db.objectStoreNames.contains('napkin_templates')) {
+      db.createObjectStore('napkin_templates', { keyPath: 'id' });
+    }
+    if (!db.objectStoreNames.contains('napkin_calculations')) {
+      const store = db.createObjectStore('napkin_calculations', { keyPath: 'id' });
+      // A calculation is only ever read through its template.
+      store.createIndex('template_id', 'template_id');
+    }
+  },
 ];
 
 export const DB_VERSION = MIGRATIONS.length;

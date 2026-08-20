@@ -203,6 +203,18 @@ export const REGISTRY: ToolDef[] = [
     icon: 'database',
   },
   {
+    id: 'napkin-math',
+    name: 'Napkin math',
+    description: 'Formulas that document themselves, with code you can take away',
+    aliases: [
+      'napkin', 'formula', 'equation', 'math', 'maths', 'calculation', 'template',
+      'back of the envelope', 'estimate', 'latex', 'codegen',
+    ],
+    category: 'Calculators',
+    route: '/tools/napkin-math/',
+    icon: 'sigma',
+  },
+  {
     id: 'logo-generator',
     name: 'Logo generator',
     description: 'Seeded avatars, identicons, and icon or emoji badges',

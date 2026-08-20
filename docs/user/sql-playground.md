@@ -16,7 +16,9 @@ Switching engines is a clean break: each has its own editor text, its own saved 
 
 The editor highlights the dialect of whichever engine is active and offers keyword completion. Run the whole buffer with the **Run** button or with Ctrl+Enter (Cmd+Enter on a Mac).
 
-- **Rows come back in a Results table**, with a count in the card header. Above 200 rows only the first 200 are drawn, with a note suggesting a LIMIT.
+- **Rows come back in a Results table**, with a count in the card header. The table pages rather than truncating, and it has a search box, a filter builder, sortable headers and an **Export CSV** button — all of it working on the rows your query already returned, so none of it runs anything again.
+
+A query that matches nothing still shows its columns, so an empty result reads as "nothing matched" rather than as a broken query.
 - **Statements that return nothing** — CREATE, INSERT, UPDATE and friends — say so instead of showing an empty table.
 - **Errors** appear under the editor in full, including Postgres's detail, hint and character position. The database is left exactly as it was; an error never wipes anything.
 
@@ -26,9 +28,11 @@ Your editor text autosaves shortly after you stop typing, and is flushed immedia
 
 ## Browsing tables
 
-The **Database** card lists every table in the current database as a button; click one to see it. The header row gives each column's name, its type, and marks the primary key. Underneath is a sample of the table's contents.
+The **Database** card lists every table in the current database as a button; click one to see it. Underneath is a page of the table's contents, fetched from the database itself — so a table with a million rows opens as fast as one with ten.
 
-The list refreshes after every run, keeping you on the same table if it still exists.
+The same search box, filter builder, sortable headers and CSV button are here too, but they work differently: the database answers them. Filtering narrows what is fetched rather than what is drawn, and the row count under the table is the real number of rows in it.
+
+The list refreshes after every run, keeping you on the same table if it still exists — though a run resets the browser's filter and puts you back on the first page, because the data underneath may have changed.
 
 ## Keeping a database
 
@@ -55,6 +59,7 @@ The **Transfer** card has a **Schema + data** / **Schema only** switch and an **
 | Copy SQL to clipboard | The whole rebuild script as text |
 | SQL file (.sql) | The same script as a download |
 | SQLite file / PGlite data directory | The engine's own binary format — the exact file the Import above takes back |
+| CSV (.csv) | Not from this menu — the **Export CSV** button on either table, for the rows it is showing |
 | JSON (.json) | With data, every table as an array of rows; schema only, every table as its column list |
 
 ## Gotchas
@@ -66,8 +71,10 @@ The **Transfer** card has a **Schema + data** / **Schema only** switch and an **
 - **Only the editor text and an explicit snapshot are stored**, plus which engine you last used. They ride Settings → Backup like everything else. The live database never touches storage.
 - **Each engine downloads once**, but that download is cached with the rest of the app, so a future app update can cause it to be fetched again. (The background remover's model is kept apart and does not behave this way.)
 - **Snapshots and SQL exports do not cover everything.** For SQLite: tables, data, indexes, triggers and views. For Postgres: schemas, tables, data, sequences, constraints, indexes and views — but not functions, triggers, custom types, enums or extensions, which are dropped silently. If you rely on those, export the binary database file instead.
-- **The table browser shows a sample.** It fetches the first 50 rows of a table; the "N rows" note underneath counts what was fetched, not what is in the table. Ask the editor with a COUNT if you want the real number.
+- **Export CSV means different things in the two tables.** In **Results** it writes every row your filters left. In the **Database** browser it writes the page on screen — the rest of the table was never fetched. The button's tooltip says which.
 - **The two engines report rows differently.** Run several statements at once and SQLite shows the results of the first one that returns columns, while Postgres shows every statement's rows together.
 - **There is no stop button.** A query that never finishes cannot be cancelled from the page; leaving or reloading ends it, and takes the database with it.
 - If a saved snapshot fails to replay, you get whatever ran before the failure plus an error banner explaining why — not an empty database and not a silent success. **Wipe database** and start over if that leaves things half-built.
-- The browser has no filtering, sorting, paging or CSV export. Anything more specific than "show me this table" belongs in the editor.
+- **Filters and page size are not saved.** They reset when you switch tables, switch engines, run a statement, or reload. Nothing about how you were looking at a table is written down.
+
+**Sorting a column that is empty on some rows** puts the empty ones last, whichever direction you sort. When a page happens to end inside a run of empty values the browser counts rows to skip instead of jumping straight to them, and says so in a note — the results are the same, it is just slower.

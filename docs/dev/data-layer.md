@@ -192,7 +192,7 @@ A tool that needs binary persistence would need a separate store outside `STORES
 
 The schema is described in three places that must change together, or the suite lies:
 
-1. [types.ts](../../src/lib/db/types.ts) — the interface and the `STORES` entry (flags, indexes).
+1. [types.ts](../../src/lib/db/types.ts) — the interface **and** the `STORES` entry (flags, indexes). Adding the interface and forgetting `STORES` is the easy miss, and it fails loudly rather than quietly: `STORES` is what `exportData` iterates, so the store would be absent from every backup, and "a backup covers every store" is the test that catches it.
 2. [db.ts](../../src/lib/db/db.ts) — an appended migration creating the store/indexes with literals.
 3. [tests/local/helpers/schema.ts](../../tests/local/helpers/schema.ts) — a `TABLES` entry with every column's `type`, `nullable`, `references`, and the same `singleton`/`fieldMerge` flags.
 

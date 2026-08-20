@@ -13,7 +13,7 @@
  * `pg_get_constraintdef`, `pg_indexes.indexdef`, `pg_views.definition`).
  */
 import { PGlite } from '@electric-sql/pglite';
-import type { Row, TableData } from './types';
+import type { ExecResult, Row, TableData, TableMeta } from './types';
 import { quotePgId, quotePgValue, splitPgStatements } from './pg-sql';
 
 /**
@@ -40,6 +40,9 @@ export class PgliteEngine {
     this.#db ??= await PGlite.create('memory://');
     return this.#db;
   }
+
+  /** OID → printable type name. Stable for the life of the database. */
+  #typeCache = new Map<number, string>();
 
   /** Rows for a parameterized query. */
   async #rows<T extends Row = Row>(sql: string, params: unknown[] = []): Promise<T[]> {
@@ -71,6 +74,47 @@ $reset$;`);
     const db = await this.#ensure();
     const results = await db.exec(sql);
     return results.flatMap((result) => result.rows as Row[]);
+  }
+
+  /**
+   * `exec`, plus the last result set's column names and types.
+   *
+   * PGlite reports each statement's `fields: { name, dataTypeID }[]`, which
+   * are populated whether or not any row came back — so `select id, name from
+   * t where false` still gets its two headers instead of rendering as a
+   * broken query. The OID is turned into a printable type name through
+   * `format_type`, cached because the same handful of OIDs recur on every
+   * query in a session.
+   */
+  async execDescribed(sql: string): Promise<ExecResult> {
+    const db = await this.#ensure();
+    const results = await db.exec(sql);
+    const rows = results.flatMap((result) => result.rows as Row[]);
+    // A multi-statement buffer ends with the statement whose rows are shown,
+    // so describe the last one that actually had a result set.
+    const described = [...results].reverse().find((result) => (result.fields?.length ?? 0) > 0);
+    const fields = described?.fields ?? [];
+    const names = await this.#typeNames(fields.map((f) => f.dataTypeID));
+    return {
+      columns: fields.map((f) => ({ name: f.name, type: names.get(f.dataTypeID) ?? '' })),
+      rows,
+    };
+  }
+
+  /** Printable type names for a set of OIDs, memoised across the session. */
+  async #typeNames(oids: number[]): Promise<Map<number, string>> {
+    const wanted = [...new Set(oids)].filter((oid) => !this.#typeCache.has(oid));
+    if (wanted.length > 0) {
+      const found = await this.#rows<{ oid: number; name: string }>(
+        `SELECT oid::int AS oid, pg_catalog.format_type(oid, -1) AS name
+         FROM pg_catalog.pg_type WHERE oid = ANY($1)`,
+        [wanted]
+      );
+      for (const row of found) this.#typeCache.set(Number(row.oid), String(row.name));
+      // Cache the misses too, so an unknown OID is not re-queried every render.
+      for (const oid of wanted) if (!this.#typeCache.has(oid)) this.#typeCache.set(oid, '');
+    }
+    return this.#typeCache;
   }
 
   /** One parameterized statement — values bound, never spliced into the SQL. */
@@ -127,8 +171,8 @@ $reset$;`);
     return match;
   }
 
-  /** Column metadata + the first 50 rows of one table, for the DB viewer. */
-  async tableData(display: string): Promise<TableData> {
+  /** Column metadata and key columns for one table — no rows. */
+  async tableMeta(display: string): Promise<TableMeta> {
     const relation = await this.#resolve(display);
     const columns = await this.#rows<{ name: string; type: string }>(
       `SELECT a.attname AS name, pg_catalog.format_type(a.atttypid, a.atttypmod) AS type
@@ -148,8 +192,21 @@ $reset$;`);
        ORDER BY k.ord`,
       [relation.oid]
     );
+    return { name: display, columns, keys: keyed.map((k) => k.name) };
+  }
+
+  /**
+   * `tableMeta` plus a sample of rows.
+   *
+   * The browser pages through `query`, so this exists for a caller that has
+   * no `tableMeta` — the rows would otherwise be fetched and discarded on
+   * every table switch and after every run.
+   */
+  async tableData(display: string): Promise<TableData> {
+    const meta = await this.tableMeta(display);
+    const relation = await this.#resolve(display);
     const rows = await this.#rows(`SELECT * FROM ${this.#ref(relation)} LIMIT 50`);
-    return { name: display, columns, rows, keys: keyed.map((k) => k.name) };
+    return { ...meta, rows };
   }
 
   /**

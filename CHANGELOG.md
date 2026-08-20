@@ -2,6 +2,54 @@
 
 ## Features
 
+- **Napkin math** (`/tools/napkin-math/`): write a formula and get a little
+  calculator for it. Its variables become typed input fields — whole number or
+  not, positive-only or not, zero allowed or not, required or not — the result
+  updates as you type, and named calculations save beside the formula so you
+  can come back to the numbers you ran through it. Templates live in a
+  searchable library, and export and import as JSON.
+  - **The fields come from the engine, not from a tree walk.** A sum from 1 to
+    `n` asks for `n` and not its index; π r² asks for `r` and not π. Walking
+    the expression gets both wrong and asks you to supply a value for pi.
+  - **Code generation** turns a template into a real function in **Python,
+    JavaScript, Go or Rust**, with the description as its docstring, the fields
+    as typed parameters, and each field's rules as guard clauses — so the
+    generated function refuses what the page refuses. Or into a
+    **dependency-free web component**: one `.js` file, no build step, styleable
+    from outside with `::part()`. A test loads that generated file in a real
+    page and checks it computes the same answer the app did.
+  - **An operator the generator has no rule for is refused by name** rather
+    than guessed at. An integral is a perfectly good formula with no
+    plain-function form, and the tool says so instead of emitting something
+    that looks right.
+  - **Where a language disagrees with the maths, the generated file carries a
+    helper.** This page rounds a half away from zero; Python rounds to even and
+    JavaScript rounds upward, so `-2.5` would otherwise come back as three
+    different numbers. The remainder of a negative number is the same story in
+    three of the four languages.
+
+- **The SQL playground's two tables became real data grids.** retoken's
+  `DataTable` is ported, and both the query results and the database browser now
+  have a search box, an AND/OR filter tree (so `A AND (B OR C)` is expressible,
+  not just a list), sortable headers, paging and CSV export. The **200-row
+  results cap and the "add a LIMIT" hint are gone**, and so is the 50-row sample
+  the browser used to show.
+  - The two run in opposite modes, because of where the rows already are. The
+    **results** grid works client-side over rows `exec` already returned, so
+    filtering and sorting cost nothing. The **browser** compiles its filter tree
+    to a parameterized `WHERE`, its sort to `ORDER BY`, and pages with a keyset
+    seek when the table has a single-column primary key — so a million-row table
+    pages without ever sending a million rows.
+  - **The row count under the browser is now the real one.** It used to report
+    the size of the 50-row sample it had fetched.
+  - **A query that returns no rows now shows its columns.** A new
+    `execDescribed` asks the engine what the result set's shape is, so
+    `select id, name from t where 1 = 0` renders an empty grid with two headers
+    rather than reading as a broken query.
+  - None of it is saved: filters, sort and page reset when you switch tables,
+    switch engines or reload. Loading a page and looking around still writes
+    nothing at all.
+
 - **Logo generator** (`/tools/logo-generator/`): square logos, app icons and
   avatars, ported from [retoken](https://github.com/Descent098/retoken)'s icon
   designer. **Generators** turn text into a picture — 31 DiceBear avatar styles
@@ -142,6 +190,75 @@
 
 ## Other
 
+- Database schema **v10**: new `napkin_templates` (name, description, formula as
+  both LaTeX and MathJSON, fields as JSON) and `napkin_calculations`
+  (`template_id` FK, name, values, result), plus a
+  `preferences.napkin_last_template_id`. Both stores are JSON-native, so they
+  ride backup export/import. Deleting a template soft-deletes its calculations
+  first — a calculation whose template is gone is unreachable.
+- New dependencies for napkin math: `mathlive` (MIT, 801 KB chunk, 217 KB
+  gzip) and `@cortex-js/compute-engine` (MIT, 2.53 MB chunk, 695 KB gzip —
+  it is a full computer-algebra system, and the larger half of the pair). Both
+  are `import()`ed inside the mathfield wrapper's mount, so no other route pays
+  for them, and the **offline footprint grows by roughly 3.6 MB** once the
+  service worker's crawl has cached both. **The Compute Engine is a
+  direct dependency, not a transitive one**: MathLive bundles no import of it
+  and looks it up on a global instead, so without importing it explicitly
+  `getValue('math-json')` silently returns an empty expression.
+- The **20 KaTeX faces** (263 KB) are vendored into `public/math/` by a new
+  `tools/build-math-assets.mjs`, with per-file hashes in a provenance file that
+  a unit test checks the byte total against. They get their own cache bucket
+  (`useful-fonts-v1`) outside the app-cache prefix, so a cache-version bump does
+  not evict them, and their own entry in Settings → Offline — the service
+  worker's asset crawl walks fingerprinted chunks and cannot find a file
+  referenced from a stylesheet's `url()`. Service worker cache bumped to **v15**.
+- **MathLive's 259 built-in text shortcuts are switched off.** Any one whose
+  trigger appears inside a variable name fires mid-word and corrupts the
+  formula: typing `sqrtish` produced `\mathrm{\sqrt{ish}}` and typing
+  `count*rate` produced `\mathrm{count\cdot rate}`, neither of which parses.
+  Dropping only the offending entry fixed one case and not the other, and a
+  shortcut timeout fixed neither. The cost is that `pi` no longer becomes π as
+  you type; `\pi` and the virtual keyboard still do.
+- The keypress sounds (227 KB of `.wav`) are never fetched, and a Playwright
+  check asserts it — including on the "plonk" path an invalid keystroke takes.
+- **Two bugs fixed in the port rather than inherited**, both in retoken's
+  paging:
+  - `SELECT count(*)` ran on every cursor seek. It is the one full scan left in
+    that path, it is exactly what keyset paging exists to avoid, and its result
+    was dead in that mode. It now runs only when a page number needs it, and the
+    footer's row count is a separate, unfiltered count run once per table
+    selection rather than once per page.
+  - A NULL in the sort column made **Next** serve page one forever. The seek
+    builder returned an empty clause for three unrelated situations — page one,
+    no key value, and a NULL sort value — and only the first is benign; the
+    other two produced a query byte-identical to page one while the pager
+    believed it had advanced. It now reports `seekable: false` and the caller
+    falls back to `LIMIT/OFFSET` under the *keyset* ordering, so the fallback
+    page's boundaries line up with the pages either side of it.
+- **Postgres needs `::text` before a text operator.** `lower()`, `trim()`,
+  `ILIKE` and `~*` all take text, and Postgres raises rather than coercing when
+  handed a `uuid`, an enum or `json` — which every table with a non-integer
+  primary key hit on the first filter. The cast is applied to the identifier
+  only, never to the bound placeholder (`$1::text` confuses parameter type
+  inference) and never in the keyset seek (a bare `"id" > $1` is what
+  index-seeks). SQLite emits no cast.
+- **`toNumber('100 USD')` used to be `NaN`.** The strip pattern read `+-e` as a
+  character range, keeping `A`-`Z` and `a`-`e`, so a number filter against a
+  string-money column silently matched nothing. Fixed, with an explicit
+  no-digits guard — stripping correctly makes `'abc'` reduce to `''`, and
+  `Number('')` is `0`. `'100 EUR'` is still `NaN`, because a trailing `E` is a
+  legal exponent marker.
+- **Blanks now sort last in both directions**, agreeing with the `NULLS LAST`
+  the SQL side emits either way. The comparison function was already right; its
+  caller negated it for a descending sort.
+- New shared module `src/lib/table/` (`types`, `format`, `filter`, `csv`,
+  `to-sql`) with 193 ported Vitest cases, plus `src/lib/sql/table-schema.ts` (8)
+  and a new `src/lib/sql/infer-schema.ts` (12). It has exactly one consumer
+  today and imports nothing outward, so it stays a self-contained layer.
+- Worker protocol gains `execDescribed` and `tableMeta`, both optional on
+  `DatabaseSession` so an engine without them degrades to `exec`/`tableData`.
+  `tableMeta` is what stops the browser fetching and discarding 50 rows on every
+  table switch and after every run.
 - New dependencies for the logo generator: `@dicebear/core` + `@dicebear/collection`
   (MIT code; 31 styles as one 2.0 MB lazy chunk, 672 KB gzip), `jdenticon` (MIT,
   328 KB chunk) and `lucide-static` (ISC, ~2,000 icons, 826 KB chunk). All three

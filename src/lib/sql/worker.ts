@@ -15,7 +15,7 @@
  */
 import sqlite3InitModule, { type Database, type Sqlite3Static } from '@sqlite.org/sqlite-wasm';
 import type { Row } from './types';
-import type { SqlRequest, SqlResponse, TableData } from './protocol';
+import type { ExecResult, SqlRequest, SqlResponse, TableData, TableMeta } from './protocol';
 
 let sqlite3: Sqlite3Static | null = null;
 let db: Database | null = null;
@@ -90,6 +90,31 @@ async function exec(sql: string): Promise<Row[]> {
   const resultRows: Row[] = [];
   database.exec({ sql, rowMode: 'object', callback: (row) => void resultRows.push(row as Row) });
   return resultRows;
+}
+
+/**
+ * `exec`, plus the result set's column names.
+ *
+ * `columnNames: []` is filled from `sqlite3_column_name` BEFORE the statement
+ * is stepped, so it is populated even when the query returns no rows — which
+ * is the whole point: `select id, name from t where 1=0` still has two
+ * columns, and a grid with no headers reads as a broken query.
+ *
+ * SQLite types values, not columns, so there is no declared type to report for
+ * an arbitrary result set. The empty string means "no claim", and the caller
+ * sniffs the values instead.
+ */
+async function execDescribed(sql: string): Promise<ExecResult> {
+  const database = await ensureDb();
+  const rows: Row[] = [];
+  const names: string[] = [];
+  database.exec({
+    sql,
+    rowMode: 'object',
+    columnNames: names,
+    callback: (row) => void rows.push(row as Row),
+  });
+  return { columns: names.map((name) => ({ name, type: '' })), rows };
 }
 
 /**
@@ -327,7 +352,7 @@ async function listTables(): Promise<string[]> {
 }
 
 /** Column metadata + the first 50 rows of one table, for the DB viewer. */
-async function tableData(name: string): Promise<TableData> {
+async function tableMeta(name: string): Promise<TableMeta> {
   const database = await ensureDb();
   const columns: TableData['columns'] = [];
   // `pk` is the column's 1-based position in the primary key, 0 if it isn't
@@ -345,13 +370,25 @@ async function tableData(name: string): Promise<TableData> {
     },
   });
   const keys = keyed.sort((a, b) => a.pk - b.pk).map((c) => c.name);
+  return { name, columns, keys };
+}
+
+/**
+ * `tableMeta` plus a sample of rows.
+ *
+ * Only the fallback path uses the rows now — the browser pages through
+ * `query` — so this exists for a caller that has no `tableMeta`.
+ */
+async function tableData(name: string): Promise<TableData> {
+  const database = await ensureDb();
+  const meta = await tableMeta(name);
   const rows: Row[] = [];
   database.exec({
     sql: `SELECT * FROM "${name.replaceAll('"', '""')}" LIMIT 50;`,
     rowMode: 'object',
     callback: (row) => void rows.push(row as Row),
   });
-  return { name, columns, rows, keys };
+  return { ...meta, rows };
 }
 
 self.onmessage = async (event: MessageEvent<SqlRequest>) => {
@@ -366,6 +403,9 @@ self.onmessage = async (event: MessageEvent<SqlRequest>) => {
       case 'exec':
         reply({ id: msg.id, ok: true, result: await exec(msg.sql) });
         break;
+      case 'execDescribed':
+        reply({ id: msg.id, ok: true, result: await execDescribed(msg.sql) });
+        break;
       case 'query':
         reply({ id: msg.id, ok: true, result: await query(msg.sql, msg.params) });
         break;
@@ -375,6 +415,9 @@ self.onmessage = async (event: MessageEvent<SqlRequest>) => {
         break;
       case 'listTables':
         reply({ id: msg.id, ok: true, result: await listTables() });
+        break;
+      case 'tableMeta':
+        reply({ id: msg.id, ok: true, result: await tableMeta(msg.name) });
         break;
       case 'tableData':
         reply({ id: msg.id, ok: true, result: await tableData(msg.name) });

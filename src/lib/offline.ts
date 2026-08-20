@@ -14,6 +14,7 @@
  * run, which is also what caches them.
  */
 import { assetsReady, BG_TOTAL_BYTES, loadAssets } from './bg/runtime';
+import { FONT_CACHE, fontsReady, MATH_ASSETS, MATH_FONT_BYTES } from './math/fonts';
 
 export interface OfflineBundle {
   id: string;
@@ -86,6 +87,28 @@ const modelBundle: OfflineBundle = {
  * A database engine. Booting one is the only way to pull its wasm, and it is
  * also the only way to prove it works — so this both caches and verifies.
  */
+/**
+ * The maths editor's KaTeX faces.
+ *
+ * They need their own bundle because the service worker's asset crawl cannot
+ * find them: it walks the fingerprinted `_astro/` graph, and these are stable
+ * files under `public/` referenced from a stylesheet's `url()`.
+ */
+const mathFontsBundle: OfflineBundle = {
+  id: 'math-fonts',
+  label: 'Maths fonts',
+  detail: 'The twenty KaTeX faces the napkin-math editor draws formulas with.',
+  bytes: MATH_FONT_BYTES,
+  ready: () => fontsReady(),
+  async run(onNote) {
+    const cache = await caches.open(FONT_CACHE);
+    for (let i = 0; i < MATH_ASSETS.length; i++) {
+      await cache.add(MATH_ASSETS[i]!);
+      onNote?.(`${i + 1}/${MATH_ASSETS.length}`);
+    }
+  },
+};
+
 function engineBundle(id: 'sqlite' | 'pglite', label: string, bytes: number): OfflineBundle {
   return {
     id,
@@ -118,6 +141,7 @@ function engineBundle(id: 'sqlite' | 'pglite', label: string, bytes: number): Of
 export const OFFLINE_BUNDLES: OfflineBundle[] = [
   appBundle,
   modelBundle,
+  mathFontsBundle,
   engineBundle('sqlite', 'SQLite', 1_200_000),
   engineBundle('pglite', 'Postgres', 12_000_000),
 ];

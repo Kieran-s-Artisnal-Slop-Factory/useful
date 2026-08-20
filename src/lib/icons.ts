@@ -58,6 +58,8 @@ export const ICONS: Record<string, string> = {
     '<path d="M9 17a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v2a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2v-2z"/>',
   // Lucide "key-round".
   // Lucide "grid-2x2" — a pixel grid.
+  // Lucide "sigma".
+  sigma: '<path d="M18 7V4H6l6 8-6 8h12v-3"/>',
   // Lucide "hexagon".
   hexagon:
     '<path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>',

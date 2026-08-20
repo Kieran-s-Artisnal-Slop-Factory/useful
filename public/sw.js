@@ -23,7 +23,7 @@
 // Bump this on any meaningful change to this file: `activate` only purges
 // caches whose name differs, so a constant name makes that step dead code and
 // lets a previous deploy's (or a poisoned) entry survive forever.
-const CACHE_NAME = 'useful-cache-v14';
+const CACHE_NAME = 'useful-cache-v15';
 
 // Everything under this prefix belongs to this app. Cache Storage is keyed by
 // ORIGIN, not by service-worker scope, so if two of these apps are ever served
@@ -57,6 +57,7 @@ const SHELL = [
   'tools/qr/',
   'tools/secrets/',
   'tools/logo-generator/',
+  'tools/napkin-math/',
   'tools/image-converter/',
   'tools/image-resizer/',
   'tools/image-compressor/',
@@ -84,6 +85,16 @@ const SHELL = [
 // with progress reporting; both sides read whatever the other wrote.
 const MODEL_CACHE = 'useful-models-v1';
 const ML_PREFIXES = [BASE + 'models/', BASE + 'ort/'];
+
+// The maths editor's KaTeX faces. Stable, unfingerprinted public/ files that
+// the _astro/ crawl can never find — it matches fingerprinted chunk URLs and
+// does not parse CSS url() — so they get their own bucket, deliberately
+// OUTSIDE CACHE_PREFIX. That is what makes them survive a CACHE_NAME bump:
+// re-downloading 260KB of unchanged fonts because a stylesheet changed would
+// be as indefensible as re-downloading the segmentation model.
+// Mirrored by FONT_CACHE in src/lib/math/fonts.ts.
+const FONT_CACHE = 'useful-fonts-v1';
+const FONT_PREFIXES = [BASE + 'math/'];
 
 // Servers often send `Vary: Origin`, and module import() requests carry an
 // Origin header while our install-time fetches don't — without ignoreVary the
@@ -313,6 +324,22 @@ self.addEventListener('fetch', (event) => {
           // non-Response makes Chromium report a confusing synthetic 503.
           return (await cachedNavigation(request, url)) ?? Response.error();
         }
+      })()
+    );
+    return;
+  }
+
+  // Cache-first with no revalidation: these files are replaced by a re-vendor,
+  // never edited in place, so a background refresh would only cost bandwidth.
+  if (FONT_PREFIXES.some((prefix) => url.pathname.startsWith(prefix))) {
+    event.respondWith(
+      (async () => {
+        const cache = await caches.open(FONT_CACHE);
+        const cached = await cache.match(request, MATCH_OPTS);
+        if (cached) return cached;
+        const response = await fetchWithRetry(request);
+        if (response.ok) cache.put(request, response.clone());
+        return response;
       })()
     );
     return;

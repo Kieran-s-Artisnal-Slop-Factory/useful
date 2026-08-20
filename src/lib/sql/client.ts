@@ -9,7 +9,7 @@
  * form has to appear in the adapter's own module for Vite to see it — and
  * hands it here.
  */
-import type { DatabaseSession, Row, TableData } from './types';
+import type { DatabaseSession, ExecResult, Row, TableData, TableMeta } from './types';
 import type { DistributiveOmit, SqlRequest, SqlResponse } from './protocol';
 
 export class SqlClient implements DatabaseSession {
@@ -68,6 +68,11 @@ export class SqlClient implements DatabaseSession {
     return this.#send({ type: 'exec', sql });
   }
 
+  /** `exec`, plus the result set's columns — so an empty result still has headers. */
+  execDescribed(sql: string): Promise<ExecResult> {
+    return this.#send({ type: 'execDescribed', sql });
+  }
+
   /** Run one parameterized statement and return its rows. */
   query(sql: string, params: unknown[] = []): Promise<Row[]> {
     return this.#send({ type: 'query', sql, params });
@@ -84,6 +89,11 @@ export class SqlClient implements DatabaseSession {
 
   tableData(name: string): Promise<TableData> {
     return this.#send({ type: 'tableData', name });
+  }
+
+  /** `tableData` without the sample rows the browser never renders. */
+  tableMeta(name: string): Promise<TableMeta> {
+    return this.#send({ type: 'tableMeta', name });
   }
 
   /** Re-runnable SQL (schema, plus INSERTs when `includeData`). */

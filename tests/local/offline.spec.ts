@@ -16,6 +16,26 @@ async function pickLightBundles(page: P) {
   await page.getByTestId('offline-pick-pglite').uncheck();
 }
 
+/**
+ * Wait until the service worker is not just active but actually CONTROLLING
+ * this page.
+ *
+ * `clients.claim()` only reaches clients that exist when it runs, and on a
+ * fresh profile the first navigation routinely starts before the worker has
+ * activated — so that document stays uncontrolled however long you wait. That
+ * is ordinary service-worker behaviour, not a fault: the next navigation is
+ * controlled. Reloading once is what a real second page view does, and it is
+ * the only way to get a controlled page deterministically.
+ */
+async function serviceWorkerInCharge(page: P) {
+  await page.evaluate(() => navigator.serviceWorker.ready);
+  if (await page.evaluate(() => Boolean(navigator.serviceWorker.controller))) return;
+  await page.reload();
+  await page.waitForFunction(() => Boolean(navigator.serviceWorker.controller), null, {
+    timeout: 30_000,
+  });
+}
+
 test.describe('offline readiness', () => {
   test.slow();
 
@@ -99,13 +119,18 @@ test.describe('offline readiness', () => {
     const { page } = app;
     await app.goto('/settings/');
     // The service worker has to be in charge before it can serve anything.
-    await page.waitForFunction(() => Boolean(navigator.serviceWorker.controller), null, {
-      timeout: 30_000,
-    });
+    await serviceWorkerInCharge(page);
 
     await pickLightBundles(page);
     await page.getByTestId('offline-start').click();
     await expect(page.getByTestId('offline-state-app')).toHaveText('Done', { timeout: 120_000 });
+    // EVERY picked bundle, not just the app one. Going offline while another
+    // is still fetching kills its requests, and the page then logs a resource
+    // error that has nothing to do with what this test is about.
+    await expect(page.getByTestId('offline-state-sqlite')).toHaveText('Done', { timeout: 120_000 });
+    await expect(page.getByTestId('offline-state-math-fonts')).toHaveText('Done', {
+      timeout: 120_000,
+    });
 
     await page.context().setOffline(true);
     // A tool this profile has never opened — served entirely from the cache.

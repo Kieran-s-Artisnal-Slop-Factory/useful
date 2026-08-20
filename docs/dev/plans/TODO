@@ -22,13 +22,18 @@
                   - [x] and all the other types on https://randomkeygen.com/  (that site was rebuilt; the
                         catalogue follows its CURRENT generators — its old CodeIgniter/160-bit/504-bit/WEP
                         entries no longer exist there either)
-            - [ ] Napkin Math; A system for self-documenting back of the envelope style calculations
-                  - [ ] Use Mathlive https://mathlive.io/mathfield/ for doing the entry, it will give you a parse tree you can get the variables with easily
-                        - [ ] You can find a svelte starting point here: https://mathlive.io/mathfield/guides/svelte/
-                        - [ ] The compute engine may be helpful: https://mathlive.io/compute-engine/
-                        - [ ] This does add some complications
-                              - [ ] There are several math operations that exist, you can use the MathML parsing to figure out which operation, but you will need more than just a basic add, multiply divide, etc.
-                              - [ ] The variable names will by default be split out into separate letters (e.g. `"count"` becomes `"c", "o","n","u","t"` which are not even in order sometimes). Below is a starter component that addresses this one way:
+            - [x] Napkin Math; A system for self-documenting back of the envelope style calculations
+                  (DONE 2026-08-19 - plan Phase 8. Built as specified. Deviations, all recorded in
+                   docs/dev/tools/napkin-math.md: MathLive's built-in text shortcuts are switched off
+                   because they corrupt multi-letter variable names; an operator the generator has no
+                   rule for is refused by name rather than emitted; and the generated code carries
+                   rounding and modulo helpers where a language disagrees with the maths.)
+                  - [x] Use Mathlive https://mathlive.io/mathfield/ for doing the entry, it will give you a parse tree you can get the variables with easily
+                        - [x] You can find a svelte starting point here: https://mathlive.io/mathfield/guides/svelte/
+                        - [x] The compute engine may be helpful: https://mathlive.io/compute-engine/
+                        - [x] This does add some complications
+                              - [x] There are several math operations that exist, you can use the MathML parsing to figure out which operation, but you will need more than just a basic add, multiply divide, etc.
+                              - [x] The variable names will by default be split out into separate letters (e.g. `"count"` becomes `"c", "o","n","u","t"` which are not even in order sometimes). Below is a starter component that addresses this one way:
 ```svelte
 <script lang="ts">
   import "mathlive";
@@ -121,45 +126,47 @@
   }
 </style>
 ```
-                  - [ ] I have attached an SVG (`napkinMath.excalidraw.svg`) with the UI sketched out, it is meant to be a guide, but ask questions and clarifications if there are changes that would make it better
-                  - [ ] The user enters in an equation in plaintext, and form input fields appear to do future calculations with
-                        - [ ] e.g. user types `((months*cost_per_month)*12)*years`
-                              - [ ] 3 inputs appear as "fields" where you can set information (data type, required, etc.)
-                                    - [ ] A calculation section appears allowing them to add values to each field as a specific calculation and see the result.
-                                          - [ ] user can then type in values for those 3 and see the results
-                                    - [ ] They can then store each instance of a calculation
-                                    - [ ] They can then generate several different types of code based on the calculation tempaltes
-                        - [ ] User can then store this template for later use
-                              - [ ] Set a template name and description to make it easier to find
-                              - [ ] Accessed via a collapsible sidebar that stores the template library
-                              - [ ] Exportable later via a JSON interface
-                        - [ ] The export and import section includes
-                              - [ ] Export
-                                    - [ ] A copyable JSON text field with the JSON for the current calculation template (not the calculations themselves)
-                                    - [ ] Options to download all templates
-                                    - [ ]  Options to donload all calculations (the actual calculations themselves from the earlier section)
-                                    - [ ] Code Generator
-                                          - [ ] Ability to generate code based on calculations
-                                                - [ ] A few options
-                                                      - [ ] "Normal"; Turn calculations into plain functions with docstrings
-                                                            - [ ] Languages
-                                                                  - [ ] Python
-                                                                  - [ ] Javascript
-                                                                  - [ ] Go
-                                                                  - [ ] Rust
-                                                      - [ ] "Webcomponent"; A javascript webcomponent that includes a similar UI to the "calculations" section; An interactive set of form fields that shows you the calculation template (as a read-only rendered math representation), and then as you type it shows you the result of the caclculation.
-                                                            - [ ] UI should be plain form field that reactively updates, no framework, and no CSS, but should be easily styleable
-                              - [ ] Import
-                                    - [ ] Ability to copy in JSON text to import either a template or calculations for the currently loaded template
-                                          - [ ] Need validation for both to avoid code injections, and malformed input
-                                    - [ ] Ability to import from a file (for either a template or calculations)
+                  - [x] I have attached an SVG (`napkinMath.excalidraw.svg`) with the UI sketched out, it is meant to be a guide, but ask questions and clarifications if there are changes that would make it better
+                  - [x] The user enters in an equation in plaintext, and form input fields appear to do future calculations with
+                        - [x] e.g. user types `((months*cost_per_month)*12)*years`
+                              - [x] 3 inputs appear as "fields" where you can set information (data type, required, etc.)
+                                    - [x] A calculation section appears allowing them to add values to each field as a specific calculation and see the result.
+                                          - [x] user can then type in values for those 3 and see the results
+                                    - [x] They can then store each instance of a calculation
+                                    - [x] They can then generate several different types of code based on the calculation tempaltes
+                        - [x] User can then store this template for later use
+                              - [x] Set a template name and description to make it easier to find
+                              - [x] Accessed via a collapsible sidebar that stores the template library
+                              - [x] Exportable later via a JSON interface
+                        - [x] The export and import section includes
+                              - [x] Export
+                                    - [x] A copyable JSON text field with the JSON for the current calculation template (not the calculations themselves)
+                                    - [x] Options to download all templates
+                                    - [x]  Options to donload all calculations (the actual calculations themselves from the earlier section)
+                                    - [x] Code Generator
+                                          - [x] Ability to generate code based on calculations
+                                                - [x] A few options
+                                                      - [x] "Normal"; Turn calculations into plain functions with docstrings
+                                                            - [x] Languages
+                                                                  - [x] Python
+                                                                  - [x] Javascript
+                                                                  - [x] Go
+                                                                  - [x] Rust
+                                                      - [x] "Webcomponent"; A javascript webcomponent that includes a similar UI to the "calculations" section; An interactive set of form fields that shows you the calculation template (as a read-only rendered math representation), and then as you type it shows you the result of the caclculation.
+                                                            - [x] UI should be plain form field that reactively updates, no framework, and no CSS, but should be easily styleable
+                              - [x] Import
+                                    - [x] Ability to copy in JSON text to import either a template or calculations for the currently loaded template
+                                          - [x] Need validation for both to avoid code injections, and malformed input
+                                    - [x] Ability to import from a file (for either a template or calculations)
             - [x] Add the sprite editor from retoken  (DONE 2026-08-19 — plan Phase 5; under Images beside the
                   SVG editor, since it owns documents like the other editors)
             - [x] Add a logo generator that implements the Generators and badge modes of the logo generator from retoken
                   (DONE 2026-08-19 — plan Phase 6; Upload and its own SVG-editor tab left out, "Open in SVG editor"
                   hands off to this app's editor instead)
-            - [ ] `SQL playground`; 
-                  - [ ] use retoken's DataTable (filters, CSV, cursor paging) for improved display and features
+            - [x] `SQL playground`;
+                  - [x] use retoken's DataTable (filters, CSV, cursor paging) for improved display and features
+                        (DONE 2026-08-19 - plan Phase 7; both grids, and retoken's count-on-seek and
+                        NULL-cursor paging bugs fixed rather than inherited)
       - [ ] `playgrounds`
             - [ ] Add a configuration playground
                   - [ ] Has 2 modes

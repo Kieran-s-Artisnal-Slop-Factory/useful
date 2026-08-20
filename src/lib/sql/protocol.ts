@@ -5,17 +5,19 @@
  * One protocol for every engine — the SQLite and PGlite workers both speak it,
  * which is why a single `SqlClient` can drive either.
  */
-import type { Row, TableData } from './types';
+import type { ExecResult, ResultColumn, Row, TableData, TableMeta } from './types';
 
-export type { Row, TableData };
+export type { ExecResult, ResultColumn, Row, TableData, TableMeta };
 
 export type SqlRequest =
   | { id: number; type: 'reset' }
   | { id: number; type: 'exec'; sql: string }
+  | { id: number; type: 'execDescribed'; sql: string }
   | { id: number; type: 'query'; sql: string; params: unknown[] }
   | { id: number; type: 'validate'; sql: string }
   | { id: number; type: 'listTables' }
   | { id: number; type: 'tableData'; name: string }
+  | { id: number; type: 'tableMeta'; name: string }
   | { id: number; type: 'dump'; includeData: boolean }
   | { id: number; type: 'serialize'; includeData: boolean }
   | { id: number; type: 'exportJson'; includeData: boolean }

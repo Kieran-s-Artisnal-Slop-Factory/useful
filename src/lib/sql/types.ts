@@ -18,6 +18,24 @@ import type { LanguageSupport } from '@codemirror/language';
 /** One result row, as the engine returns it. */
 export type Row = Record<string, unknown>;
 
+/**
+ * One column of a result set, as the engine describes it.
+ *
+ * `type` is `''` when the engine cannot say — SQLite types values, not
+ * columns, so an expression column has no declared type at all. Consumers
+ * sniff in that case rather than treating '' as a type.
+ */
+export interface ResultColumn {
+  name: string;
+  type: string;
+}
+
+/** A result set with its columns described, so an EMPTY one still has headers. */
+export interface ExecResult {
+  columns: ResultColumn[];
+  rows: Row[];
+}
+
 export interface TableData {
   name: string;
   columns: { name: string; type: string }[];
@@ -31,6 +49,9 @@ export interface TableData {
    */
   keys: string[];
 }
+
+/** A table's shape without its rows — what the browser needs to draw headers. */
+export type TableMeta = Omit<TableData, 'rows'>;
 
 /**
  * How an engine's binary snapshot looks on disk. The playground uses this to
@@ -82,6 +103,14 @@ export interface DatabaseSession {
   reset(): Promise<void>;
   /** Execute one or more statements; resolves with any result rows. */
   exec(sql: string): Promise<Row[]>;
+  /**
+   * `exec`, plus the result set's column names and types.
+   *
+   * Optional so an engine without it degrades to `exec`. It exists because a
+   * query that returns no rows still has columns, and a grid with no headers
+   * reads as a broken query rather than an empty one.
+   */
+  execDescribed?(sql: string): Promise<ExecResult>;
   /** Prepare-check the statements without executing; throws engine errors. */
   validate(sql: string): Promise<void>;
   /**
@@ -92,6 +121,13 @@ export interface DatabaseSession {
   query?(sql: string, params?: unknown[]): Promise<Row[]>;
   listTables(): Promise<string[]>;
   tableData(name: string): Promise<TableData>;
+  /**
+   * `tableData` without the sample rows.
+   *
+   * The browser pages through `query`, so the rows `tableData` carries are
+   * fetched and thrown away on every table switch and after every run.
+   */
+  tableMeta?(name: string): Promise<TableMeta>;
   /** SQL-text snapshot of the current database (schema, optionally data). */
   dump(includeData: boolean): Promise<string>;
   /** Binary database file image, for download — optional per engine. */

@@ -137,6 +137,29 @@ export const TABLES: TableMeta[] = [
     ],
   },
   {
+    name: 'napkin_templates',
+    fieldMerge: false,
+    singleton: false,
+    columns: [
+      { name: 'name', type: 'text', nullable: false, references: null },
+      { name: 'description', type: 'text', nullable: false, references: null },
+      { name: 'formula_latex', type: 'text', nullable: false, references: null },
+      { name: 'formula_json', type: 'json', nullable: true, references: null },
+      { name: 'fields', type: 'json', nullable: false, references: null },
+    ],
+  },
+  {
+    name: 'napkin_calculations',
+    fieldMerge: false,
+    singleton: false,
+    columns: [
+      { name: 'template_id', type: 'text', nullable: false, references: 'napkin_templates' },
+      { name: 'name', type: 'text', nullable: false, references: null },
+      { name: 'values', type: 'json', nullable: false, references: null },
+      { name: 'result', type: 'real', nullable: true, references: null },
+    ],
+  },
+  {
     name: 'sql_playgrounds',
     fieldMerge: false,
     singleton: false,

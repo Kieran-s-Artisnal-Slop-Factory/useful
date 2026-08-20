@@ -149,8 +149,8 @@ and the phases below are written to the answers, not the defaults.
 | 4 ✅ | Secrets generator | — | — | **DONE 2026-08-19.** |
 | 5 ✅ | Sprite editor (port) | — | v9 | **DONE 2026-08-19.** |
 | 6 ✅ | Logo generator (port) | `@dicebear/*`, `jdenticon`, `lucide-static` | — | **DONE 2026-08-19.** |
-| 7 | DataTable + SQL playground | — | — | Adds `src/lib/table/` |
-| 8 | Napkin math | `mathlive`, `@cortex-js/compute-engine` | v10 | Adds `src/lib/codegen/` |
+| 7 ✅ | DataTable + SQL playground | — | — | **DONE 2026-08-19.** Adds `src/lib/table/` |
+| 8 ✅ | Napkin math | `mathlive`, `@cortex-js/compute-engine` | v10 | **DONE 2026-08-19.** Adds `src/lib/codegen/` |
 | 9 | Configuration playground | `yaml`, `@codemirror/lang-json`, `@codemirror/lang-yaml` | v11 | Extends `src/lib/codegen/` |
 | 10 | Notebook | `@milkdown/*`, `mermaid`, `katex`, CodeMirror markdown | v12 | Heaviest; most open questions |
 | 11 | Hardening + release | — | — | |
@@ -617,7 +617,7 @@ tab is opened (a payload assertion), and the page writes nothing.
 
 ---
 
-## Phase 7 — DataTable and the SQL playground
+## Phase 7 — DataTable and the SQL playground — DONE (2026-08-19)
 
 **Goal:** replace the playground's plain results table and 50-row table browser
 with retoken's DataTable — filters, sorting, search, CSV, and paging pushed into
@@ -676,9 +676,29 @@ exporting writes nothing to IndexedDB. The existing spec's `sql-results` /
 
 **CHANGELOG:** Features; Other for the shared `src/lib/table/` module.
 
+**Outcome:** `src/lib/table/` (5 modules, 193 ported cases),
+[table-schema.ts](../../../src/lib/sql/table-schema.ts) (8),
+[infer-schema.ts](../../../src/lib/sql/infer-schema.ts) (12 new),
+[DataTable.svelte](../../../src/components/DataTable.svelte) and the two filter
+components, both grids wired, `execDescribed` + `tableMeta` in both workers, and
+6 new Playwright cases. Deviations worth recording:
+
+- **`DbViewer.svelte` was not ported.** Its ~90 lines of driving logic moved into
+  `SqlPlaygroundApp` instead; its wrapper duplicated four elements whose test ids
+  the existing spec asserts on.
+- **The existing spec needed one edit, not zero.** The test-id scheme held, but a
+  Postgres boolean now renders as a `✓ Yes` pill rather than the raw `true` the
+  old markup printed — a display improvement the plan had not accounted for.
+- **The `toNumber` fix needed a second half.** Correcting the character class
+  makes `'abc'` strip to `''`, and `Number('')` is `0` — so a no-digits guard had
+  to go in, or every non-numeric string would have parsed as zero.
+- **Duplicate result column names still collapse in the row objects.** The scope
+  asked for headers, and headers are fixed; values need positional rows on both
+  engines. Recorded in Known limits rather than glossed.
+
 ---
 
-## Phase 8 — Napkin math
+## Phase 8 — Napkin math — DONE (2026-08-19)
 
 **Goal:** `/tools/napkin-math/` — self-documenting back-of-the-envelope
 calculations. Type a formula, get typed input fields, run named calculations
@@ -793,6 +813,26 @@ route.
 font vendoring), `docs/user/napkin-math.md`.
 
 **CHANGELOG:** Features; note DB v10 and the new dependencies with their sizes.
+
+**Outcome:** built as scoped, with four of this section's design claims
+corrected by probing the real libraries. All are written up in
+[tools/napkin-math.md](../tools/napkin-math.md) under "What we measured":
+
+- **`expr.compile()` does not exist** in Compute Engine 0.115, so Q11's premise
+  is moot — the hand-written emitter is the only option, not the better one.
+- **"Evaluate with a pushed scope" leaks.** `ce.parse()` declares unknowns
+  globally, so `assign` inside a pushed scope survives `popScope` and the next
+  calculation returns the previous answer. `expr.subs()` instead.
+- **A numeric result can be complex.** `sqrt(-4)` reports a real part of 0, so
+  the four-predicate check is what stops the page showing a confident zero.
+- **MathLive's built-in inline shortcuts corrupt variable names** — `sqrtish`
+  becomes a square root, `count*rate` swallows the operator. Neither reproduces
+  the failure the plan predicted, and the fix is to clear the whole table. This
+  could only be found with a real keystroke stream.
+
+Also corrected: the emitted code needs `_round` and `_mod` helpers, because the
+engine rounds half away from zero and floors its modulo while Python,
+JavaScript, Go and Rust each disagree in a different place.
 
 ---
 

@@ -1,16 +1,19 @@
 # Service worker & offline
 
-One hand-written service worker ([sw.js](../../public/sw.js)) makes the static build work with no network: it precaches the app shell at install, crawls the fingerprinted `_astro/` asset graph in the background, and serves navigations network-first and everything else stale-while-revalidate. Heavy optional freight (the background remover's model, the SQL engines) is never precached; [offline.ts](../../src/lib/offline.ts) lists those as explicit "bundles" that a user downloads on purpose from the post-install dialog or Settings → Offline.
+One hand-written service worker ([sw.js](../../public/sw.js)) makes the static build work with no network: it precaches the app shell at install, crawls the fingerprinted `_astro/` asset graph in the background, and serves navigations network-first and everything else stale-while-revalidate. Heavy optional freight (the background remover's model, the SQL engines, the maths fonts) is never precached; [offline.ts](../../src/lib/offline.ts) lists those as explicit "bundles" that a user downloads on purpose from the post-install dialog or Settings → Offline.
 
-_Describes the code as of v0.2.0 (unreleased; schema v7) — verify against source when in doubt._
+_Describes the code as of v0.2.0 (unreleased; schema v10) — verify against source when in doubt._
 
 ## Three tiers
 
 | Tier | What | Where it lives | Filled by | Purged by |
 |---|---|---|---|---|
-| Precache | `SHELL`: every page route + `favicon.svg`, `favicon-maskable.svg`, `manifest.webmanifest` | Cache `CACHE_NAME` (`useful-cache-v11`) | `precacheShell()` at `install` | `activate` of a worker with a different `CACHE_NAME` |
-| Runtime cache | Every same-origin GET the page makes: `_astro/` JS/CSS/wasm/data chunks, navigated HTML | Same `useful-cache-v11` | The `fetch` handler (stale-while-revalidate) and the background crawl `warmAssetCache()` | Same version bump |
+| Precache | `SHELL`: every page route + `favicon.svg`, `favicon-maskable.svg`, `manifest.webmanifest` | Cache `CACHE_NAME` (`useful-cache-v15`) | `precacheShell()` at `install` | `activate` of a worker with a different `CACHE_NAME` |
+| Runtime cache | Every same-origin GET the page makes: `_astro/` JS/CSS/wasm/data chunks, navigated HTML | Same `useful-cache-v15` | The `fetch` handler (stale-while-revalidate) and the background crawl `warmAssetCache()` | Same version bump |
 | Lazy bundles | Background remover model + ONNX runtime under `models/` and `ort/` | Cache `MODEL_CACHE` (`useful-models-v1`) — deliberately outside `CACHE_PREFIX` | `loadAssets()` in [runtime.ts](../../src/lib/bg/runtime.ts), or the SW's cache-first branch | Never by the SW; only `clearAssets()` (Background remover → "Remove downloaded model") or the user clearing site data |
+| Lazy bundles | The 20 KaTeX faces + their stylesheet under `math/` | Cache `FONT_CACHE` (`useful-fonts-v1`) — also outside `CACHE_PREFIX` | The `math-fonts` bundle in [offline.ts](../../src/lib/offline.ts), or the SW's cache-first branch | Never by the SW; only the user clearing site data |
+
+The maths fonts need their own bucket for the same reason the model does, plus one more: they are stable, unfingerprinted files under `public/`, and the crawl below can only find fingerprinted `_astro/` assets — it does not parse CSS `url()`. Being outside `CACHE_PREFIX` also means a `CACHE_NAME` bump does not evict 263 KB of bytes that never change.
 
 The SQL engines are lazy too, but they are ordinary fingerprinted `_astro/` assets (`sqlite3-*.wasm`, `pglite-*.wasm`, `pglite-*.data`, `initdb-*.wasm`, their worker chunks) so they land in the runtime cache, not a bucket of their own. A `CACHE_NAME` bump therefore drops them and they are fetched again on next use.
 
@@ -18,13 +21,14 @@ The SQL engines are lazy too, but they are ordinary fingerprinted `_astro/` asse
 
 | File | Role |
 |---|---|
-| [public/sw.js](../../public/sw.js) | The worker: `CACHE_NAME`, `CACHE_PREFIX`, `SHELL`, `MODEL_CACHE`, `ML_PREFIXES`, `fetchWithRetry`, `precacheShell`, `warmAssetCache`, `warmOnce`, the `install` / `activate` / `message` / `fetch` listeners |
+| [public/sw.js](../../public/sw.js) | The worker: `CACHE_NAME`, `CACHE_PREFIX`, `SHELL`, `MODEL_CACHE`, `ML_PREFIXES`, `FONT_CACHE`, `FONT_PREFIXES`, `fetchWithRetry`, `precacheShell`, `warmAssetCache`, `warmOnce`, the `install` / `activate` / `message` / `fetch` listeners |
 | [src/layouts/Layout.astro](../../src/layouts/Layout.astro) | Registers `${base}/sw.js` in production builds only; in dev unregisters any worker and deletes `useful-cache-*`. Mounts `OfflineSetup` with `transition:persist` |
 | [src/lib/offline.ts](../../src/lib/offline.ts) | `OfflineBundle`, `OFFLINE_BUNDLES`, `OFFLINE_TOTAL_BYTES`, `downloadAll`, `warmAppAssets` (the `useful-warm` message client), `isInstalled` |
 | [src/components/chrome/OfflineSetup.svelte](../../src/components/chrome/OfflineSetup.svelte) | Post-install "Make it work offline?" dialog; writes `offline_prompt_seen` |
 | [src/components/chrome/OfflinePanel.svelte](../../src/components/chrome/OfflinePanel.svelte) | The bundle picker + progress list, shared by the dialog and Settings → Offline; writes `offline_ready_at` |
 | [src/components/apps/SettingsApp.svelte](../../src/components/apps/SettingsApp.svelte) | Hosts `<OfflinePanel />` in the "Offline" card |
 | [src/lib/bg/runtime.ts](../../src/lib/bg/runtime.ts) | `MODEL_CACHE`, `BG_ASSETS`, `BG_TOTAL_BYTES`, `assetsReady`, `clearAssets`, `loadAssets` — the model bucket's writer |
+| [src/lib/math/fonts.ts](../../src/lib/math/fonts.ts) | `FONT_CACHE`, `MATH_ASSETS`, `MATH_FONT_BYTES`, `fontsReady`, `ensureFontCss` — the font bucket's writer |
 | [src/lib/sql/engines.ts](../../src/lib/sql/engines.ts) | The `engines` list the engine bundles boot; wasm arrives through `new Worker(new URL('./worker.ts', import.meta.url))` in [adapter.ts](../../src/lib/sql/adapter.ts) and the same call on `'./pglite-worker.ts'` in [pglite-adapter.ts](../../src/lib/sql/pglite-adapter.ts) |
 | [public/manifest.webmanifest](../../public/manifest.webmanifest) | Installability: `display: standalone`, relative `id` / `start_url` / `scope` (`./`), SVG `any` + `maskable` icons |
 | [src/lib/paths.ts](../../src/lib/paths.ts) | `href()` — base-aware paths for the registration URL, model URLs, links |

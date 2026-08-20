@@ -162,8 +162,9 @@ The 15.8 MB of ML assets are deliberately **excluded** from the service worker's
 | `utif2`, `exifr`, `piexifjs` | `await import()` at the point of use (TIFF decode, EXIF read, JPEG EXIF write) |
 | `@dicebear/core` + `@dicebear/collection`, `jdenticon`, `lucide-static` | Memoized `import()` per engine in [logo.ts](../../src/lib/gen/logo.ts), each memo cleared on failure so a flaky fetch retries. Only DiceBear loads with the logo page, because its avatar is that page's default view |
 | `wordlist.json` | `import()` from the passphrase generator only |
+| `mathlive`, `@cortex-js/compute-engine` | `await import()` inside [MathField.svelte](../../src/components/MathField.svelte)'s mount, so only the napkin-math page pays. The KaTeX faces are vendored to `public/math/` and arrive through a stylesheet, on demand — two faces for a typical formula, not twenty |
 
-**Payload discipline is tested, not trusted.** [payload.spec.ts](../../tests/local/payload.spec.ts) watches real network requests and fails if any `HEAVY` matcher (ONNX runtime, model, SQLite, PGlite, cities, CodeMirror, the EFF word list, DiceBear, Lucide, Jdenticon) is hit by a page that should not need it, or if the precache contains anything under `/models/` or `/ort/`. **A new heavy dependency needs a new matcher there** — a lazy import is one careless refactor from becoming eager.
+**Payload discipline is tested, not trusted.** [payload.spec.ts](../../tests/local/payload.spec.ts) watches real network requests and fails if any `HEAVY` matcher (ONNX runtime, model, SQLite, PGlite, cities, CodeMirror, the EFF word list, DiceBear, Lucide, Jdenticon, MathLive, the Compute Engine, the KaTeX faces) is hit by a page that should not need it, or if the precache contains anything under `/models/` or `/ort/`. **A new heavy dependency needs a new matcher there** — a lazy import is one careless refactor from becoming eager.
 
 **Versions are pinned to ranges proven together** (Astro 7 / Svelte 5 / idb 8); a major bump of any of them may break generated-code assumptions. `engines.node` is `>=22.12.0`.
 
