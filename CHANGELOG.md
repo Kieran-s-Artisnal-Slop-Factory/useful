@@ -218,6 +218,20 @@
   Go and JavaScript. Plus one that would not have compiled at all: **Rust
   cannot compare an `f64` with an integer literal**, so its guards now use
   `0.0`.
+- **The generated web component now shows a typeset formula**, not
+  `$\(costPerMonth*12\)*years$` as text. The markup comes from
+  `convertLatexToMarkup` in MathLive's main entry — already loaded on that page,
+  so it costs nothing extra — and travels with MathLive's layout rules and the
+  handful of KaTeX faces the formula actually needs, embedded as `data:` URIs
+  inside the component's shadow root. Which faces those are is measured by
+  rendering into a throwaway shadow root and reading back the computed
+  `font-family`, rather than mapped from class names that would go stale. A
+  plain-name formula is one face and about 48 KB; a fraction with single-letter
+  variables is two and about 71 KB. A test loads the result on a page that has
+  never seen MathLive and asserts it renders and makes no network requests.
+- The generated web component **no longer says "x is required" before anyone has
+  typed anything** — an empty required box means "no answer yet", the same rule
+  the page itself now follows.
 - The generated web component's header shows a **worked styling example**
   instead of naming its parts in prose, and a field description becomes the
   `title` on its input.

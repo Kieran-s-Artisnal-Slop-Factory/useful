@@ -225,6 +225,78 @@ test.describe('napkin math', () => {
     expect(errors).toEqual([]);
   });
 
+  test('the generated component carries a typeset formula and its fonts', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/napkin-math/');
+    await expect(page.getByTestId('napkin-no-fields')).toBeVisible({ timeout: 30_000 });
+    await page.getByTestId('napkin-name').fill('Total cost');
+    await typeFormula(page, 'costPerMonth*12*years');
+
+    await page.getByTestId('napkin-language').selectOption('webcomponent');
+    await page.getByTestId('napkin-generate').click();
+    await expect(page.getByTestId('napkin-code')).toContainText('customElements.define', {
+      timeout: 30_000,
+    });
+    const source = await page.getByTestId('napkin-code').innerText();
+
+    // Typeset markup, not the text fallback.
+    expect(source).toContain('ML__latex');
+    expect(source).not.toContain('$\\left(');
+    // Only the faces this formula needs, embedded as data — a formula in plain
+    // names wants one family, not all twenty.
+    const faces = source.match(/@font-face/g) ?? [];
+    expect(faces.length).toBeGreaterThan(0);
+    expect(faces.length).toBeLessThan(4);
+    expect(source).toContain('data:font/woff2;base64,');
+    // MathLive's own @font-face block points at `url(fonts/…)`, which would
+    // resolve against whatever page this lands on and 404 there.
+    expect(source).not.toContain('url(fonts/');
+    await expect(page.getByTestId('napkin-generate-note')).toContainText('fonts inlined');
+
+    // Now prove it on a page that has never loaded MathLive: no ambient KaTeX
+    // faces, no static stylesheet, nothing to lean on.
+    const failed: string[] = [];
+    page.on('requestfailed', (r) => failed.push(r.url()));
+    await page.goto('/tools/photography/');
+    await expect(page.getByTestId('ph-focal')).toBeVisible();
+
+    const rendered = await page.evaluate(async (code) => {
+      const hadKatex = [...document.fonts].some((f) => f.family.includes('KaTeX'));
+      const url = URL.createObjectURL(new Blob([code], { type: 'text/javascript' }));
+      await import(/* @vite-ignore */ url);
+      URL.revokeObjectURL(url);
+      const element = document.createElement('total-cost');
+      document.body.append(element);
+      await new Promise((r) => setTimeout(r, 900));
+      const formula = element.shadowRoot!.querySelector('[part="formula"]') as HTMLElement;
+      const families = [
+        ...new Set(
+          [...formula.querySelectorAll<HTMLElement>('span')].map((s) =>
+            getComputedStyle(s).fontFamily.split(',')[0]!.trim()
+          )
+        ),
+      ].filter((f) => f.startsWith('KaTeX_'));
+      const out = {
+        hadKatex,
+        families,
+        allLoaded: families.every((f) => document.fonts.check(`16px ${f}`)),
+        // A typeset formula is many positioned spans, not one text node.
+        spans: formula.querySelectorAll('span').length,
+        error: (element.shadowRoot!.querySelector('[part="error"]') as HTMLElement).textContent,
+      };
+      element.remove();
+      return out;
+    }, source);
+
+    expect(rendered.hadKatex, 'the host page already had KaTeX fonts').toBe(false);
+    expect(rendered.families.length).toBeGreaterThan(0);
+    expect(rendered.allLoaded, 'an embedded face did not load').toBe(true);
+    expect(rendered.spans).toBeGreaterThan(5);
+    // An untouched required input is not a mistake, so it says nothing.
+    expect(rendered.error).toBe('');
+    expect(failed, 'the component asked the network for something').toEqual([]);
+  });
+
   test('the generated Python carries the guards the page enforces', async ({ app }) => {
     const { page } = app;
     await app.goto('/tools/napkin-math/');

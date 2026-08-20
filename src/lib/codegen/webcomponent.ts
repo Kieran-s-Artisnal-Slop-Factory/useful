@@ -15,6 +15,7 @@ import { emitExpression } from './expression';
 import { identifierMap } from './identifiers';
 import { latexToMarkdownMath } from './latex';
 import type { CodeTemplate } from './functions';
+import type { RenderedFormula } from './formulaMarkup';
 
 /** Escape for an HTML text node or a double-quoted attribute value. */
 const escapeHtml = (text: string): string =>
@@ -48,13 +49,16 @@ const className = (tag: string): string =>
 /**
  * Emit the component.
  *
- * `formulaMarkup` is optional pre-rendered HTML for the formula — MathLive's
- * SSR entry can produce it, and passing it means the generated file shows a
- * properly typeset formula while still shipping no maths JavaScript. Without
- * it the component shows the LaTeX as plain text, which is honest and costs
- * nothing.
+ * `formula` is the typeset version from
+ * [formulaMarkup.ts](./formulaMarkup.ts): static HTML plus the layout rules
+ * and the handful of KaTeX faces that markup actually needs, all inlined. Pass
+ * it and the component shows the same formula the app does, while still
+ * shipping no maths JavaScript — the markup is positioned entirely by CSS.
+ *
+ * Without it the component falls back to the readable text form. That is worse
+ * to look at and never broken, which is the right way round.
  */
-export function generateWebComponent(template: CodeTemplate, formulaMarkup?: string): string {
+export function generateWebComponent(template: CodeTemplate, formula?: RenderedFormula): string {
   const symbols = template.fields.map((f) => f.name);
   const names = identifierMap(symbols, 'javascript');
   const { expression, helpers } = emitExpression(template.formulaJson, 'javascript', names);
@@ -111,19 +115,28 @@ export function generateWebComponent(template: CodeTemplate, formulaMarkup?: str
     )
     .join('\n');
 
-  // Without pre-rendered markup the formula is shown as text, so it should be
+  // Without the typeset version the formula is shown as text, so it should be
   // the readable form rather than the renderer's `\mathrm{}` and `\left(`.
-  const formulaBlock = formulaMarkup
-    ? `      <div part="formula">${formulaMarkup}</div>`
+  const formulaBlock = formula
+    ? `      <div part="formula">${formula.markup}</div>`
     : `      <div part="formula">${escapeHtml(latexToMarkdownMath(template.formulaLatex))}</div>`;
+
+  // The maths CSS goes inside the shadow root, which scopes it both ways: the
+  // host page cannot break the formula, and the formula cannot leak rules into
+  // the host page.
+  const formulaCss = formula ? `\n${formula.css}\n` : '';
 
   const checks = fieldData
     .map((f) => {
       const conditions: string[] = [];
-      if (f.required) conditions.push(`if (!Number.isFinite(v)) return ${JSON.stringify(`${f.label} is required`)};`);
-      if (f.integer) conditions.push(`if (!Number.isInteger(v)) return ${JSON.stringify(`${f.label} must be a whole number`)};`);
-      if (f.min !== null) conditions.push(`if (v < 0) return ${JSON.stringify(`${f.label} cannot be negative`)};`);
-      if (f.noZero) conditions.push(`if (v === 0) return ${JSON.stringify(`${f.label} cannot be zero`)};`);
+      if (f.integer)
+        conditions.push(
+          `if (!Number.isInteger(v)) return ${JSON.stringify(`${f.label} must be a whole number`)};`
+        );
+      if (f.min !== null)
+        conditions.push(`if (v < 0) return ${JSON.stringify(`${f.label} cannot be negative`)};`);
+      if (f.noZero)
+        conditions.push(`if (v === 0) return ${JSON.stringify(`${f.label} cannot be zero`)};`);
       if (conditions.length === 0) return null;
       return `    if (key === ${JSON.stringify(f.key)}) {\n      ${conditions.join('\n      ')}\n    }`;
     })
@@ -168,7 +181,16 @@ ${helperSource.join('\n')}const FIELDS = ${JSON.stringify(
     2
   )};
 
-/** Why this value is unacceptable, or null. Mirrors the tool's own rules. */
+/** Names of the inputs that must have a value before there is an answer. */
+const REQUIRED = ${JSON.stringify(fieldData.filter((f) => f.required).map((f) => f.key))};
+
+/**
+ * Why this value is unacceptable, or null. Mirrors the tool's own rules.
+ *
+ * Only ever called for a field someone has actually filled in — an empty
+ * required box means "no answer yet", not "you got it wrong", and saying so on
+ * first paint is noise nobody asked for.
+ */
 function problemWith(key, v) {
 ${checks || '    return null;'}
   return null;
@@ -183,7 +205,7 @@ class ${cls} extends HTMLElement {
         :host { display: block; }
         label { display: block; }
         [part="error"]:empty { display: none; }
-      </style>
+${formulaCss}      </style>
 ${formulaBlock}
 ${rows}
       <output part="result"></output>
@@ -204,12 +226,20 @@ ${rows}
       values[input.dataset.key] = text === '' ? NaN : Number(text);
     }
     for (const field of FIELDS) {
-      const problem = problemWith(field.key, values[field.key]);
+      const value = values[field.key];
+      if (!Number.isFinite(value)) continue;
+      const problem = problemWith(field.key, value);
       if (problem) {
         this._error.textContent = problem;
         this._result.textContent = '';
         return;
       }
+    }
+    // Nothing is wrong, but nothing is answerable either.
+    if (REQUIRED.some((key) => !Number.isFinite(values[key]))) {
+      this._error.textContent = '';
+      this._result.textContent = '';
+      return;
     }
     ${fieldData.map((f) => `const ${f.id} = values[${JSON.stringify(f.key)}];`).join('\n    ')}
     const answer = ${expression};

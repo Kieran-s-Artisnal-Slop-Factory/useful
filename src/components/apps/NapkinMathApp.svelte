@@ -54,6 +54,7 @@
   } from '../../lib/napkin/transfer';
   import { EXTENSIONS, generateFunction, LANGUAGE_LABELS, UnsupportedOperator, type Language } from '../../lib/codegen/functions';
   import { generateWebComponent } from '../../lib/codegen/webcomponent';
+  import { renderFormula } from '../../lib/codegen/formulaMarkup';
 
   type Target = Language | 'webcomponent';
 
@@ -96,6 +97,8 @@
   let target = $state<Target>('python');
   let generated = $state('');
   let generateError = $state<string | null>(null);
+  /** What the last generate did that is worth saying out loud. */
+  let generatedNote = $state<string | null>(null);
   let fileInput: HTMLInputElement | undefined = $state();
   let destroyed = false;
   /** Bumped per formula parse; a stale parse must not overwrite a newer one. */
@@ -451,9 +454,10 @@
 
   // ---- code generation -----------------------------------------------------
 
-  function generate() {
+  async function generate() {
     generateError = null;
     generated = '';
+    generatedNote = null;
     if (!formulaJson) {
       generateError = 'Write a formula first.';
       return;
@@ -466,10 +470,17 @@
       fields,
     };
     try {
-      generated =
-        target === 'webcomponent'
-          ? generateWebComponent(template)
-          : generateFunction(template, target);
+      if (target === 'webcomponent') {
+        // The typeset formula, with the layout rules and the few KaTeX faces
+        // it needs inlined, so the component looks like this page does.
+        const rendered = await renderFormula(formulaLatex);
+        generated = generateWebComponent(template, rendered ?? undefined);
+        generatedNote = rendered
+          ? `Includes the typeset formula — ${Math.round(rendered.fontBytes / 1024)} KB of fonts inlined.`
+          : 'The formula is shown as text: it could not be typeset.';
+      } else {
+        generated = generateFunction(template, target);
+      }
     } catch (err) {
       // A named refusal, not a silently wrong function.
       generateError =
@@ -816,6 +827,9 @@
         </div>
         {#if generateError}
           <p class="form-error" data-testid="napkin-generate-error">{generateError}</p>
+        {/if}
+        {#if generatedNote}
+          <p class="muted small" data-testid="napkin-generate-note">{generatedNote}</p>
         {/if}
         {#if generated}
           <CodeBlock code={generated} language={generatedLanguage} testid="napkin-code" />

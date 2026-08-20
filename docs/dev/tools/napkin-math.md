@@ -18,6 +18,7 @@ _Describes the code as of v0.2.0 (unreleased; schema v10) — verify against sou
 | [codegen/identifiers.ts](../../../src/lib/codegen/identifiers.ts) | Symbol → a legal identifier, per language, with collision resolution. |
 | [codegen/webcomponent.ts](../../../src/lib/codegen/webcomponent.ts) | The dependency-free custom element. |
 | [codegen/latex.ts](../../../src/lib/codegen/latex.ts) | The mathfield's LaTeX reduced to readable Markdown maths for a comment. |
+| [codegen/formulaMarkup.ts](../../../src/lib/codegen/formulaMarkup.ts) | The formula as self-contained typeset HTML + CSS + embedded faces, for the web component. |
 | [CodeBlock.svelte](../../../src/components/CodeBlock.svelte) | Read-only source, highlighted by Prism. |
 | [CodeInput.svelte](../../../src/components/CodeInput.svelte) | A textarea with a highlighted underlay, for the import box. |
 | [math/fonts.ts](../../../src/lib/math/fonts.ts) | The vendored KaTeX faces and their offline bundle. |
@@ -158,6 +159,27 @@ One `.js` file, no imports, no external URL, no build step. Every element carrie
 
 A Playwright case **loads the generated file in a real page**, drives its inputs, and asserts it produces the same number the app showed. A golden-file test cannot catch a generated syntax error; this does.
 
+### The formula is typeset, and travels with everything it needs
+
+Showing `$\(costPerMonth*12\)*years$` met the letter of "self-contained" and not the spirit — the app shows a typeset formula, so the thing it hands you should too. Three parts have to travel together, and [formulaMarkup.ts](../../../src/lib/codegen/formulaMarkup.ts) assembles them:
+
+1. **The markup.** `convertLatexToMarkup` is exported from MathLive's **main** entry, which this page has already loaded — so this costs nothing extra. (The `mathlive/ssr` entry would have been another 397 KB for the same function.)
+2. **The layout rules.** `mathlive/static.css`, inlined as a string at build time and placed inside the component's shadow root, which scopes it both ways: a host page cannot break the formula, and the formula cannot leak rules into the host page.
+3. **The faces.** KaTeX markup *positions* glyphs with CSS but *draws* them with the KaTeX fonts, which a host page has none of.
+
+Only the faces the formula actually uses are embedded, as `data:` URIs. Which ones those are is **measured, not guessed**: the markup is rendered into a throwaway shadow root carrying the same layout CSS the component will carry, and every span's computed `font-family` is read back. A table mapping MathLive's class names onto faces would go stale the first time the library renamed one.
+
+The shadow root in that probe is load-bearing. Measuring against the napkin page's ambient styles answers a different question and answers it wrongly: this page has the KaTeX faces registered document-wide, so every span resolves to a KaTeX family whether or not the rules would have travelled. That mistake produced a component that rendered perfectly here and fell back to a serif everywhere else.
+
+MathLive's static CSS carries its own `@font-face` block pointing at `url(fonts/KaTeX_*.woff2)` — relative, so resolved against whatever page the component lands on. It is stripped, or every host would serve a row of 404s and sometimes prefer the broken rules over the embedded ones.
+
+| formula | faces | file |
+| --- | --- | --- |
+| `(costPerMonth·12)·years` | 1 (`KaTeX_Main`) | 48 KB |
+| `x/y + z` | 2 (`KaTeX_Main`, `KaTeX_Math`) | 71 KB |
+
+A Playwright case generates a component, then loads it on `/tools/photography/` — a page that has never seen MathLive — and asserts the host had no KaTeX faces beforehand, that every family the markup resolves to is loaded afterwards, and that the component made **no network requests at all**.
+
 The formula is shown as plain LaTeX text. `generateWebComponent` takes an optional `formulaMarkup` argument and MathLive's SSR entry (`mathlive/ssr`, 397 KB) exports `convertLatexToMarkup`, so pre-rendering it is one call away — but the seam is deliberately left unwired. That markup is KaTeX spans that need MathLive's static stylesheet **and** the twenty faces to look like anything; a host page has neither, so the pre-rendered version would render worse than the plain text it replaced, and shipping the CSS and fonts alongside would end the "one file, no dependencies" promise the component exists for. The argument is there for a caller that does have those assets.
 
 ## Offline
@@ -201,6 +223,4 @@ One detail that is not obvious: the underlay's content ends with an extra newlin
 - **Built-in text shortcuts are off**, which is a real loss: `pi` no longer becomes π as you type. Type `\pi` instead, or use the virtual keyboard. The alternative was letting a variable called `sqrtish` silently corrupt the formula.
 - **`\mathrm{}` on a single letter renames it.** The editor's rule only fires on two or more letters, so this cannot happen by typing — but a formula pasted in through the import box can carry it, and `x_upright` is what the engine will call it.
 - **The generated code is a starting point, not a library.** It has no tests, no packaging, and no float-precision story beyond what the language gives you.
-- **The web component shows its formula as text, not typeset.** See above — the
-  markup would need a stylesheet and 263 KB of fonts the host page does not have.
 - **An imported template's MathJSON is re-derived from its LaTeX**, never trusted, so a hand-edited file whose two halves disagree cannot mislead the generator. The consequence is that importing needs the engine loaded.

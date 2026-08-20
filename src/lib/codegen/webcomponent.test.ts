@@ -63,6 +63,14 @@ describe('generateWebComponent', () => {
     expect(source).toContain('"units cannot be zero"');
   });
 
+  it('waits for a required input rather than calling an empty box a mistake', () => {
+    // The component used to say "revenue is required" on first paint, before
+    // anyone had touched it. An empty required box means "no answer yet".
+    expect(source).not.toContain('is required');
+    expect(source).toContain('const REQUIRED = ["revenue","cost","units"]');
+    expect(source).toContain('if (!Number.isFinite(value)) continue;');
+  });
+
   it('computes with the emitted expression', () => {
     expect(source).toContain('const answer = (revenue - cost) / units;');
   });
@@ -121,9 +129,22 @@ describe('generateWebComponent', () => {
     expect(source).not.toContain('title=""');
   });
 
-  it('drops pre-rendered markup straight in when it is supplied', () => {
-    const withMarkup = generateWebComponent(template, '<span class="ML__latex">x</span>');
+  it('drops the typeset formula and its CSS straight in when supplied', () => {
+    const withMarkup = generateWebComponent(template, {
+      markup: '<span class="ML__latex">x</span>',
+      css: '.ML__latex{font-family:KaTeX_Main}',
+      fontBytes: 1234,
+    });
     expect(withMarkup).toContain('<span class="ML__latex">x</span>');
+    // The CSS goes inside the shadow root, which scopes it both ways.
+    expect(withMarkup).toContain('.ML__latex{font-family:KaTeX_Main}');
+    // Anchor on the shadow root's own template — the header comment shows a
+    // <style> example of its own, which is not the one under test.
+    const shadow = withMarkup.slice(withMarkup.indexOf('root.innerHTML'));
+    const styleBlock = shadow.slice(shadow.indexOf('<style>'), shadow.indexOf('</style>'));
+    expect(styleBlock).toContain('KaTeX_Main');
+    // And the text fallback is gone when there is real markup.
+    expect(withMarkup).not.toContain('$\frac{revenue - cost}{units}$');
   });
 
   it('includes a helper only when the expression calls one', () => {
