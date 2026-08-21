@@ -2,7 +2,7 @@
 
 useful is a website that behaves like an app: your browser can install it to the desktop, dock or home screen, and after the first visit it loads and runs with no network. Pages you have never opened are fetched quietly in the background as you use it, and the heavy optional extras — the background remover's model and the SQL playground's database engines — arrive only when you ask for them.
 
-_Describes the code as of v0.2.0 (unreleased; schema v7) — verify against source when in doubt._
+_Describes the code as of v0.2.0 (2026-08-21; schema v12) — verify against source when in doubt._
 
 ## Installing it
 
@@ -20,17 +20,19 @@ Installing prompts the question once: **Make it work offline?** — when the bro
 | --- | --- | --- |
 | The app itself | — | Every page and code chunk, including tools you have not opened |
 | Background remover model | 15.8 MB | The cut-out model plus the runtime it needs |
+| Maths fonts | 0.3 MB | The twenty faces napkin math and the notebook draw maths with |
 | SQLite engine | 1.2 MB | The SQL playground's SQLite database |
 | Postgres engine | 12 MB | The SQL playground's Postgres database |
 
-About 29 MB with everything ticked. Items run one at a time, in that order, each showing Waiting, Downloading, Done or Failed. A failure names itself and the rest still run. Only when every ticked item finishes does the panel record "Last downloaded" with the date and time. The background remover is the only item that can tell you it is "already downloaded" — the others are stored under names that change with each release, so the honest answer is to run it again, which is harmless.
+About 29 MB with everything ticked. "The app itself" is code only: the two SQL engines arrive with their own items and never ride along in the background, so leaving "Postgres engine" unticked really does mean 12 MB fewer. Items run one at a time, in that order, each showing Waiting, Downloading, Done or Failed. A failure names itself and the rest still run. Only when every ticked item finishes does the panel record "Last downloaded" with the date and time. The background remover is the only item that can tell you it is "already downloaded" — the others are stored under names that change with each release, so the honest answer is to run it again, which is harmless.
 
 ## What works without a network
 
 - Any page you have already opened — always.
 - Any other page, once the background caching has reached it. That happens gradually while you use the app; "The app itself" is the deliberate, immediate version of the same job.
 - The background remover, once its model is downloaded — either here or from the button on the tool's own page.
-- The SQL playground, once the engine you pick has been downloaded. The two engines are separate downloads.
+- The SQL playground, once the engine you pick has been downloaded. The two engines are separate downloads, and the background caching never fetches them on its own.
+- Maths in napkin math and the notebook, once the maths fonts are here — from the "Maths fonts" item, or automatically the first time a page draws a formula.
 - City search in the Timezones tool, once its city list has been fetched (part of "the app itself", or automatically the first time you search for a city).
 
 ## Gotchas

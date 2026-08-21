@@ -28,8 +28,9 @@
   import Card from '../Card.svelte';
   import Explainer from '../Explainer.svelte';
   import MarkdownEditor from '../notebook/MarkdownEditor.svelte';
-  import { downloadText } from '../../lib/exportFile';
+  import { downloadBlob, downloadText } from '../../lib/exportFile';
   import { href } from '../../lib/paths';
+  import { zipBlob, type ZipEntry } from '../../lib/zip';
   import {
     all,
     byIndex,
@@ -52,6 +53,15 @@
   } from '../../lib/notebook/model';
   import { backlinks, findWikiLinks, resolveNote, rewriteWikiLinks } from '../../lib/notebook/wiki';
   import { AssetTooLarge, noteAssetStore, type AssetStore } from '../../lib/notebook/assets';
+  import {
+    addTags,
+    exportFileName,
+    flattenTree,
+    moveTargets,
+    removeTags,
+    reparentForDelete,
+    subtreeIds,
+  } from '../../lib/notebook/bulk';
   import { externalReferences, htmlExport, markdownExport, printDocument } from '../../lib/notebook/export';
   import { renderMarkdown } from '../../lib/markdown';
   import { renderMathIn } from '../../lib/notebook/math';
@@ -59,6 +69,8 @@
   import { collectMathFonts } from '../../lib/notebook/mathFonts';
 
   type Mode = 'wysiwyg' | 'source' | 'preview';
+  type Tab = 'note' | 'bulk';
+  type BulkFormat = 'md' | 'html';
 
   const SAVE_DEBOUNCE_MS = 400;
 
@@ -92,6 +104,19 @@
   let printHtml = $state('');
   let editor: MarkdownEditor | undefined = $state();
   let destroyed = false;
+
+  // ---- bulk ----------------------------------------------------------------
+  /** Note (the editor) or Bulk (select many, act once). The editor stays
+   * mounted behind the Bulk panel so switching costs nothing and autosave
+   * is undisturbed. */
+  let tab = $state<Tab>('note');
+  let selected = $state<ReadonlySet<string>>(new Set());
+  let bulkFilter = $state('');
+  let bulkTagsText = $state('');
+  let bulkParent = $state('');
+  let bulkFormat = $state<BulkFormat>('md');
+  let bulkBusy = $state(false);
+  let bulkNote = $state<string | null>(null);
 
   // ---- autosave ------------------------------------------------------------
   let saveState = $state<'saved' | 'saving' | 'error' | null>(null);
@@ -134,6 +159,22 @@
       .sort((a, b) => displayTitle(a).localeCompare(displayTitle(b)));
   });
   const fileStem = $derived((title.trim() || 'note').replace(/[^a-z0-9._-]+/gi, '-'));
+
+  /** The Bulk checklist: the tree in sidebar order, narrowed by the filter. */
+  const bulkRows = $derived.by(() => {
+    const rows = flattenTree(tree);
+    const q = bulkFilter.trim().toLowerCase();
+    if (!q) return rows;
+    return rows.filter(
+      (r) =>
+        displayTitle(r.note).toLowerCase().includes(q) ||
+        r.note.tags.some((t) => t.toLowerCase().includes(q))
+    );
+  });
+  /** Selected notes that still exist, in tree order. */
+  const selectedNotes = $derived(flattenTree(tree).map((r) => r.note).filter((n) => selected.has(n.id)));
+  const selectedCount = $derived(selectedNotes.length);
+  const bulkTargets = $derived(moveTargets(notes, selected));
 
   function flash(text: string) {
     feedback = text;
@@ -222,11 +263,14 @@
     saveTimer = setTimeout(() => void doSave(), SAVE_DEBOUNCE_MS);
   }
 
-  function flushSave() {
-    if (saveTimer === undefined) return;
+  /** Write a pending autosave now. Resolves when the row is written, so a
+   * caller about to patch the same row can wait for it (the bulk actions do);
+   * everyone else may ignore the promise. */
+  function flushSave(): Promise<void> {
+    if (saveTimer === undefined) return Promise.resolve();
     clearTimeout(saveTimer);
     saveTimer = undefined;
-    void doSave();
+    return doSave();
   }
 
   /**
@@ -360,13 +404,13 @@
 
   // ---- export --------------------------------------------------------------
 
-  /** Every asset ref in the body, mapped to the data URL the store holds. */
-  function assetDataUrls(): Map<string, string> {
+  /** Every asset ref in `md`, mapped to the data URL `store` holds. */
+  function assetDataUrls(md = body, store: AssetStore | null = assetStore): Map<string, string> {
     const map = new Map<string, string>();
-    if (!assetStore?.resolve) return map;
-    for (const match of body.matchAll(/asset:[A-Za-z0-9-]+/g)) {
+    if (!store?.resolve) return map;
+    for (const match of md.matchAll(/asset:[A-Za-z0-9-]+/g)) {
       const ref = match[0];
-      const url = assetStore.resolve(ref);
+      const url = store.resolve(ref);
       if (url) map.set(ref, url);
     }
     return map;
@@ -378,16 +422,19 @@
   }
 
   /**
-   * Render the note the way the preview does — wiki links, footnotes, maths
+   * Render a note the way the preview does — wiki links, footnotes, maths
    * typeset, diagrams drawn — into an attached off-screen container, so the
-   * maths faces can be measured, then lift the HTML out.
+   * maths faces can be measured, then lift the HTML out. Defaults to the
+   * open note; the bulk export passes each note in turn.
    */
-  async function renderForExport(): Promise<{ html: string; fonts: Awaited<ReturnType<typeof collectMathFonts>>; css: string }> {
+  async function renderForExport(
+    md = body,
+    assets = assetDataUrls()
+  ): Promise<{ html: string; fonts: Awaited<ReturnType<typeof collectMathFonts>>; css: string }> {
     const host = document.createElement('div');
     host.className = 'prose';
     host.style.cssText = 'position:absolute;left:-99999px;top:0;width:60rem;';
-    const assets = assetDataUrls();
-    host.innerHTML = renderMarkdown(body, {
+    host.innerHTML = renderMarkdown(md, {
       wikiLinks: { href: wikiHref, exists: wikiExists },
       resolveImage: (src) => assets.get(src),
     });
@@ -445,6 +492,204 @@
     } finally {
       setTimeout(() => (printHtml = ''), 1000);
     }
+  }
+
+  // ---- bulk operations -----------------------------------------------------
+  //
+  // Every action below writes one patch per changed row and nothing for rows
+  // that would not change, flushes the open note's autosave first (so the
+  // row it patches is current) and, when the open note is among the
+  // selection, updates the editable fields too — otherwise the next autosave
+  // would write the old tags or parent straight back.
+
+  function setTab(next: Tab) {
+    tab = next;
+    bulkNote = null;
+  }
+
+  function toggleSelected(id: string) {
+    const next = new Set(selected);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    selected = next;
+  }
+
+  /** Select a note and everything nested inside it. */
+  function selectSubtree(id: string) {
+    selected = new Set([...selected, ...subtreeIds(tree, id)]);
+  }
+
+  function selectAllVisible() {
+    selected = new Set([...selected, ...bulkRows.map((r) => r.note.id)]);
+  }
+
+  function selectNone() {
+    selected = new Set();
+  }
+
+  const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
+
+  /** One .zip of the selected notes, each its own Markdown or HTML file. */
+  async function bulkExport() {
+    if (selectedCount === 0 || bulkBusy) return;
+    await flushSave();
+    bulkBusy = true;
+    bulkNote = null;
+    try {
+      const taken = new Set<string>();
+      const entries: ZipEntry[] = [];
+      let external = 0;
+      for (const note of selectedNotes) {
+        // The open note's snapshot may be newer than its row.
+        const isOpen = note.id === currentId;
+        const noteTitle = isOpen ? title : note.title;
+        const md = isOpen ? body : note.body_md;
+        let store: AssetStore;
+        if (isOpen && assetStore) {
+          store = assetStore;
+        } else {
+          const primed = noteAssetStore(note.id);
+          await primed.prime();
+          store = primed;
+        }
+        const assets = assetDataUrls(md, store);
+        const name = exportFileName(noteTitle, bulkFormat, taken);
+        if (bulkFormat === 'md') {
+          entries.push({
+            name,
+            data: markdownExport({ title: noteTitle, body_md: md }, { assets, inlineAssets: true }),
+          });
+        } else {
+          const rendered = await renderForExport(md, assets);
+          const doc = htmlExport({
+            title: noteTitle.trim() || 'Untitled',
+            bodyHtml: rendered.html,
+            extraCss: rendered.css ? [rendered.css] : [],
+            fonts: rendered.fonts,
+          });
+          external += externalReferences(doc).length;
+          entries.push({ name, data: doc });
+        }
+      }
+      const stamp = new Date().toISOString().slice(0, 10);
+      downloadBlob(zipBlob(entries), `notes-${stamp}.zip`);
+      bulkNote =
+        `Exported ${plural(entries.length, 'note')} as ${bulkFormat === 'md' ? 'Markdown' : 'HTML'}.` +
+        (external > 0 ? ` The files reference ${plural(external, 'external URL')} (links you wrote); everything else is inlined.` : '');
+    } catch (err) {
+      bulkNote = err instanceof Error ? err.message : 'The export did not build.';
+    } finally {
+      bulkBusy = false;
+    }
+  }
+
+  async function bulkTags(action: 'add' | 'remove') {
+    const change = parseTags(bulkTagsText);
+    if (selectedCount === 0 || change.length === 0 || bulkBusy) return;
+    await flushSave();
+    bulkBusy = true;
+    bulkNote = null;
+    try {
+      let changed = 0;
+      for (const note of selectedNotes) {
+        const before = note.id === currentId ? parseTags(tagsText) : note.tags;
+        const after = action === 'add' ? addTags(before, change) : removeTags(before, change);
+        if (after.length === before.length && after.every((t, i) => t === before[i])) continue;
+        const row = await patch<Note>('notes', note.id, { tags: after });
+        if (!row) continue;
+        changed++;
+        if (note.id === currentId) tagsText = after.join(', ');
+      }
+      await refresh();
+      bulkNote = `${action === 'add' ? 'Added' : 'Removed'} ${plural(change.length, 'tag')} on ${plural(changed, 'note')}.`;
+    } finally {
+      bulkBusy = false;
+    }
+  }
+
+  /** Move the selection under one parent (or to the top level). */
+  async function bulkMove() {
+    if (selectedCount === 0 || bulkBusy) return;
+    const target = bulkParent === '' ? null : bulkParent;
+    // The option list already excludes the selection and its descendants; a
+    // stale choice (the target was just deleted) is refused, not obeyed.
+    if (target && !bulkTargets.some((n) => n.id === target)) {
+      bulkNote = 'That destination is no longer available.';
+      return;
+    }
+    await flushSave();
+    bulkBusy = true;
+    bulkNote = null;
+    try {
+      let moved = 0;
+      for (const note of selectedNotes) {
+        const before = note.id === currentId ? parentId : note.parent_id;
+        if (before === target) continue;
+        const row = await patch<Note>('notes', note.id, { parent_id: target });
+        if (!row) continue;
+        moved++;
+        if (note.id === currentId) parentId = target;
+      }
+      if (target) collapsed = new Set([...collapsed].filter((id) => id !== target));
+      await refresh();
+      const where = target ? `under “${displayTitle(notes.find((n) => n.id === target) ?? { title: '' })}”` : 'to the top level';
+      bulkNote = `Moved ${plural(moved, 'note')} ${where}.`;
+    } finally {
+      bulkBusy = false;
+    }
+  }
+
+  /**
+   * Delete the selection. Nested notes that are not themselves selected move
+   * up to their nearest surviving ancestor — never cascaded — and each deleted
+   * note's images go with it.
+   */
+  async function bulkDelete() {
+    if (selectedCount === 0 || bulkBusy) return;
+    const ids = new Set(selectedNotes.map((n) => n.id));
+    const moves = reparentForDelete(notes, ids);
+    const prompt =
+      moves.size > 0
+        ? `Delete ${plural(ids.size, 'note')}? ${plural(moves.size, 'nested note')} inside them move up a level.`
+        : `Delete ${plural(ids.size, 'note')}?`;
+    if (!confirm(prompt)) return;
+    bulkBusy = true;
+    bulkNote = null;
+    try {
+      if (currentId && ids.has(currentId)) {
+        clearTimeout(saveTimer);
+        saveTimer = undefined;
+        currentId = null;
+        assetStore = null;
+      } else {
+        await flushSave();
+      }
+      for (const [id, parent] of moves) {
+        await patch<Note>('notes', id, { parent_id: parent });
+        // The open note's snapshot must follow, or its next autosave would
+        // write the deleted parent straight back.
+        if (id === currentId) parentId = parent;
+      }
+      for (const id of ids) {
+        const assets = await byIndex<NoteAsset>('note_assets', 'note_id', id);
+        if (assets.length > 0) await softDeleteMany('note_assets', assets.map((a) => a.id));
+      }
+      await softDeleteMany('notes', [...ids]);
+      await refresh();
+      selected = new Set();
+      bulkNote = `Deleted ${plural(ids.size, 'note')}.`;
+    } finally {
+      bulkBusy = false;
+    }
+  }
+
+  /** Arrow keys move between the two tabs, as a tablist is expected to. */
+  function onTabKey(event: KeyboardEvent) {
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight' && event.key !== 'Home' && event.key !== 'End') return;
+    event.preventDefault();
+    const next: Tab = event.key === 'Home' ? 'note' : event.key === 'End' ? 'bulk' : tab === 'note' ? 'bulk' : 'note';
+    setTab(next);
+    (document.getElementById(`notebook-tab-${next}`) as HTMLElement | null)?.focus();
   }
 
   // ---- lifecycle -----------------------------------------------------------
@@ -599,6 +844,50 @@
   </aside>
 
   <div class="stack main">
+    <div class="tabs" role="tablist" aria-label="Notebook views" data-testid="notebook-tabs">
+      <button
+        type="button"
+        role="tab"
+        id="notebook-tab-note"
+        class="tab"
+        class:on={tab === 'note'}
+        aria-selected={tab === 'note'}
+        aria-controls="notebook-panel-note"
+        tabindex={tab === 'note' ? 0 : -1}
+        data-testid="notebook-tab-note"
+        onclick={() => setTab('note')}
+        onkeydown={onTabKey}
+      >
+        Note
+      </button>
+      <button
+        type="button"
+        role="tab"
+        id="notebook-tab-bulk"
+        class="tab"
+        class:on={tab === 'bulk'}
+        aria-selected={tab === 'bulk'}
+        aria-controls="notebook-panel-bulk"
+        tabindex={tab === 'bulk' ? 0 : -1}
+        data-testid="notebook-tab-bulk"
+        onclick={() => setTab('bulk')}
+        onkeydown={onTabKey}
+      >
+        Bulk
+        {#if selectedCount > 0}<span class="tab-count" data-testid="notebook-bulk-count">{selectedCount}</span>{/if}
+      </button>
+    </div>
+
+    <!-- The Note panel stays mounted behind Bulk: remounting the editor is
+         the expensive thing on this page, and autosave must not notice a tab. -->
+    <div
+      class="stack"
+      class:panel-hidden={tab !== 'note'}
+      role="tabpanel"
+      id="notebook-panel-note"
+      aria-labelledby="notebook-tab-note"
+      data-testid="notebook-panel-note"
+    >
     {#if missingLink}
       <div class="banner warn" data-testid="notebook-missing-link">
         <span>No note called “{missingLink}”.</span>
@@ -833,6 +1122,205 @@
         title, which is the only thing a page can suggest to that dialog.
       </p>
     </Explainer>
+    </div>
+
+    {#if tab === 'bulk'}
+      <div
+        class="stack"
+        role="tabpanel"
+        id="notebook-panel-bulk"
+        aria-labelledby="notebook-tab-bulk"
+        data-testid="notebook-panel-bulk"
+      >
+        <Card title="Bulk">
+          {#snippet actions()}
+            <span class="muted small" data-testid="notebook-bulk-selected" aria-live="polite">
+              {selectedCount === 0 ? 'Nothing selected' : `${selectedCount} of ${notes.length} selected`}
+            </span>
+          {/snippet}
+          <div class="stack">
+            <p class="muted small">
+              Tick the notes to act on — <em>all nested</em> on a note ticks everything inside it too —
+              then export, tag, move or delete them in one go. Nothing is written until you press an
+              action.
+            </p>
+            <div class="row wrap">
+              <input
+                class="bulk-filter"
+                type="search"
+                data-testid="notebook-bulk-filter"
+                placeholder="Filter by title or tag…"
+                aria-label="Filter the note list"
+                bind:value={bulkFilter}
+              />
+              <button
+                class="btn btn-sm"
+                data-testid="notebook-bulk-select-all"
+                disabled={bulkRows.length === 0}
+                onclick={selectAllVisible}
+              >
+                Select {bulkFilter.trim() ? 'shown' : 'all'} ({bulkRows.length})
+              </button>
+              <button
+                class="btn btn-sm"
+                data-testid="notebook-bulk-select-none"
+                disabled={selectedCount === 0}
+                onclick={selectNone}
+              >
+                Select none
+              </button>
+            </div>
+            {#if notes.length === 0}
+              <p class="muted small" data-testid="notebook-bulk-empty">No notes yet.</p>
+            {:else if bulkRows.length === 0}
+              <p class="muted small" data-testid="notebook-bulk-no-matches">Nothing matches that.</p>
+            {:else}
+              <ul class="bulk-list" data-testid="notebook-bulk-list">
+                {#each bulkRows as row (row.note.id)}
+                  {@const kids = tree.children.get(row.note.id) ?? []}
+                  <li class="bulk-row" style={`--depth:${row.depth}`}>
+                    <label class="bulk-item" class:on={selected.has(row.note.id)}>
+                      <input
+                        type="checkbox"
+                        data-testid="notebook-bulk-check"
+                        data-title={displayTitle(row.note)}
+                        aria-label={`Select ${displayTitle(row.note)}`}
+                        checked={selected.has(row.note.id)}
+                        onchange={() => toggleSelected(row.note.id)}
+                      />
+                      <span class="bulk-title">{displayTitle(row.note)}</span>
+                      {#if row.note.tags.length > 0}
+                        <span class="muted small bulk-tags">{row.note.tags.join(', ')}</span>
+                      {/if}
+                    </label>
+                    {#if kids.length > 0}
+                      <button
+                        class="subtree-btn"
+                        type="button"
+                        data-testid={'notebook-bulk-subtree-' + row.note.id}
+                        title={`Select ${displayTitle(row.note)} and everything inside it`}
+                        aria-label={`Select ${displayTitle(row.note)} and everything inside it`}
+                        onclick={() => selectSubtree(row.note.id)}
+                      >
+                        all nested
+                      </button>
+                    {/if}
+                  </li>
+                {/each}
+              </ul>
+            {/if}
+          </div>
+        </Card>
+
+        <Card title="Actions">
+          <div class="stack">
+            <fieldset class="bulk-action">
+              <legend>Export</legend>
+              <div class="row wrap">
+                <label class="inline" for="notebook-bulk-format">Format</label>
+                <select id="notebook-bulk-format" data-testid="notebook-bulk-format" bind:value={bulkFormat}>
+                  <option value="md">Markdown (.md)</option>
+                  <option value="html">HTML (.html, self-contained)</option>
+                </select>
+                <button
+                  class="btn btn-sm"
+                  data-testid="notebook-bulk-export"
+                  disabled={selectedCount === 0 || bulkBusy}
+                  onclick={bulkExport}
+                >
+                  Export {selectedCount === 0 ? '' : selectedCount} as .zip
+                </button>
+              </div>
+              <p class="muted small">
+                One file per note inside a single .zip, named after its title. Markdown keeps the
+                source with images inlined; HTML is the same self-contained document the single
+                export makes.
+              </p>
+            </fieldset>
+
+            <fieldset class="bulk-action">
+              <legend>Tags</legend>
+              <div class="row wrap">
+                <label class="inline" for="notebook-bulk-tags">Tags</label>
+                <input
+                  id="notebook-bulk-tags"
+                  data-testid="notebook-bulk-tags"
+                  bind:value={bulkTagsText}
+                  placeholder="comma, separated"
+                />
+                <button
+                  class="btn btn-sm"
+                  data-testid="notebook-bulk-tags-add"
+                  disabled={selectedCount === 0 || bulkBusy || parseTags(bulkTagsText).length === 0}
+                  onclick={() => bulkTags('add')}
+                >
+                  Add to {selectedCount === 0 ? 'selected' : selectedCount}
+                </button>
+                <button
+                  class="btn btn-sm"
+                  data-testid="notebook-bulk-tags-remove"
+                  disabled={selectedCount === 0 || bulkBusy || parseTags(bulkTagsText).length === 0}
+                  onclick={() => bulkTags('remove')}
+                >
+                  Remove from {selectedCount === 0 ? 'selected' : selectedCount}
+                </button>
+              </div>
+              <p class="muted small">
+                Adding keeps each note's existing tags and skips ones it already has; removing
+                matches regardless of case.
+              </p>
+            </fieldset>
+
+            <fieldset class="bulk-action">
+              <legend>Move</legend>
+              <div class="row wrap">
+                <label class="inline" for="notebook-bulk-parent">Under</label>
+                <select id="notebook-bulk-parent" data-testid="notebook-bulk-parent" bind:value={bulkParent}>
+                  <option value="">— top level —</option>
+                  {#each bulkTargets as option (option.id)}
+                    <option value={option.id}>{displayTitle(option)}</option>
+                  {/each}
+                </select>
+                <button
+                  class="btn btn-sm"
+                  data-testid="notebook-bulk-move"
+                  disabled={selectedCount === 0 || bulkBusy}
+                  onclick={bulkMove}
+                >
+                  Move {selectedCount === 0 ? 'selected' : selectedCount}
+                </button>
+              </div>
+              <p class="muted small">
+                Selected notes and notes nested inside them are not offered as destinations — a
+                note cannot be moved inside itself.
+              </p>
+            </fieldset>
+
+            <fieldset class="bulk-action">
+              <legend>Delete</legend>
+              <div class="row wrap">
+                <button
+                  class="btn btn-sm btn-danger"
+                  data-testid="notebook-bulk-delete"
+                  disabled={selectedCount === 0 || bulkBusy}
+                  onclick={bulkDelete}
+                >
+                  Delete {selectedCount === 0 ? 'selected' : selectedCount}
+                </button>
+                <span class="muted small">
+                  Nested notes that are not selected move up a level; images stored with the
+                  deleted notes go with them. You will be asked to confirm.
+                </span>
+              </div>
+            </fieldset>
+
+            {#if bulkNote}
+              <p class="muted small" data-testid="notebook-bulk-note" role="status">{bulkNote}</p>
+            {/if}
+          </div>
+        </Card>
+      </div>
+    {/if}
   </div>
 </div>
 
@@ -1026,6 +1514,140 @@
 
   .inline {
     white-space: nowrap;
+  }
+
+  /* ---- tabs ---- */
+  .tabs {
+    display: flex;
+    gap: var(--space-1);
+    border-bottom: 1.5px solid var(--border-strong-color);
+  }
+
+  .tab {
+    border: 1.5px solid transparent;
+    border-bottom: none;
+    margin-bottom: -1.5px;
+    background: none;
+    color: var(--text-muted-color);
+    font: inherit;
+    font-size: var(--font-size-sm);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-wide);
+    padding: var(--space-2) var(--space-4);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .tab:hover {
+    color: var(--text-color);
+  }
+
+  .tab.on {
+    color: var(--text-color);
+    background: var(--surface-color);
+    border-color: var(--border-strong-color);
+    /* The tab is drawn onto the sheet below: its own edge covers the rule. */
+    border-bottom: 1.5px solid var(--surface-color);
+  }
+
+  .tab-count {
+    font-size: var(--font-size-eyebrow);
+    padding: 0 var(--space-2);
+    border: 1px solid currentColor;
+    line-height: 1.4;
+  }
+
+  .panel-hidden {
+    display: none;
+  }
+
+  /* ---- bulk ---- */
+  .bulk-filter {
+    flex: 1;
+    min-width: 12rem;
+  }
+
+  .bulk-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    max-height: 24rem;
+    overflow-y: auto;
+  }
+
+  .bulk-row {
+    display: flex;
+    align-items: stretch;
+    gap: 2px;
+    padding-left: calc(var(--depth, 0) * var(--space-4));
+  }
+
+  .bulk-item {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-2);
+    padding: var(--space-1) var(--space-2);
+    border: 1px solid var(--border-color);
+    background: var(--surface-color);
+    cursor: pointer;
+    overflow-wrap: anywhere;
+  }
+
+  .bulk-item.on {
+    border-color: var(--color-primary);
+    background: var(--color-primary-soft);
+  }
+
+  .bulk-item input {
+    margin: 0;
+    align-self: center;
+  }
+
+  .bulk-tags::before {
+    content: '— ';
+  }
+
+  .subtree-btn {
+    border: 1px solid transparent;
+    background: none;
+    color: var(--text-muted-color);
+    cursor: pointer;
+    padding: 0 var(--space-2);
+    font: inherit;
+    font-size: var(--font-size-eyebrow);
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-wide);
+    white-space: nowrap;
+  }
+
+  .subtree-btn:hover {
+    border-color: var(--color-primary);
+    color: var(--color-primary);
+  }
+
+  .bulk-action {
+    border: 1px solid var(--border-color);
+    padding: var(--space-2) var(--space-3) var(--space-3);
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  .bulk-action legend {
+    font-size: var(--font-size-eyebrow);
+    letter-spacing: var(--tracking-label);
+    text-transform: uppercase;
+    color: var(--text-muted-color);
+    padding: 0 var(--space-1);
   }
 
   .print-only {

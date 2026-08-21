@@ -2,7 +2,7 @@
 
 `useful` is a static Astro 7 site whose every page mounts one Svelte 5 island. There is no server: IndexedDB in the visitor's browser is the only copy of the data, a hand-written service worker makes the built site work offline, and the heavy optional pieces (an ML model, two SQL engines, a city dataset) load lazily on demand. This page is the maintainer's mental model — the stack, the runtime picture, the directory map, the cross-cutting systems and where each is documented, the invariants that must not break, and the recipe for adding a tool.
 
-_Describes the code as of v0.2.0 (unreleased; schema v7) — verify against source when in doubt._
+_Describes the code as of v0.2.0 (2026-08-21; schema v12) — verify against source when in doubt._
 
 ## The stack
 
@@ -10,7 +10,7 @@ _Describes the code as of v0.2.0 (unreleased; schema v7) — verify against sour
 | --- | --- | --- |
 | Static site | Astro 7, `@astrojs/svelte`, `<ClientRouter />` view transitions | [astro.config.mjs](../../astro.config.mjs), [Layout.astro](../../src/layouts/Layout.astro) |
 | UI | Svelte 5 runes (`$state`/`$derived`/`$effect`), one root component per page mounted `client:only="svelte"` | [src/components/apps/](../../src/components/apps/) |
-| Persistence | IndexedDB via `idb` 8, database `useful` (`DB_NAME`), `DB_VERSION` = 7 | [db.ts](../../src/lib/db/db.ts), [repo.ts](../../src/lib/db/repo.ts) |
+| Persistence | IndexedDB via `idb` 8, database `useful` (`DB_NAME`), `DB_VERSION` = 12 | [db.ts](../../src/lib/db/db.ts), [repo.ts](../../src/lib/db/repo.ts) |
 | Offline | Hand-written service worker, precache + background crawl + runtime caching, registered only in production builds | [public/sw.js](../../public/sw.js), [offline.ts](../../src/lib/offline.ts) |
 | Styling | Plain CSS custom properties, `light-dark()` for both themes in one place | [theme.css](../../src/styles/theme.css), [global.css](../../src/styles/global.css) |
 | Heavy work | Module Web Workers for the SQL engines; `onnxruntime-web` (single-threaded wasm) for the background remover | [src/lib/sql/](../../src/lib/sql/), [runtime.ts](../../src/lib/bg/runtime.ts) |
@@ -58,7 +58,7 @@ Data lives in four places, deliberately:
 | Store | Holds | Owner |
 | --- | --- | --- |
 | IndexedDB `useful` | Every user row (`STORES` in [types.ts](../../src/lib/db/types.ts)) plus the `sync_outbox` change queue (not in `STORES`, never exported) | [repo.ts](../../src/lib/db/repo.ts), [outbox.ts](../../src/lib/db/outbox.ts) |
-| Cache Storage `useful-cache-v11` (`CACHE_NAME`) | App shell pages, fingerprinted `_astro/` assets, the SQL engines' wasm; purged by prefix on every version bump | [public/sw.js](../../public/sw.js) |
+| Cache Storage `useful-cache-v18` (`CACHE_NAME`) | App shell pages, fingerprinted `_astro/` assets, the SQL engines' wasm; purged by prefix on every version bump | [public/sw.js](../../public/sw.js) |
 | Cache Storage `useful-models-v1` (`MODEL_CACHE`) | The background remover's model + ONNX runtime, ~15.8 MB, filled on an explicit click; never purged by a version bump | [runtime.ts](../../src/lib/bg/runtime.ts) and sw.js, kept in sync by hand |
 | localStorage | `useful-theme`, `useful-sidebar-collapsed`, `useful-test-mode` — presentation and harness flags only, never data | [SettingsApp.svelte](../../src/components/apps/SettingsApp.svelte), [Chrome.svelte](../../src/components/chrome/Chrome.svelte), [testMode.ts](../../src/lib/testMode.ts) |
 
@@ -109,7 +109,7 @@ These hold across the whole codebase. Each one is a data-loss, offline, or acces
 - **Page load writes nothing.** Opening a page, rendering a calendar, ticking a timer, scanning due items — none of it may write. Writes happen only as consequences of user actions (or a running timer's deadline passing). `data.spec.ts` "loading a page writes nothing" and `nav.spec.ts` "client-side navigation writes nothing" enforce it, and [testMode.ts](../../src/lib/testMode.ts) explains why writing-on-read is a data-loss risk in its own right.
 - **Migrations are append-only and guarded.** Never edit a shipped entry of `MIGRATIONS` in [db.ts](../../src/lib/db/db.ts). Every store-creating migration names stores with string literals and guards with `db.objectStoreNames.contains(...)`; it must describe the schema at that version forever, never iterate the live `STORES` map. A schema change moves three files in lockstep: `types.ts`, `db.ts`, and the `TABLES` mirror in [schema.ts](../../tests/local/helpers/schema.ts) (plus README Tables). Data sweeps (v6) leave clocks exactly as they were.
 - **Heavy bundles are lazy and outside the precache.** `onnxruntime-web`, CodeMirror's SQL dialects, `utif2`, `exifr`, `piexifjs` and `cities.json` load via dynamic `import()` on first use. `@sqlite.org/sqlite-wasm` and `@electric-sql/pglite` are ordinary imports inside `sql/worker.ts` / `sql/pglite-worker.ts`, and those module workers are constructed only when a session starts. The U²-Net model and the ORT wasm are fetched from `public/` into `useful-models-v1` on an explicit click, never imported. None of it is in `SHELL`; `payload.spec.ts` watches the network to prove none of it rides along with a page that does not use it.
-- **Every page is in the accessibility sweep.** `a11y.spec.ts` runs over every registered route (its `ROUTES` list mirrors the registry and must be extended by hand): unnamed controls, unlabelled fields, heading structure, token-level contrast in both themes, the keyboard path through the chrome. AA contrast holds in both themes; anything a mouse can do, a keyboard can do.
+- **Every page is in the accessibility sweep.** `a11y.spec.ts` runs over every registered route (its `ROUTES` list is derived from `REGISTRY`, so registering a tool is what puts it in the sweep — verified for 0.2.0: all eight new pages were audited without a line being added to the spec): unnamed controls, unlabelled fields, heading structure, token-level contrast in both themes, the keyboard path through the chrome. AA contrast holds in both themes; anything a mouse can do, a keyboard can do.
 - **Routes render through `href()`.** Every app-absolute link and `navigate()` call goes through [paths.ts](../../src/lib/paths.ts) so the site works under a sub-path `base`; the service worker derives `BASE` from its own registration scope for the same reason.
 - **Markdown is sanitized on the one path.** User markdown (timer descriptions, todo bodies, comments) renders only through [markdown.ts](../../src/lib/markdown.ts) (`marked` + DOMPurify + bundled Prism); a backup import is an injection vector straight into rendered HTML.
 - **No push.** With no server there is no push; the engine fires only while some tab of the app is open, and completions that elapsed while closed surface as MISSED on the next open. Do not promise otherwise in UI copy.
@@ -122,7 +122,7 @@ The short version; the standing checklist in [plan-phases.md](plans/plan-phases.
 2. A root component `src/components/apps/<Name>App.svelte`; state is component-local runes; reads/writes only via [repo.ts](../../src/lib/db/repo.ts).
 3. A page `src/pages/tools/<slug>.astro`: import `Layout`, mount the component `client:only="svelte"`.
 4. Append a `ToolDef` to `REGISTRY` in [registry.ts](../../src/lib/registry.ts) (id, name, description, aliases, category, route with trailing slash, icon key from [icons.ts](../../src/lib/icons.ts)). Sidebar, home tiles and the palette pick it up; `registry.test.ts` checks the icon resolves.
-5. Add the route to `SHELL` in [public/sw.js](../../public/sw.js) and bump `CACHE_NAME`. Add it to `ROUTES` in [a11y.spec.ts](../../tests/local/a11y.spec.ts).
+5. Add the route to `SHELL` in [public/sw.js](../../public/sw.js) and bump `CACHE_NAME`. The a11y sweep needs nothing: [a11y.spec.ts](../../tests/local/a11y.spec.ts) reads `REGISTRY`.
 6. If it remembers anything: a field on `Preferences` in [types.ts](../../src/lib/db/types.ts), the same field in `TABLES` in [schema.ts](../../tests/local/helpers/schema.ts), a read-out on the Preferences page, and a README Tables note. If it needs a store: a new appended, guarded migration in [db.ts](../../src/lib/db/db.ts) as well — the backup covers `Object.keys(STORES)` automatically.
 7. Anything heavy behind `await import(...)`; if it must work offline, register a bundle in `OFFLINE_BUNDLES` in [offline.ts](../../src/lib/offline.ts).
 8. Playwright spec in `tests/local/` driving the real UI and asserting isolated deltas through the oracle; a CHANGELOG entry under the unreleased heading (bump `VERSION` first if the newest heading is dated; a migration is at least a minor bump).

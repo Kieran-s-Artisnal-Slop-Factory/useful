@@ -1,8 +1,8 @@
 # Build and tooling
 
-Eight npm scripts, four `.mjs` scripts under `tools/`, and one CI workflow. `astro build` emits a static `dist/` with no runtime; everything third-party is either bundled by Vite or vendored into `public/` and committed, so a fresh clone builds a working app with no network access. This page covers what each command really does, what each generator script produces and when to re-run it, the dependency and payload rules, how the site deploys under a sub-path, and the release procedure.
+Eight npm scripts, seven `.mjs` scripts under `tools/`, and one CI workflow. `astro build` emits a static `dist/` with no runtime; everything third-party is either bundled by Vite or vendored into `public/` and committed, so a fresh clone builds a working app with no network access. This page covers what each command really does, what each generator script produces and when to re-run it, the dependency and payload rules, how the site deploys under a sub-path, and the release procedure.
 
-_Describes the code as of v0.2.0 (unreleased; schema v7) — verify against source when in doubt._
+_Describes the code as of v0.2.0 (2026-08-21; schema v12) — verify against source when in doubt._
 
 ## File map
 
@@ -18,6 +18,9 @@ _Describes the code as of v0.2.0 (unreleased; schema v7) — verify against sour
 | [tools/build-bg-assets.mjs](../../tools/build-bg-assets.mjs) | Vendors the segmentation model + ONNX Runtime into `public/`, writes `PROVENANCE.txt`. |
 | [tools/build-city-dataset.mjs](../../tools/build-city-dataset.mjs) | Compacts a GeoNames dump into [cities.json](../../src/lib/time/cities.json). |
 | [tools/build-image-fixtures.mjs](../../tools/build-image-fixtures.mjs) | Writes the two binary TIFF fixtures the image specs upload. |
+| [tools/build-math-assets.mjs](../../tools/build-math-assets.mjs) | Vendors MathLive's twenty KaTeX faces, `mathlive-fonts.css` (verbatim) and a stripped `katex.css` into `public/math/`, writes its `PROVENANCE.txt`. |
+| [tools/build-wordlist.mjs](../../tools/build-wordlist.mjs) | Vendors the EFF Long Wordlist (7,776 words, CC BY 3.0 US) into [wordlist.json](../../src/lib/gen/wordlist.json) for the passphrase generator. |
+| [tools/audit-precache.mjs](../../tools/audit-precache.mjs) | Not a generator: statically replays the service worker's background crawl over `dist/` and reports what it would cache. |
 | [.claude/launch.json](../../.claude/launch.json) | Dev-server entries for the agent harness. |
 | [.github/workflows/astro.yml](../../.github/workflows/astro.yml) | Build + deploy to GitHub Pages. |
 | [VERSION](../../VERSION) | The app version, plain semver, no trailing newline. |
@@ -65,7 +68,23 @@ They differ only in the port; the alt entry is there for when 4321 is already ta
 
 ## Generator scripts
 
-All four are plain Node ESM, run directly (`node tools/<name>.mjs`), with no npm script wrapping them. None of them runs on install or on build: **their outputs are committed**, and the scripts exist to refresh those outputs, not to produce them at build time.
+All of them are plain Node ESM, run directly (`node tools/<name>.mjs`), with no npm script wrapping them. None of them runs on install or on build: **their outputs are committed**, and the scripts exist to refresh those outputs, not to produce them at build time. (`preview-server.mjs` and `audit-precache.mjs` are not generators; they are described at the end of this section.)
+
+### `build-math-assets.mjs` — the maths faces and stylesheets
+
+```sh
+node tools/build-math-assets.mjs [--force]
+```
+
+Copies MathLive's twenty KaTeX `.woff2` faces and `mathlive-fonts.css` (verbatim — its relative `url(fonts/…)` resolve beside the `fonts/` directory, and its trailing `:root{--ML__static-fonts:true}` is what tells MathLive's own font loader to stand down) into `public/math/`, and writes `public/math/katex.css`: KaTeX's `katex.min.css` with every `@font-face` block removed, because the MathLive faces ARE the KaTeX faces and the notebook needs only the ~20 KB of layout rules. `PROVENANCE.txt` beside them records source, version, bytes and SHA-256 for each of the 22 files (282,448 bytes together), and `MATH_ASSETS` / `MATH_FONT_BYTES` in [fonts.ts](../../src/lib/math/fonts.ts) must agree with it — [fonts.test.ts](../../src/lib/math/fonts.test.ts) checks that. Deliberately not vendored: `mathlive-static.css` (the library injects those rules itself), the keypress `.wav` sounds (switched off; a Playwright case asserts none is fetched) and the compute engine (plain JavaScript, so Vite bundles it). Re-run with `--force` when `mathlive` or `katex` is upgraded.
+
+### `build-wordlist.mjs` — the passphrase word list
+
+```sh
+node tools/build-wordlist.mjs [--force]
+```
+
+Downloads the EFF Long Wordlist (7,776 words — five dice, 12.9 bits a word — CC BY 3.0 US, credited in the tool's UI) and writes [src/lib/gen/wordlist.json](../../src/lib/gen/wordlist.json), refusing any file that does not hold exactly 7,776 entries, because the entropy the passphrase card reports is computed from that count. The list is its own lazy chunk (78 KB) — see the secrets case in [payload.spec.ts](../../tests/local/payload.spec.ts).
 
 ### `build-bg-assets.mjs` — the background remover's ML assets
 
@@ -136,6 +155,14 @@ node tools/preview-server.mjs [--port 4330] [--dir dist]
 
 It exists because **`astro preview` cannot be used from Playwright**: Astro 7's preview daemonizes itself when stdin is not a TTY, so the runner sees the process exit and aborts the run ("Process from config.webServer exited early") while the orphaned daemon keeps the port. `npm run preview` is still the right thing for looking at a build by hand.
 
+### `audit-precache.mjs` — what the service worker's crawl would cache
+
+```sh
+npm run build && node tools/audit-precache.mjs [--dir dist] [--top 15]
+```
+
+Not a generator and fetches nothing. It replays the background crawl in [public/sw.js](../../public/sw.js) statically over `dist/` — reading `SHELL`, `WARM_MAX_ASSETS` and `CRAWL_SKIP` out of the worker's source so it cannot drift from it — and prints what the crawl reaches (files and bytes by type, the largest entries), what under `_astro/` it does not reach, what `CRAWL_SKIP` left to the offline bundles, and the loose string literals that would 404. Exit 1 only when the cap would cut a run short. Run it against a fresh build before a release; the numbers in [service-worker-and-offline.md](service-worker-and-offline.md) are its output for 0.2.0.
+
 ## Vendored assets and the provenance rule
 
 **Nothing is fetched from a CDN at runtime.** Every third-party asset is either bundled by Vite from `node_modules` or vendored into `public/` and committed to the repo. This is the "no server" invariant in [architecture.md](architecture.md) applied to assets, and it has three consequences worth stating as rules:
@@ -198,7 +225,7 @@ So switching hosts is a one-line change, and there are two places to make it: un
 
 ## Release checklist
 
-[VERSION](../../VERSION) is the single source of truth for the app version: the entire file content is the semver string, no trailing newline, so `cat VERSION` works in scripts. Nothing in `src/` reads it and no UI displays it — backups carry `DB_VERSION` (the IndexedDB schema version, currently 7), not the app semver, so a version bump alone never affects stored data.
+[VERSION](../../VERSION) is the single source of truth for the app version: the entire file content is the semver string, no trailing newline, so `cat VERSION` works in scripts. Nothing in `src/` reads it and no UI displays it — backups carry `DB_VERSION` (the IndexedDB schema version, currently 12), not the app semver, so a version bump alone never affects stored data.
 
 To cut a release:
 
@@ -206,9 +233,11 @@ To cut a release:
 2. **Add a dated section to [CHANGELOG.md](../../CHANGELOG.md)**, newest first: `# x.y.z (YYYY-MM-DD)` with `## Features`, `## Bug Fixes` and `## Other` beneath it. Call out schema changes explicitly and name the DB version whenever a migration ships — users carry their data across versions in their own browser.
 3. **Commit:** `git add VERSION CHANGELOG.md && git commit -m "Release $(cat VERSION)"`.
 
-Between releases, the standing checklist in [plan-phases.md](plans/plan-phases.md) governs: entries go under the current **unreleased** heading (`# 0.2.0 (unreleased)`, whose three sections are currently empty stubs); if the newest heading already has a release date, bump `VERSION` first and open a new `x.y.z (unreleased)` heading. The same checklist covers the rest of a change's obligations — three schema files in lockstep, every write through `repo.ts`, both suites green, new routes in `SHELL` in [public/sw.js](../../public/sw.js) with `CACHE_NAME` bumped, links through `href()`, keyboard operability and AA contrast.
+Between releases, the standing checklist in [plan-phases.md](plans/plan-phases.md) governs: entries go under the current **unreleased** heading; if the newest heading already has a release date (as `# 0.2.0 (2026-08-21)` does now), bump `VERSION` first and open a new `x.y.z (unreleased)` heading. The same checklist covers the rest of a change's obligations — three schema files in lockstep, every write through `repo.ts`, both suites green, new routes in `SHELL` in [public/sw.js](../../public/sw.js) with `CACHE_NAME` bumped, links through `href()`, keyboard operability and AA contrast.
 
-**Known inconsistency to fix:** `package.json` still says `"version": "0.1.0"` while `VERSION` says `0.2.0`. Phase 0 synced the two deliberately; the 0.2.0 bump did not carry through. Nothing reads either at runtime, so the drift is cosmetic today, but the two should be re-synced (and the sync should become part of step 1 above).
+**`package.json` `"version"` is kept in sync with `VERSION`** (both `0.2.0` as of the 0.2.0 release; the drift the 0.2.0 bump once left behind was closed in Phase 11). Nothing reads either at runtime, but a release that bumps one and not the other is a release that lies to `npm`, so step 1 above means both files.
+
+The 0.2.0 release also re-ran the audits Phase 11 calls for, recorded in the release commit: the a11y sweep over all 28 registered routes (registry-derived, nothing added by hand), the payload guard against the real build (MathLive, DiceBear, Lucide, Milkdown, mermaid and KaTeX stay off every page that does not use them), the offline suite with the `math-fonts` bundle registered and sized, and a static audit of what the background crawl reaches from the shell ([tools/audit-precache.mjs](../../tools/audit-precache.mjs), described in [service-worker-and-offline.md](service-worker-and-offline.md)).
 
 ## Known limits and decisions
 

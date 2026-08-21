@@ -2,14 +2,14 @@
 
 One hand-written service worker ([sw.js](../../public/sw.js)) makes the static build work with no network: it precaches the app shell at install, crawls the fingerprinted `_astro/` asset graph in the background, and serves navigations network-first and everything else stale-while-revalidate. Heavy optional freight (the background remover's model, the SQL engines, the maths fonts) is never precached; [offline.ts](../../src/lib/offline.ts) lists those as explicit "bundles" that a user downloads on purpose from the post-install dialog or Settings → Offline.
 
-_Describes the code as of v0.2.0 (unreleased; schema v10) — verify against source when in doubt._
+_Describes the code as of v0.2.0 (2026-08-21; schema v12) — verify against source when in doubt._
 
 ## Three tiers
 
 | Tier | What | Where it lives | Filled by | Purged by |
 |---|---|---|---|---|
-| Precache | `SHELL`: every page route + `favicon.svg`, `favicon-maskable.svg`, `manifest.webmanifest` | Cache `CACHE_NAME` (`useful-cache-v15`) | `precacheShell()` at `install` | `activate` of a worker with a different `CACHE_NAME` |
-| Runtime cache | Every same-origin GET the page makes: `_astro/` JS/CSS/wasm/data chunks, navigated HTML | Same `useful-cache-v15` | The `fetch` handler (stale-while-revalidate) and the background crawl `warmAssetCache()` | Same version bump |
+| Precache | `SHELL`: every page route + `favicon.svg`, `favicon-maskable.svg`, `manifest.webmanifest` | Cache `CACHE_NAME` (`useful-cache-v18`) | `precacheShell()` at `install` | `activate` of a worker with a different `CACHE_NAME` |
+| Runtime cache | Every same-origin GET the page makes: `_astro/` JS/CSS/wasm/data chunks, navigated HTML | Same `useful-cache-v18` | The `fetch` handler (stale-while-revalidate) and the background crawl `warmAssetCache()` | Same version bump |
 | Lazy bundles | Background remover model + ONNX runtime under `models/` and `ort/` | Cache `MODEL_CACHE` (`useful-models-v1`) — deliberately outside `CACHE_PREFIX` | `loadAssets()` in [runtime.ts](../../src/lib/bg/runtime.ts), or the SW's cache-first branch | Never by the SW; only `clearAssets()` (Background remover → "Remove downloaded model") or the user clearing site data |
 | Lazy bundles | The 20 KaTeX faces + their stylesheet under `math/` | Cache `FONT_CACHE` (`useful-fonts-v1`) — also outside `CACHE_PREFIX` | The `math-fonts` bundle in [offline.ts](../../src/lib/offline.ts), or the SW's cache-first branch | Never by the SW; only the user clearing site data |
 
@@ -60,7 +60,11 @@ Starts from `SHELL`, walks a queue. For each URL: on a cache hit, use it; on a m
 - every `_astro/[A-Za-z0-9_.\-]+` match, normalised onto `BASE + match` (covers `/_astro/x.js`, `/base/_astro/x.js` and Vite's bare `_astro/x.js` in `__vite__mapDeps`);
 - every quoted relative specifier `'./x'` / `"../x"` / `` `./x` `` (the bundler emits dynamic imports with backticks), resolved against the current URL and kept only if it starts with `ASSET_PREFIX` (`BASE + '_astro/'`).
 
-Only `ASSET_PREFIX` paths are ever enqueued, so `models/` and `ort/` are unreachable by the crawl by construction. `WARM_MAX_ASSETS = 600` caps a run (the current build emits ~73 files under `_astro/`). Because the wasm and `.data` files of both SQL engines are referenced by `_astro/...` strings inside their worker chunks, and the worker chunks are referenced from the engines chunk, the crawl reaches them too — "The app itself" pulls the engine binaries into the runtime cache along the way.
+Only `ASSET_PREFIX` paths are ever enqueued, so `models/` and `ort/` are unreachable by the crawl by construction, and `CRAWL_SKIP` (`/\.(wasm|data)$/`) keeps it off the SQL engines' binaries. `WARM_MAX_ASSETS = 600` caps a run; the 0.2.0 build emits 309 files under `_astro/`, of which the crawl reaches 336 URLs in all (28 pages, 299 scripts, 6 stylesheets, the icons and manifest — 16.5 MB; the largest are compute-engine 2.4 MB, DiceBear 1.9 MB, the city dataset 1.4 MB and the notebook editor 1.3 MB) plus four loose string literals that 404 harmlessly.
+
+The skip rule is a 0.2.0 change. Before it, the wasm and `.data` files of both SQL engines were reached too — they are referenced by `_astro/...` strings inside their worker chunks, which the engines chunk references — so every install quietly pulled 16.8 MB of Postgres and SQLite in the background, and unticking "Postgres engine" in Settings → Offline stopped nothing. Now those four files (`pglite-*.wasm` 9.6 MB, `pglite-*.data` 6.0 MB, `sqlite3-*.wasm` 824 KB, `initdb-*.wasm` 386 KB) are reached only by their engine bundle, which boots the engine, and by the fetch handler when the playground is actually used. "The app itself" is the code; the engines are the engines.
+
+[tools/audit-precache.mjs](../../tools/audit-precache.mjs) runs the same walk statically over `dist/` — it reads `SHELL`, `WARM_MAX_ASSETS` and `CRAWL_SKIP` out of `sw.js` so it cannot drift — and prints what the crawl reaches by type, the largest files, what under `_astro/` it does not reach, and whether the cap would cut a run short (exit 1). Run it after `npm run build` before a release; the numbers above are its output.
 
 Browsers kill idle workers and a paced crawl mostly sleeps, so a run is routinely cut short. `warmOnce()` memoises one in-flight promise per worker instance and flips `warmDone` when a run completes; a restarted worker re-runs it (cache hits cost no delay, so it resumes where it stopped). `activate` fires once, so the `fetch` handler also calls `event.waitUntil(warmOnce())` on every same-origin GET to re-kick it.
 
@@ -156,7 +160,7 @@ Both flags live on the `preferences` singleton ([types.ts](../../src/lib/db/type
 
 ## Adding a page or a heavy asset
 
-**A new page**: add its route (relative to base, trailing slash) to `SHELL` and bump `CACHE_NAME`. Its chunks need nothing — the crawl discovers them from the HTML. Two other hand-maintained route lists exist and must be updated too: [registry.ts](../../src/lib/registry.ts) (sidebar, home tiles, palette search) and `ROUTES` in [a11y.spec.ts](../../tests/local/a11y.spec.ts) (the label/heading/contrast sweep, which does not read the registry).
+**A new page**: add its route (relative to base, trailing slash) to `SHELL` and bump `CACHE_NAME`. Its chunks need nothing — the crawl discovers them from the HTML. One other hand-maintained route list exists and must be updated too: [registry.ts](../../src/lib/registry.ts) (sidebar, home tiles, palette search — and the a11y sweep, whose `ROUTES` is derived from `REGISTRY`). `SHELL` and the registry are the two lists that can drift; at 0.2.0 they hold the same 28 routes.
 
 **A new lazy chunk** (a dynamic `import()` or a `new URL(..., import.meta.url)` asset that Vite fingerprints into `_astro/`): nothing to do. Stale-while-revalidate caches it on first use and the crawl reaches it if any cached JS/CSS/HTML mentions it. Add a matcher to `HEAVY` in `payload.spec.ts` if it must never ride along with pages that do not use it.
 

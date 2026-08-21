@@ -2,7 +2,7 @@
 
 Passwords, API keys, signing secrets, identifiers and Wi-Fi passphrases, generated in your browser. Every card fills itself when the page opens; **Regenerate** replaces one, **Regenerate all** replaces the lot, and **Copy** puts a value on the clipboard.
 
-_Describes the code as of v0.2.0 (unreleased; schema v7) — verify against source when in doubt._
+_Describes the code as of v0.2.0 (2026-08-21; schema v12) — verify against source when in doubt._
 
 ## What is on offer
 

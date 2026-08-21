@@ -2,7 +2,7 @@
 
 A session-only, layer-based raster editor at `/tools/image-editor/`. A document (canvas size + optional background) holds a tree of layers; nothing is ever baked — every frame is re-composited from the tree, so deleting a crop un-crops and deleting a mask brings the background back. Content layers (image, brush, arrow, text, fill, group) contribute pixels; effect layers (eraser, restore, crop, region adjust, mask) act on whatever sits below them: their parent's buffer when nested, the accumulated composite when at top level. The editor never touches IndexedDB.
 
-_Describes the code as of v0.2.0 (unreleased; schema v7) — verify against source when in doubt._
+_Describes the code as of v0.2.0 (2026-08-21; schema v12) — verify against source when in doubt._
 
 ## Session-only, by decision
 

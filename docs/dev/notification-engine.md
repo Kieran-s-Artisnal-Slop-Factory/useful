@@ -2,7 +2,7 @@
 
 One always-mounted Svelte island runs a one-second tick that completes expired timers, keeps their alarms ringing, and raises DUE/NOW banners for scheduler items — while the app is open in any tab. It has no server behind it: nothing can fire when the app is fully closed, and completions that elapsed while closed are surfaced as MISSED on the next open. Writes are consequences of user actions only; the tick itself never writes.
 
-_Describes the code as of v0.2.0 (unreleased; schema v7) — verify against source when in doubt._
+_Describes the code as of v0.2.0 (2026-08-21; schema v12) — verify against source when in doubt._
 
 ## Where it lives
 

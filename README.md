@@ -21,6 +21,12 @@ their own browser.
   glassmorphism, regex snippets for four languages, QR create and read,
   secrets (passwords, keys, tokens, identifiers), logos (seeded avatars and
   identicons, or an icon/emoji badge).
+- **Notes** — a notebook of linked markdown notes: WYSIWYG or raw source
+  over one string, `[[wiki links]]` with computed backlinks and aliases that
+  survive renames, footnotes, mermaid diagrams, KaTeX maths, pasted images,
+  nested notes (folders are notes), a Bulk tab that exports, tags, moves or
+  deletes many notes at once, and export to Markdown, one self-contained
+  HTML file, or PDF through the print dialog.
 - **Playgrounds** — a SQL playground running real SQLite or Postgres in the
   tab, and a configuration playground that validates, prettifies and extracts
   schemas from JSON/YAML, generates sample documents, and emits parsers and
@@ -102,9 +108,9 @@ A service worker (registered only in production builds — `npm run build` /
 network and updates itself when the network is available.
 
 Installing the app offers, once, to download everything it can run without a
-network — the pages you have not opened, the background remover's model, and
-each SQL engine. The same panel is in Settings → Offline, and can be re-run any
-time.
+network — the pages you have not opened, the background remover's model, the
+maths fonts napkin math and the notebook draw with, and each SQL engine. The
+same panel is in Settings → Offline, and can be re-run any time.
 
 One exception, by design: the **Background remover**'s machine-learning assets
 (`public/models/u2netp.onnx` + `public/ort/`, ~15.8 MB) are excluded from the

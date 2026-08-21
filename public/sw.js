@@ -23,7 +23,7 @@
 // Bump this on any meaningful change to this file: `activate` only purges
 // caches whose name differs, so a constant name makes that step dead code and
 // lets a previous deploy's (or a poisoned) entry survive forever.
-const CACHE_NAME = 'useful-cache-v17';
+const CACHE_NAME = 'useful-cache-v18';
 
 // Everything under this prefix belongs to this app. Cache Storage is keyed by
 // ORIGIN, not by service-worker scope, so if two of these apps are ever served
@@ -108,9 +108,20 @@ const MATCH_OPTS = { ignoreVary: true };
 const NAV_OPTS = { ignoreVary: true, ignoreSearch: true };
 
 // Background-warm pacing: gap between fetches and a ceiling on how many the
-// crawl will pull, so a large bundle can't hammer the host.
+// crawl will pull, so a large bundle can't hammer the host. The 0.2.0 build
+// emits ~310 files under _astro/ (tools/audit-precache.mjs counts them).
 const WARM_DELAY_MS = 120;
 const WARM_MAX_ASSETS = 600;
+
+// What the crawl will NOT follow: the SQL engines' WebAssembly and data files
+// (Postgres alone is 16 MB) are referenced by `_astro/...` strings inside
+// their worker chunks, so without this rule every install quietly pulled them
+// in the background — and unticking "Postgres engine" in Settings → Offline
+// stopped nothing. They belong to the explicit engine bundles in
+// src/lib/offline.ts, which fetch them by booting the engine; the fetch
+// handler caches them on that first use like any other asset. Code (js/css/
+// html) is still crawled in full. tools/audit-precache.mjs reads this rule.
+const CRAWL_SKIP = /\.(wasm|data)$/;
 
 /** Transient failures worth retrying (throttles and gateway hiccups). */
 const RETRY_STATUS = new Set([429, 500, 502, 503, 504]);
@@ -198,7 +209,7 @@ async function warmAssetCache({ paced = true, onProgress } = {}) {
     if (!/html|javascript|css/.test(type)) continue;
     const text = await response.clone().text();
     const enqueue = (path) => {
-      if (path.startsWith(ASSET_PREFIX) && !seen.has(path)) {
+      if (path.startsWith(ASSET_PREFIX) && !seen.has(path) && !CRAWL_SKIP.test(path)) {
         seen.add(path);
         queue.push(path);
       }

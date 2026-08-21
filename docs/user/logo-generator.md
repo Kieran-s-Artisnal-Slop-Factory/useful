@@ -2,7 +2,7 @@
 
 Make a square logo, app icon or avatar: a picture generated from a word, or an icon on a coloured tile. Everything happens in your browser, and nothing is saved.
 
-_Describes the code as of v0.2.0 (unreleased) — verify against source when in doubt._
+_Describes the code as of v0.2.0 (2026-08-21; schema v12) — verify against source when in doubt._
 
 ## Two ways to make one
 

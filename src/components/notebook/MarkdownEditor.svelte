@@ -1466,17 +1466,26 @@
    * Map Crepe's own design tokens onto the theme so the editor follows
    * whatever palette is active — frame.css ships fixed light-palette values
    * that go unreadable on the cyanotype sheet.
+   *
+   * Two tokens are NOT what their names suggest. Crepe paints every chrome
+   * icon — toolbar, block handle, slash menu, language picker — plus carets
+   * and dividers with `--crepe-color-outline` (a mid grey in its own theme),
+   * so it must be an ink, not the decorative hairline: `--text-muted-color`
+   * reads ≥ 6:1 on both sheets where `--border-color` was ~1.4:1 on the
+   * blueprint and ~1.5:1 on paper. And `--crepe-color-hover` needs to differ
+   * visibly from the surface it sits on, which `--surface-raised-color` does
+   * not in light mode (white on near-white).
    */
   .editor-root :global(.milkdown) {
     background: transparent;
     color: var(--text-color);
     --crepe-color-background: transparent;
     --crepe-color-on-background: var(--text-color);
-    --crepe-color-surface: var(--surface-color);
+    --crepe-color-surface: var(--surface-raised-color);
     --crepe-color-surface-low: var(--bg-color);
     --crepe-color-on-surface: var(--text-color);
     --crepe-color-on-surface-variant: var(--text-muted-color);
-    --crepe-color-outline: var(--border-color);
+    --crepe-color-outline: var(--text-muted-color);
     --crepe-color-primary: var(--color-primary);
     --crepe-color-secondary: var(--color-primary-soft);
     --crepe-color-on-secondary: var(--color-primary-strong);
@@ -1484,13 +1493,50 @@
     --crepe-color-on-inverse: var(--bg-color);
     --crepe-color-inline-code: var(--color-danger);
     --crepe-color-error: var(--color-danger);
-    --crepe-color-hover: var(--surface-raised-color);
+    --crepe-color-hover: color-mix(in srgb, var(--color-primary) 14%, var(--surface-raised-color));
     --crepe-color-selected: var(--color-primary-soft);
     --crepe-color-inline-area: var(--bg-color);
     --crepe-font-title: var(--font-body);
     --crepe-font-default: var(--font-body);
     --crepe-font-code: var(--font-mono);
-    --crepe-shadow-1: var(--shadow-1);
+    /* The theme's --shadow-1 is `none`; a popover with no shadow AND no
+       border is invisible against the sheet, so floating chrome gets the one
+       hard throw plus a drawn edge below. */
+    --crepe-shadow-1: var(--shadow-2);
     --crepe-shadow-2: var(--shadow-2);
+  }
+
+  /* Drafting is drawn with a straightedge: floating chrome gets a ruled edge
+     and square corners, not Crepe's rounded shadowless pills. */
+  .editor-root :global(.milkdown .milkdown-toolbar),
+  .editor-root :global(.milkdown .milkdown-slash-menu),
+  .editor-root :global(.milkdown .milkdown-link-preview),
+  .editor-root :global(.milkdown .milkdown-link-edit),
+  .editor-root :global(.milkdown .milkdown-code-block .list-wrapper) {
+    border: 1px solid var(--border-strong-color);
+    border-radius: var(--radius-md);
+  }
+
+  .editor-root :global(.milkdown .milkdown-toolbar .toolbar-item),
+  .editor-root :global(.milkdown .milkdown-block-handle .operation-item),
+  .editor-root :global(.milkdown .milkdown-slash-menu ul li) {
+    border-radius: var(--radius-sm);
+  }
+
+  /* Crepe fades the placeholder to 40 % of the text ink (~2.5:1); the
+     annotation pencil is the same register and stays legible. */
+  .editor-root :global(.milkdown .crepe-placeholder::before) {
+    color: var(--text-muted-color);
+  }
+
+  /* Divider hairlines between toolbar groups: Crepe mixes the outline token
+     to 20 %, which on an ink is too faint to rule a line; use the hairline. */
+  .editor-root :global(.milkdown .milkdown-slash-menu .tab-group) {
+    border-bottom-color: var(--border-color);
+  }
+
+  .editor-root :global(.milkdown .milkdown-toolbar .divider),
+  .editor-root :global(.milkdown .milkdown-slash-menu .menu-groups .menu-group + .menu-group::before) {
+    background: var(--border-color);
   }
 </style>

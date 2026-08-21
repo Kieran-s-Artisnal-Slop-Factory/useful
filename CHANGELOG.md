@@ -1,4 +1,4 @@
-# 0.2.0 (unreleased)
+# 0.2.0 (2026-08-21)
 
 ## Features
 
@@ -40,6 +40,30 @@
     print dialog over the app's first print stylesheet, which hides the
     chrome around the note; the filename comes from the note's title, the
     only thing a page can suggest to that dialog.
+  - **Bulk tab.** A **Note** / **Bulk** tab strip above the main column; Bulk
+    lists every note as a tree of checkboxes (filter by title or tag, select
+    all / none, **all nested** to take a whole branch) and acts on the ticked
+    notes only, one patch per row that actually changes: **Export** as one
+    uncompressed `.zip` with a Markdown or self-contained HTML file per note,
+    named after its title with `-2` on a clash (a small stored-ZIP writer
+    with CRC-32 and UTF-8 names, no dependency — `src/lib/zip.ts`); **Tags** add (keeping each
+    note's own, skipping duplicates) or remove (case-insensitively); **Move**
+    under one parent or to the top level, never offering a selected note or
+    anything inside it as a destination; **Delete** after a confirm, moving
+    unselected nested notes up to their nearest surviving ancestor and
+    tombstoning the deleted notes' images. The editor stays mounted behind
+    the Bulk panel, and when the open note is among the selection its
+    **Inside** and **Tags** fields follow the change so autosave cannot write
+    the old value back.
+  - **Editor chrome contrast.** Crepe paints every toolbar, block-handle and
+    slash-menu icon (and carets and dividers) with its `--crepe-color-outline`
+    token, which the theme had mapped onto the decorative hairline — about
+    1.5:1 on paper and 1.4:1 on the blueprint. It is now the annotation ink
+    (6.7:1 light, 5.4:1 dark), hover states are a visible primary tint rather
+    than white-on-white, the placeholder is the same ink instead of 40 %
+    text, and floating chrome gets the theme's ruled edge and square corners
+    (the theme's `--shadow-1` is `none`, so a shadowless borderless popover
+    was invisible against the sheet).
 
 - **Configuration playground** (`/tools/config-playground/`): understand,
   validate and generate JSON and YAML. **Parse** mode takes a document in a
@@ -327,6 +351,30 @@
   images in notes are the first feature that grows it.
 - Service worker: `tools/notebook/` added to the precached shell, cache
   bumped to **v17**.
+- **Release hardening (Phase 11).** The a11y sweep is registry-derived and
+  audited all 28 routes, the eight new pages included, with nothing added by
+  hand; the payload guard was re-run against the real build — MathLive,
+  DiceBear, Lucide, Milkdown / ProseMirror, mermaid and KaTeX stay off every
+  page that does not use them; the offline suite passed with the `math-fonts`
+  bundle (22 assets, 282 KB) registered and sized; `SHELL` in the service
+  worker and the registry were cross-checked and hold the same routes; every
+  doc's "describes the code as of" line now names the release and schema v12,
+  and the stale claims that the a11y `ROUTES` list is hand-maintained, that
+  `package.json` lags `VERSION`, and that the build emits ~73 `_astro/` files
+  were corrected.
+- **The background crawl no longer pulls the SQL engines' binaries.** A new
+  `tools/audit-precache.mjs` replays the service worker's crawl statically
+  over `dist/` (reading `SHELL`, the cap and the skip rule out of `sw.js`);
+  run against the 0.2.0 build it showed the paced background crawl reaching
+  340 files and **33 MB**, 16.8 MB of it Postgres and SQLite wasm / data that
+  the engines' worker chunks reference — so every install quietly downloaded
+  Postgres, and unticking "Postgres engine" in Settings → Offline stopped
+  nothing. `CRAWL_SKIP` (`.wasm` / `.data`) now leaves those four files to
+  the engine bundles that own them; the crawl reaches 336 URLs and 16.5 MB of
+  code, the build emits 309 files under `_astro/` against a cap of 600. Cache
+  bumped to **v18**.
+- `package.json` `"version"` is `0.2.0`, in sync with `VERSION`; the release
+  checklist now names both.
 - Database schema **v11**: new `config_schemas` (name, format, the Field/Type
   tree as JSON, the parse-mode source text), plus
   `preferences.config_last_mode` and `preferences.config_last_schema_id`.

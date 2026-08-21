@@ -13,6 +13,7 @@
 import { readFileSync } from 'node:fs';
 import { test, expect } from './helpers/app';
 import { assertIsolatedDelta, assertInvariants } from './helpers/oracle';
+import { zipEntries } from '../../src/lib/zip';
 
 type P = import('@playwright/test').Page;
 
@@ -256,6 +257,117 @@ test.describe('notebook', () => {
     await page.getByTestId('notebook-print').click();
     // The filename can only be seeded through the document title.
     await expect.poll(() => page.title()).toBe('Printed');
+  });
+
+  test('the Bulk tab tags, exports, moves and deletes many notes at once', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/notebook/');
+
+    // Parent > Child, and Other at the top level.
+    await newNote(page);
+    await page.getByTestId('notebook-title').fill('Parent');
+    await expect(page.getByTestId('notebook-save-state')).toHaveText('Saved');
+    const parentId = String((await app.dump('notes'))[0]!.id);
+    await page.getByTestId(`notebook-new-child-${parentId}`).click();
+    await expect(page.getByTestId('notebook-parent')).toHaveValue(parentId);
+    await page.getByTestId('notebook-title').fill('Child');
+    await expect(page.getByTestId('notebook-save-state')).toHaveText('Saved');
+    await newNote(page);
+    await page.getByTestId('notebook-title').fill('Other');
+    await expect(page.getByTestId('notebook-save-state')).toHaveText('Saved');
+    const idOf = async (title: string) =>
+      String((await app.dump('notes')).find((r) => r.title === title)!.id);
+    const childId = await idOf('Child');
+    const otherId = await idOf('Other');
+
+    // The tab swaps panels without unmounting the editor.
+    await page.getByTestId('notebook-tab-bulk').click();
+    await expect(page.getByTestId('notebook-tab-bulk')).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByTestId('notebook-panel-bulk')).toBeVisible();
+    await expect(page.getByTestId('notebook-panel-note')).toBeHidden();
+    await expect(page.getByTestId('notebook-editor-host')).toHaveCount(1);
+
+    // "all nested" on Parent selects Parent and Child, not Other.
+    await page.getByTestId(`notebook-bulk-subtree-${parentId}`).click();
+    await expect(page.getByTestId('notebook-bulk-selected')).toHaveText('2 of 3 selected');
+    await expect(page.getByTestId('notebook-bulk-count')).toHaveText('2');
+
+    // Tags: add to both, then remove one regardless of case.
+    const before = await app.dumpAll();
+    await page.getByTestId('notebook-bulk-tags').fill('shared, Urgent');
+    await page.getByTestId('notebook-bulk-tags-add').click();
+    await expect(page.getByTestId('notebook-bulk-note')).toHaveText('Added 2 tags on 2 notes.');
+    let rows = await app.dump('notes');
+    expect(rows.find((r) => r.id === parentId)!.tags).toEqual(['shared', 'Urgent']);
+    expect(rows.find((r) => r.id === childId)!.tags).toEqual(['shared', 'Urgent']);
+    expect(rows.find((r) => r.id === otherId)!.tags).toEqual([]);
+    assertIsolatedDelta(before, await app.dumpAll(), [
+      { store: 'notes', id: parentId },
+      { store: 'notes', id: childId },
+    ]);
+    await page.getByTestId('notebook-bulk-tags').fill('urgent');
+    await page.getByTestId('notebook-bulk-tags-remove').click();
+    await expect(page.getByTestId('notebook-bulk-note')).toHaveText('Removed 1 tag on 2 notes.');
+    rows = await app.dump('notes');
+    expect(rows.find((r) => r.id === childId)!.tags).toEqual(['shared']);
+
+    // Export: one .zip, one file per selected note, Markdown then HTML.
+    let download = page.waitForEvent('download');
+    await page.getByTestId('notebook-bulk-export').click();
+    let file = await download;
+    expect(file.suggestedFilename()).toMatch(/^notes-\d{4}-\d{2}-\d{2}\.zip$/);
+    let entries = zipEntries(new Uint8Array(readFileSync(await file.path())));
+    expect(entries.map((e) => e.name).sort()).toEqual(['Child.md', 'Parent.md']);
+    const parentMd = new TextDecoder().decode(entries.find((e) => e.name === 'Parent.md')!.data);
+    expect(parentMd).toContain('# Parent');
+    await page.getByTestId('notebook-bulk-format').selectOption('html');
+    download = page.waitForEvent('download');
+    await page.getByTestId('notebook-bulk-export').click();
+    file = await download;
+    entries = zipEntries(new Uint8Array(readFileSync(await file.path())));
+    expect(entries.map((e) => e.name).sort()).toEqual(['Child.html', 'Parent.html']);
+    for (const entry of entries) {
+      const html = new TextDecoder().decode(entry.data);
+      expect(html).toContain('<!doctype html>');
+      expect(html).not.toContain('<script');
+      expect(html.match(/https?:\/\//g) ?? []).toEqual([]);
+    }
+    await expect(page.getByTestId('notebook-bulk-note')).toContainText('Exported 2 notes as HTML.');
+
+    // Move: Other (the open note) under Parent; the Note tab's field follows.
+    await page.getByTestId('notebook-bulk-select-none').click();
+    await expect(page.getByTestId('notebook-bulk-selected')).toHaveText('Nothing selected');
+    await page.locator(`[data-testid="notebook-bulk-check"][data-title="Other"]`).check();
+    const targets = await page.getByTestId('notebook-bulk-parent').locator('option').allTextContents();
+    expect(targets).toEqual(['— top level —', 'Child', 'Parent']);
+    await page.getByTestId('notebook-bulk-parent').selectOption(parentId);
+    await page.getByTestId('notebook-bulk-move').click();
+    await expect(page.getByTestId('notebook-bulk-note')).toHaveText('Moved 1 note under “Parent”.');
+    expect((await app.get('notes', otherId))!.parent_id).toBe(parentId);
+    await page.getByTestId('notebook-tab-note').click();
+    await expect(page.getByTestId('notebook-parent')).toHaveValue(parentId);
+    // A selection of Parent may not move under itself or its descendants.
+    await page.getByTestId('notebook-tab-bulk').click();
+    await page.getByTestId('notebook-bulk-select-none').click();
+    await page.locator(`[data-testid="notebook-bulk-check"][data-title="Parent"]`).check();
+    expect(await page.getByTestId('notebook-bulk-parent').locator('option').allTextContents()).toEqual([
+      '— top level —',
+    ]);
+
+    // Delete Parent alone: Child and Other move up to the top level, and the
+    // open note (Other) stays open.
+    page.once('dialog', (d) => void d.accept());
+    await page.getByTestId('notebook-bulk-delete').click();
+    await expect(page.getByTestId('notebook-bulk-note')).toHaveText('Deleted 1 note.');
+    await expect(page.getByTestId('notebook-bulk-selected')).toHaveText('Nothing selected');
+    rows = await app.dump('notes');
+    expect(rows.find((r) => r.id === parentId)!.deleted_at).toBeTruthy();
+    expect(rows.find((r) => r.id === childId)!.parent_id).toBeNull();
+    expect(rows.find((r) => r.id === otherId)!.parent_id).toBeNull();
+    await page.getByTestId('notebook-tab-note').click();
+    await expect(page.getByTestId('notebook-title')).toHaveValue('Other');
+    await expect(page.getByTestId('notebook-parent')).toHaveValue('');
+    assertInvariants(await app.dumpAll(), 'after bulk operations');
   });
 
   test('the editor stays off every other route', async ({ app }) => {
