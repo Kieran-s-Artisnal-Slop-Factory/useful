@@ -113,7 +113,7 @@
 <style>
   .color-field {
     display: flex;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     gap: var(--space-2);
     align-items: stretch;
   }
@@ -134,7 +134,7 @@
   input[type='color'] {
     flex: none;
     width: 2.9rem;
-    height: auto;
+    height: 2.5rem;
     padding: 2px;
     cursor: pointer;
   }

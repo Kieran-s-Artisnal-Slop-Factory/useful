@@ -8,7 +8,7 @@
   import { copyText } from '../../lib/exportFile';
 
   // Stateless tool — pure view state, zero IndexedDB traffic.
-  let input = $state('#1e3a5f');
+  let input = $state('#803900');
   let copied = $state<string | null>(null);
 
   let parsed = $derived(parseCssColor(input));
@@ -39,7 +39,7 @@
   // Primary defaults to the color explored above; every other slot (light AND
   // dark, per role) derives until the user overrides it.
   let themeColors = $state<{ light: string; dark: string }[]>([
-    { light: '#1e3a5f', dark: '' },
+    { light: '#803900', dark: '' },
     { light: '', dark: '' },
     { light: '', dark: '' },
     { light: '', dark: '' },
@@ -86,7 +86,7 @@
             type="text"
             autocomplete="off"
             spellcheck="false"
-            placeholder="#1e3a5f · rgb(30 58 95) · oklch(0.35 0.07 250) · rebeccapurple"
+            placeholder="#ff7300 · rgb(30 58 95) · oklch(0.35 0.07 250) · rebeccapurple"
             bind:value={input}
           />
         </div>
