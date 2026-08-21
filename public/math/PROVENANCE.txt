@@ -1,15 +1,19 @@
-MathLive KaTeX web fonts, vendored for offline use.
+MathLive KaTeX web fonts and the KaTeX layout stylesheet, vendored for offline use.
 
 source:      node_modules/mathlive @ 0.110.0
+             node_modules/katex @ 0.18.4 (katex.css = dist/katex.min.css
+             with its 20 @font-face blocks removed; mathlive-fonts.css declares
+             the same families over the same faces)
 licence:     MIT (MathLive, (c) 2017 Arno Gourdol)
-             MIT (KaTeX faces, (c) 2013-2020 Khan Academy and contributors)
+             MIT (KaTeX, its stylesheet and faces, (c) 2013-2020 Khan Academy
+             and contributors)
 regenerate:  node tools/build-math-assets.mjs --force
 
 Not vendored: mathlive-static.css (the library injects those rules itself),
 the five .wav keypress sounds (soundsDirectory = null switches them off), and
 @cortex-js/compute-engine (plain JS, bundled by Vite).
 
-21 files, 262804 bytes total
+22 files, 282448 bytes total
 
   28076  0cdd387c9590a1a9f9794560022dbb59654a7d86f187aa0c81495ad42d3a7308  fonts/KaTeX_AMS-Regular.woff2
    6912  de7701e42cf1f4cf0b766c03fb27977207eee2f4fd5d76fa82188406da43ea4c  fonts/KaTeX_Caligraphic-Bold.woff2
@@ -32,3 +36,4 @@ the five .wav keypress sounds (soundsDirectory = null switches them off), and
    4928  a4af7d414440a1c1790825cfb700cf9cf43b0f2c4b04f0ebc523011ad9853ec0  fonts/KaTeX_Size4-Regular.woff2
   13568  71d517d67827787cfabdf186914cc3358eda539e37931941f2b2fd4a21f68c0b  fonts/KaTeX_Typewriter-Regular.woff2
    3012  be6061a80fe44965402fb5fcfc9f33d07a28f3529b770c4540aad3cb2ac39f5c  mathlive-fonts.css
+  19644  64e718919143660ddc9d2fe770d318703370069ddd8b750ae2934fbecb961800  katex.css

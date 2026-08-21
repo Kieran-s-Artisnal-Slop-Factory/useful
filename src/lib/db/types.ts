@@ -69,6 +69,10 @@ export interface Preferences extends SyncFields {
   config_last_mode?: 'parse' | 'create';
   /** The config-playground schema to reopen. */
   config_last_schema_id?: string;
+  /** The notebook note to reopen. */
+  notebook_last_note_id?: string;
+  /** Which editor face the notebook shows: WYSIWYG, source or preview. */
+  notebook_mode?: 'wysiwyg' | 'source' | 'preview';
   /** True once the post-install "download everything" offer has been made. */
   offline_prompt_seen?: boolean;
   /** When every offline bundle last finished downloading. */
@@ -343,6 +347,47 @@ export interface ConfigSchema extends SyncFields {
   source: string;
 }
 
+/**
+ * A notebook note. Folders are notes too: `parent_id` points at another note
+ * (Q16), so a note can hold children and the sidebar is one tree. The body is
+ * markdown text rendered through src/lib/markdown.ts (sanitized); images live
+ * in `note_assets`, never inline, so listing notes stays cheap.
+ *
+ * Backlinks are computed, never stored — a stored index goes stale the moment
+ * a backup is restored, and rebuilding it on load is a write on load.
+ *
+ * Nothing read from a stored row is trusted: the generic data suite writes an
+ * ARRAY into every json column and can self-parent a row, and a backup can be
+ * hand-edited. Readers normalize `aliases`/`tags` and treat a missing, cyclic
+ * or self parent as "root".
+ */
+export interface Note extends SyncFields {
+  title: string;
+  body_md: string;
+  /** Old titles, pushed on rename so `[[Old title]]` keeps resolving. */
+  aliases: string[];
+  /** The note this one sits under; null at the root. */
+  parent_id: string | null;
+  tags: string[];
+}
+
+/**
+ * One image (or other file) pasted into a note, as base64. A child store so
+ * `all('notes')`, the list view and the link scan never carry image bytes —
+ * the same reasoning that made comments their own store. Capped per asset
+ * (see src/lib/notebook/assets.ts): backup export is one JSON string of the
+ * whole database, and base64 inflates by a third.
+ */
+export interface NoteAsset extends SyncFields {
+  note_id: string;
+  name: string;
+  mime: string;
+  /** The decoded size, so totals never need a decode. */
+  bytes: number;
+  /** Base64 without the `data:` prefix. */
+  data: string;
+}
+
 export interface StoreIndex {
   name: string;
   multiEntry?: boolean;
@@ -379,6 +424,13 @@ export const STORES: Record<string, StoreDef> = {
   napkin_calculations: { indexes: [{ name: 'template_id' }] },
   sql_playgrounds: { indexes: [] },
   config_schemas: { indexes: [] },
+  // parent_id: the tree is read by parent; tags: a multiEntry index so a tag
+  // lookup does not scan every note. fieldMerge: a title edited on one device
+  // and a body on another must both survive a future merge.
+  notes: { indexes: [{ name: 'parent_id' }, { name: 'tags', multiEntry: true }], fieldMerge: true },
+  // note_id: a note has to find its images — to show them, and to take them
+  // with it when it goes.
+  note_assets: { indexes: [{ name: 'note_id' }] },
 };
 
 export type StoreName = keyof typeof STORES;

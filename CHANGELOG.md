@@ -2,6 +2,45 @@
 
 ## Features
 
+- **Notebook** (`/tools/notebook/`): linked markdown notes. Write in a
+  **WYSIWYG** canvas (Milkdown Crepe) or in **raw markdown** (CodeMirror) and
+  read the rendered note in a third view; the markdown string is the one
+  source of truth and the views are faces of it. Notes nest — a note's
+  **Inside** picks its parent, **+** on a note starts one under it, and the
+  sidebar is one tree with search over titles and tags. Autosave writes one
+  patch 400 ms after the last change and flushes when the tab hides or the
+  page is left; page load writes nothing.
+  - **Links.** `[[Title]]` (or `[[Title|shown text]]`) links to the note with
+    that title — in notes, and in timer, TODO and event descriptions too,
+    since they share the one markdown renderer. A link to a note that does
+    not exist yet is drawn differently, and clicking it creates the note;
+    a deep link from outside to a missing note shows a **Create it** button
+    rather than creating on load. **Linked from** and **Links to** are
+    computed from the notes themselves, never stored, so a restored backup
+    cannot leave them stale. Renaming a note keeps the old title as an
+    **alias** so old links still resolve, and offers — once, as one button —
+    to rewrite the notes that link by the old name.
+  - **Footnotes**, ported whole from retoken with its 95 tests: `[^1]` cites,
+    **Alt+0** opens the footnote dialog on the note under the caret (or cites
+    a new one), the source view marks citation and definition lines in the
+    gutter and jumps between them, and a definition that the WYSIWYG canvas
+    cannot represent is harvested into the dialog and restored into the
+    markdown on every round trip — nothing is lost in either direction.
+  - **Diagrams** via a ◇ button: a mermaid workbench with eight templates,
+    context-aware completion, and a live preview that keeps the last good
+    picture while showing the parse error. **Maths** with `$…$` and `$$…$$`,
+    typeset by KaTeX over the faces napkin-math already vendors. Images paste
+    straight into the canvas and are stored with the note, capped at 2 MB
+    each because a backup is one JSON file.
+  - **Export.** **Markdown** is the source with images inlined as `data:`
+    URLs. **HTML** is one self-contained file — its stylesheet, images,
+    typeset maths with only the faces that page actually uses, and diagrams
+    pre-rendered to SVG all inside it; it never references this app or any
+    server, and a test checks that. **Print / Save as PDF** is the browser's
+    print dialog over the app's first print stylesheet, which hides the
+    chrome around the note; the filename comes from the note's title, the
+    only thing a page can suggest to that dialog.
+
 - **Configuration playground** (`/tools/config-playground/`): understand,
   validate and generate JSON and YAML. **Parse** mode takes a document in a
   syntax-highlighted editor with completion, sniffs the format (a leading `{`
@@ -246,6 +285,48 @@
 
 ## Other
 
+- Database schema **v12**: new `notes` (field-merged; title, markdown body,
+  aliases, tags with the schema's first multiEntry index, and a
+  self-referencing `parent_id` — folders are notes) and `note_assets`
+  (images as base64 with their size, keyed to the note and deleted with it),
+  plus `preferences.notebook_last_note_id` and `preferences.notebook_mode`.
+  JSON-native, so rows ride backup export/import; a stored row is normalised
+  on read and a missing, self or cyclic parent reads as root, because the
+  generic data suite writes exactly that.
+- **The markdown renderer grew hooks** and kept its unconditional sanitizer:
+  `[[wiki links]]`, GFM footnotes, `$maths$` placeholders (typeset later by
+  KaTeX, lazily), ```` ```mermaid ```` fences (drawn later by mermaid,
+  lazily), and an image resolver — behind one `renderMarkdown(md, options)`
+  whose defaults leave every existing caller rendering as before, wiki links
+  included. retoken's remark/rehype/Shiki renderer was not ported: it has no
+  sanitizer, and a backup file is an untrusted input.
+- New dependencies for the notebook: `@milkdown/crepe` + `@milkdown/kit`
+  (MIT; the WYSIWYG editor, which brings ProseMirror and Vue's runtime — the
+  page's editor chunk is 1.3 MB minified, 410 KB gzip, and KaTeX rides inside
+  it because Crepe imports it statically), `katex` (MIT), `mermaid` (MIT,
+  95 KB core plus a chunk per diagram type, all lazy; its flowchart-maths
+  chunk carries a nested KaTeX 0.16 of its own, 259 KB, fetched only when a
+  diagram needs it), `@codemirror/lang-markdown`, `@codemirror/language-data`,
+  `codemirror-lang-mermaid`, `@codemirror/autocomplete` and
+  `@codemirror/commands` (MIT). All sit behind the notebook page's own
+  island; the payload suite guards Milkdown/ProseMirror, mermaid, KaTeX and
+  Excalidraw (deferred) off every other route.
+- **KaTeX shares napkin-math's fonts.** Its twenty faces were already
+  vendored byte-identical, so maths costs one more file — `public/math/
+  katex.css`, the layout rules of `katex.min.css` with its `@font-face`
+  block stripped (19.6 KB), written by the same `tools/build-math-assets.mjs`
+  with provenance. It rides the existing `useful-fonts-v1` bucket and the
+  existing **Maths fonts** offline bundle (now 22 assets, 282 KB). Crepe's
+  own stylesheet is imported part by part, skipping the one that would pull
+  KaTeX's full stylesheet and sixty hashed font files into the build.
+- **The app's first print stylesheet.** `@media print` hides the topbar,
+  sidebar and drawing-sheet marks, drops the grid background, lets `pre`
+  wrap, keeps figures and tables whole, and pins exact colours for code —
+  which improves printing every page, not only notes.
+- Settings → Storage now shows the browser's usage and quota estimate, since
+  images in notes are the first feature that grows it.
+- Service worker: `tools/notebook/` added to the precached shell, cache
+  bumped to **v17**.
 - Database schema **v11**: new `config_schemas` (name, format, the Field/Type
   tree as JSON, the parse-mode source text), plus
   `preferences.config_last_mode` and `preferences.config_last_schema_id`.

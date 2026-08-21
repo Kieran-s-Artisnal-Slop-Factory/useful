@@ -39,6 +39,8 @@ export const TABLES: TableMeta[] = [
       { name: 'sql_last_engine', type: 'text', nullable: true, references: null },
       { name: 'config_last_mode', type: 'text', nullable: true, references: null },
       { name: 'config_last_schema_id', type: 'text', nullable: true, references: null },
+      { name: 'notebook_last_note_id', type: 'text', nullable: true, references: null },
+      { name: 'notebook_mode', type: 'text', nullable: true, references: null },
       { name: 'offline_prompt_seen', type: 'boolean', nullable: true, references: null },
       { name: 'offline_ready_at', type: 'timestamp', nullable: true, references: null },
     ],
@@ -181,6 +183,32 @@ export const TABLES: TableMeta[] = [
       { name: 'format', type: 'text', nullable: false, references: null },
       { name: 'fields', type: 'json', nullable: false, references: null },
       { name: 'source', type: 'text', nullable: false, references: null },
+    ],
+  },
+  {
+    name: 'notes',
+    fieldMerge: true,
+    singleton: false,
+    columns: [
+      { name: 'title', type: 'text', nullable: false, references: null },
+      { name: 'body_md', type: 'text', nullable: false, references: null },
+      { name: 'aliases', type: 'json', nullable: false, references: null },
+      // Self-referencing: folders are notes. The round-trip seeds a parent
+      // with the child's own id, so readers must tolerate parent_id === id.
+      { name: 'parent_id', type: 'text', nullable: true, references: 'notes' },
+      { name: 'tags', type: 'json', nullable: false, references: null },
+    ],
+  },
+  {
+    name: 'note_assets',
+    fieldMerge: false,
+    singleton: false,
+    columns: [
+      { name: 'note_id', type: 'text', nullable: false, references: 'notes' },
+      { name: 'name', type: 'text', nullable: false, references: null },
+      { name: 'mime', type: 'text', nullable: false, references: null },
+      { name: 'bytes', type: 'integer', nullable: false, references: null },
+      { name: 'data', type: 'text', nullable: false, references: null },
     ],
   },
 ];

@@ -152,7 +152,7 @@ and the phases below are written to the answers, not the defaults.
 | 7 ✅ | DataTable + SQL playground | — | — | **DONE 2026-08-19.** Adds `src/lib/table/` |
 | 8 ✅ | Napkin math | `mathlive`, `@cortex-js/compute-engine` | v10 | **DONE 2026-08-19.** Adds `src/lib/codegen/` |
 | 9 ✅ | Configuration playground | `yaml`, `@codemirror/lang-json`, `@codemirror/lang-yaml` | v11 | **DONE 2026-08-21.** Extends `src/lib/codegen/` |
-| 10 | Notebook | `@milkdown/*`, `mermaid`, `katex`, CodeMirror markdown | v12 | Heaviest; most open questions |
+| 10 ✅ | Notebook | `@milkdown/*`, `mermaid`, `katex`, CodeMirror markdown | v12 | **DONE 2026-08-21.** Excalidraw deferred (Q12) |
 | 11 | Hardening + release | — | — | |
 
 Schema numbers assume this order. Ship out of order and the migration numbers
@@ -981,7 +981,7 @@ while building, beyond the plan:
 
 ---
 
-## Phase 10 — Notebook
+## Phase 10 — Notebook — DONE (2026-08-21)
 
 **Goal:** `/tools/notebook/` — a linked set of markdown documents built on
 retoken's editor, exportable to Markdown, HTML and PDF.
@@ -1077,6 +1077,54 @@ on other routes.
 **Docs:** `docs/dev/tools/notebook.md`, `docs/user/notebook.md`.
 
 **CHANGELOG:** Features; note DB v12 and the dependency footprint honestly.
+
+**Outcome:** built as scoped, in one increment rather than the two the plan
+allowed for — the store, the editor, wiki links, footnotes, diagrams, maths
+and all three exports landed together; only Excalidraw stays deferred (Q12).
+`src/lib/notebook/` (model, wiki, footnotes, assets, export, mermaid, math,
+mathFonts, code-languages), `src/lib/markdown.ts` grown into the hooked
+factory Decision 7 asked for, `src/components/notebook/` (the ported
+MarkdownEditor, FootnoteDialog, DiagramDialog, MarkdownPreview) and
+[NotebookApp.svelte](../../../src/components/apps/NotebookApp.svelte); 189
+unit cases across seven files (95 of them the footnote suite, ported
+verbatim) and 9 Playwright cases. Written up in
+[tools/notebook.md](../tools/notebook.md). Decisions taken while building,
+beyond the plan:
+
+- **Folders are just notes with children.** No `kind` field: any note can
+  hold others, "+" on a note starts one under it, and deleting a parent
+  reparents its children to its own parent rather than cascading — a folder
+  going away is no reason for its pages to. Its images do go with it.
+- **A missing, self or cyclic parent reads as root.** The generic data
+  suite literally writes a self-parented row (its round-trip child reuses
+  the seeded parent's id), so the tree builder breaks every such edge and
+  surfaces the note where it can be re-parented. In a two-note cycle both
+  surface.
+- **A deep link to a missing note shows a Create button.** Creating on load
+  would be a write on load; the click is the request.
+- **The unmount flush carries the note it was mounted on.** Switching notes
+  while the editor's debounce is still counting made the old editor's flush
+  arrive after `currentId` had moved — the one write that could land in the
+  wrong note. The rename Playwright case switches notes right after typing
+  and proved it; `onChange` now names its note and a stray flush is patched
+  into that note directly.
+- **KaTeX is not split out.** Crepe imports it statically, so it rides the
+  1.32 MB editor chunk (410 KB gzip); the separate 259 KB `katex` chunk in
+  the build is mermaid's nested 0.16 copy, loaded only for diagram maths.
+  Crepe's stylesheet is imported part by part, skipping `latex.css` — it
+  `@import`s KaTeX's full stylesheet and would drag sixty hashed font files
+  into the build; the twenty faces were already vendored byte-identical, so
+  maths costs one 19.6 KB layout stylesheet in the existing font bucket.
+- **The HTML export inlines only the maths faces the page uses**, measured
+  from computed styles after typesetting into an off-screen container, as
+  napkin-math's component does — a class-name table would go stale.
+- **Rename rewriting is one `patch` per linking note, not a `bulkPut`.**
+  The same transaction shape the rest of the app uses; the count is small
+  and each note's `updated_at` is its own.
+- **Settings → Storage gained the usage/quota readout** the plan asked for,
+  as a read on mount.
+
+---
 
 ---
 

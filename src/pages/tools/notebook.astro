@@ -1,0 +1,8 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import NotebookApp from '../../components/apps/NotebookApp.svelte';
+---
+
+<Layout title="Notebook">
+  <NotebookApp client:only="svelte" />
+</Layout>

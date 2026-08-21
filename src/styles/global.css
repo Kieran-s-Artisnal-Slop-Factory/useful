@@ -423,3 +423,93 @@ body.dragging {
     repeating-conic-gradient(var(--border-color) 0% 25%, transparent 0% 50%) 0 0 /
     16px 16px;
 }
+
+/* Print. PDF export is window.print() (plan Decision 6), so this is the only
+   stylesheet the saved file sees: the chrome, the drafting grid and the sheet
+   marks go, the content column becomes the page, and scrolling containers
+   expand so nothing is clipped. The light sheet is forced because a dark
+   cyanotype prints as a full-bleed ink fill. The !important flags outrank the
+   chrome components' scoped (two-class) selectors and the inline color-scheme
+   that Layout.astro's script pins on <html>. */
+@media print {
+  @page {
+    margin: 1.6cm;
+  }
+
+  :root {
+    color-scheme: light !important;
+  }
+
+  .topbar,
+  #app-sidebar,
+  .drawer-backdrop,
+  .notices,
+  .drag-ghost,
+  .no-print,
+  [data-print='hide'] {
+    display: none !important;
+  }
+
+  html {
+    scroll-padding-top: 0;
+  }
+
+  body {
+    padding: 0 !important;
+    min-height: 0;
+    background: #fff;
+  }
+
+  main.page {
+    max-width: none;
+    margin: 0;
+    padding: 0;
+    background: none;
+    border: none;
+    outline: none;
+  }
+
+  main.page::after {
+    content: none;
+  }
+
+  pre {
+    overflow: visible;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  .table-wrap {
+    overflow: visible;
+    box-shadow: none;
+  }
+
+  pre,
+  :not(pre) > code,
+  .token {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  figure,
+  table,
+  pre,
+  blockquote,
+  img,
+  svg {
+    break-inside: avoid;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    break-after: avoid;
+  }
+
+  a[href]::after {
+    content: none;
+  }
+}

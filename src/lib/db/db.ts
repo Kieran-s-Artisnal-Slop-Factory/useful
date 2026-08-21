@@ -154,6 +154,21 @@ const MIGRATIONS: Migration[] = [
       db.createObjectStore('config_schemas', { keyPath: 'id' });
     }
   },
+
+  // v12 — Phase 10 (Notebook): notes as one self-referencing tree, and their
+  // images as a child store so listing notes never carries image bytes.
+  (db) => {
+    if (!db.objectStoreNames.contains('notes')) {
+      const store = db.createObjectStore('notes', { keyPath: 'id' });
+      store.createIndex('parent_id', 'parent_id');
+      // multiEntry: one index entry per tag, so a tag lookup is a seek.
+      store.createIndex('tags', 'tags', { multiEntry: true });
+    }
+    if (!db.objectStoreNames.contains('note_assets')) {
+      const store = db.createObjectStore('note_assets', { keyPath: 'id' });
+      store.createIndex('note_id', 'note_id');
+    }
+  },
 ];
 
 export const DB_VERSION = MIGRATIONS.length;

@@ -31,6 +31,12 @@ const HEAVY = [
   { label: 'MathLive', match: /mathlive/i },
   { label: 'Compute Engine', match: /compute-engine/i },
   { label: 'KaTeX fonts', match: /\/math\/fonts\//i },
+  // The notebook: a WYSIWYG editor, a diagram engine and a maths renderer —
+  // added to the guard before the first line of notebook code, as planned.
+  { label: 'Milkdown / ProseMirror', match: /milkdown|prosemirror|crepe/i },
+  { label: 'mermaid', match: /mermaid/i },
+  { label: 'KaTeX', match: /katex/i },
+  { label: 'Excalidraw', match: /excalidraw/i },
 ];
 
 /** Record every request URL the page makes while `work` runs. */

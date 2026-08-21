@@ -11,6 +11,12 @@
  * that tells MathLive's own font loader to stand down, so the library never
  * constructs a `FontFace` or probes for a fonts directory of its own.
  *
+ * `katex.css` is KaTeX's own `katex.min.css` with every `@font-face` block
+ * REMOVED. KaTeX declares the same twenty families (the MathLive faces ARE the
+ * KaTeX faces), so `mathlive-fonts.css` already provides them — what remains
+ * is ~20 KB of layout rules the notebook needs to render `$…$` maths, and the
+ * one stylesheet the self-contained HTML export inlines.
+ *
  * NOT vendored, deliberately:
  *  - `mathlive-static.css` — 13 KB of layout rules the library already injects
  *    itself. Shipping both gives two sources for the same rules.
@@ -23,8 +29,9 @@
  *
  *   node tools/build-math-assets.mjs [--force]
  *
- * Licences: MathLive is MIT (Copyright (c) 2017 Arno Gourdol). The KaTeX faces
- * are MIT (Copyright (c) 2013-2020 Khan Academy and contributors).
+ * Licences: MathLive is MIT (Copyright (c) 2017 Arno Gourdol). KaTeX, its
+ * stylesheet and the faces are MIT (Copyright (c) 2013-2020 Khan Academy and
+ * contributors).
  */
 import { createHash } from 'node:crypto';
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
@@ -38,6 +45,9 @@ const SRC_FONTS = join(SRC_DIR, 'fonts');
 const OUT_DIR = resolve(ROOT, 'public/math');
 const OUT_FONTS = join(OUT_DIR, 'fonts');
 const CSS_NAME = 'mathlive-fonts.css';
+const KATEX_DIR = resolve(ROOT, 'node_modules/katex');
+const KATEX_SRC = join(KATEX_DIR, 'dist/katex.min.css');
+const KATEX_CSS_NAME = 'katex.css';
 
 /** The face count is the invariant: a partial copy renders half the glyphs. */
 const EXPECTED_FONTS = 20;
@@ -64,6 +74,10 @@ if (!existsSync(cssSource)) {
   throw new Error(`${CSS_NAME} is missing from the mathlive package — refusing to write.`);
 }
 
+if (!existsSync(KATEX_SRC)) {
+  throw new Error('katex is not installed — run npm install first.');
+}
+
 mkdirSync(OUT_FONTS, { recursive: true });
 
 const copied = [];
@@ -79,8 +93,41 @@ for (const name of [...faces.map((f) => join('fonts', f)), CSS_NAME]) {
   }
 }
 
+/**
+ * katex.min.css minus its twenty `@font-face` blocks. The blocks are minified
+ * onto one line with no nested braces, so a non-greedy brace match is exact;
+ * the count is asserted so a KaTeX release that changes shape fails loudly
+ * instead of shipping a stylesheet that quietly re-declares the faces.
+ */
+const katexFull = readFileSync(KATEX_SRC, 'utf8');
+const faceBlocks = katexFull.match(/@font-face\{[^{}]*\}/g) ?? [];
+if (faceBlocks.length !== EXPECTED_FONTS) {
+  throw new Error(
+    `expected ${EXPECTED_FONTS} @font-face blocks in katex.min.css, found ${faceBlocks.length} ` +
+      '— refusing to write.'
+  );
+}
+const katexLayout = katexFull.replace(/@font-face\{[^{}]*\}/g, '').trim() + '\n';
+if (/@font-face|url\(/.test(katexLayout)) {
+  throw new Error('katex.css still references a font or URL after stripping — refusing to write');
+}
+{
+  const to = join(OUT_DIR, KATEX_CSS_NAME);
+  if (existsSync(to) && !force) {
+    skipped++;
+  } else {
+    writeFileSync(to, katexLayout, 'utf8');
+    copied.push(KATEX_CSS_NAME);
+  }
+}
+
 const version = JSON.parse(readFileSync(join(SRC_DIR, 'package.json'), 'utf8')).version;
-const entries = [...faces.map((f) => join('fonts', f).replaceAll('\\', '/')), CSS_NAME].map((name) => {
+const katexVersion = JSON.parse(readFileSync(join(KATEX_DIR, 'package.json'), 'utf8')).version;
+const entries = [
+  ...faces.map((f) => join('fonts', f).replaceAll('\\', '/')),
+  CSS_NAME,
+  KATEX_CSS_NAME,
+].map((name) => {
   const path = join(OUT_DIR, name);
   return { name, bytes: statSync(path).size, hash: sha256(path) };
 });
@@ -89,11 +136,15 @@ const total = entries.reduce((sum, e) => sum + e.bytes, 0);
 writeFileSync(
   join(OUT_DIR, 'PROVENANCE.txt'),
   [
-    'MathLive KaTeX web fonts, vendored for offline use.',
+    'MathLive KaTeX web fonts and the KaTeX layout stylesheet, vendored for offline use.',
     '',
     `source:      node_modules/mathlive @ ${version}`,
+    `             node_modules/katex @ ${katexVersion} (katex.css = dist/katex.min.css`,
+    '             with its 20 @font-face blocks removed; mathlive-fonts.css declares',
+    '             the same families over the same faces)',
     'licence:     MIT (MathLive, (c) 2017 Arno Gourdol)',
-    '             MIT (KaTeX faces, (c) 2013-2020 Khan Academy and contributors)',
+    '             MIT (KaTeX, its stylesheet and faces, (c) 2013-2020 Khan Academy',
+    '             and contributors)',
     'regenerate:  node tools/build-math-assets.mjs --force',
     '',
     'Not vendored: mathlive-static.css (the library injects those rules itself),',

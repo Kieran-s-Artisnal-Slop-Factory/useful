@@ -9,7 +9,11 @@
     type ExportEnvelope,
     type ImportMode,
   } from '../../lib/db/export';
-  import { requestPersistentStorage, type PersistState } from '../../lib/db/persistence';
+  import {
+    requestPersistentStorage,
+    storageEstimate,
+    type PersistState,
+  } from '../../lib/db/persistence';
   import { href } from '../../lib/paths';
 
   const THEME_KEY = 'useful-theme';
@@ -19,6 +23,22 @@
   let busy = $state(false);
   let theme = $state('auto');
   let persistState: PersistState | null = $state(null);
+  /** What the browser says this origin is using, and may use. Read-only. */
+  let estimate = $state<{ usage: number; quota: number } | null>(null);
+
+  onMount(() => {
+    // An estimate is a read; page load must write nothing.
+    void storageEstimate().then((value) => (estimate = value));
+  });
+
+  /** `1.2 MB`, `340 KB` — a readout, not a measurement. */
+  function bytesLabel(bytes: number): string {
+    if (!Number.isFinite(bytes) || bytes < 0) return '—';
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+    if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+    return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+  }
 
   onMount(async () => {
     theme = localStorage.getItem(THEME_KEY) ?? 'auto';
@@ -131,6 +151,12 @@
         Data lives in this browser's IndexedDB. Ask the browser to protect it from eviction, and
         export JSON backups regularly — this device is the only copy.
       </p>
+      {#if estimate}
+        <p class="muted small" data-testid="settings-storage-usage">
+          Using {bytesLabel(estimate.usage)} of the {bytesLabel(estimate.quota)} this browser
+          allows — images pasted into notes are the first thing that grows it.
+        </p>
+      {/if}
       <div class="row">
         <button class="btn" onclick={persist}>Request persistent storage</button>
         {#if persistState}

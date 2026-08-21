@@ -38,7 +38,8 @@ Per tool, under [`dev/tools/`](dev/tools/):
 [logo generator](dev/tools/logo-generator.md) ·
 [napkin math](dev/tools/napkin-math.md) ·
 [SQL playground](dev/tools/sql-playground.md) ·
-[config playground](dev/tools/config-playground.md)
+[config playground](dev/tools/config-playground.md) ·
+[notebook](dev/tools/notebook.md)
 
 ## For users — [`user/`](user/)
 
@@ -64,6 +65,7 @@ the app.
 | [sprite-editor.md](user/sprite-editor.md) | Pixel art on a character grid |
 | [sql-playground.md](user/sql-playground.md) | Real SQLite and Postgres in the tab |
 | [config-playground.md](user/config-playground.md) | JSON and YAML: validate, prettify, extract a schema, generate samples and code |
+| [notebook.md](user/notebook.md) | Linked markdown notes — WYSIWYG or source, footnotes, diagrams, export to Markdown, HTML and PDF |
 
 ## Plans
 

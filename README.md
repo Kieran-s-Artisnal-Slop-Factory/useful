@@ -33,8 +33,9 @@ Everything runs locally: no account, no server, no telemetry.
 - `preferences` — singleton, field-merged; per-tool defaults (timer completion
   defaults, last-used timezone pair, last-used photography sensor format, the
   image tools' JPG quality, the last-open SVG-editor document, the last SQL
-  playground engine, the config playground's last mode and open schema; the
-  Preferences page shows what has been remembered)
+  playground engine, the config playground's last mode and open schema, the
+  notebook's open note and editor mode; the Preferences page shows what has
+  been remembered)
 - `timers` — countdown timers; running timers store an absolute `end_at`
   deadline, so nothing writes per tick
 - `stopwatch` — singleton; start epoch + accumulated elapsed + lap list
@@ -64,6 +65,13 @@ Everything runs locally: no account, no server, no telemetry.
 - `config_schemas` — a config-playground schema: its name, format (`json` /
   `yaml`), the Field/Type table as a JSON tree, and the parse-mode document
   text it was extracted from. Text only, so it rides backups byte-identically
+- `notes` — field-merged; a notebook note: title, markdown body, aliases (old
+  titles kept so `[[links]]` keep resolving), tags, and a `parent_id` pointing
+  at another note — folders are notes, so the sidebar is one tree. Backlinks
+  are computed from bodies, never stored
+- `note_assets` — images pasted into a note, as base64 with their size. Keyed
+  to the note and deleted with it; a child store so listing notes never
+  carries image bytes, and capped per asset because a backup is one JSON file
 
 Every table also carries bookkeeping fields (`id`, `updated_at`,
 `deleted_at`, `server_seq`) that power soft deletes and keep the door open

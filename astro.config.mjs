@@ -17,6 +17,14 @@ export default defineConfig({
     // dynamic import to a .vite/deps path that 404s at runtime, so the dev
     // server must serve the package as-is; src/lib/bg/runtime.ts pins the
     // loader path for the production build.
-    optimizeDeps: { exclude: ['onnxruntime-web'] }
+    optimizeDeps: { exclude: ['onnxruntime-web'] },
+    // Milkdown Crepe (the notebook editor) renders its feature UIs with Vue's
+    // runtime. Vue's esm-bundler build reads these flags; leaving them
+    // undefined logs a warning and keeps the Options API code paths alive.
+    define: {
+      __VUE_OPTIONS_API__: 'false',
+      __VUE_PROD_DEVTOOLS__: 'false',
+      __VUE_PROD_HYDRATION_MISMATCH_DETAILS__: 'false'
+    }
   }
 });

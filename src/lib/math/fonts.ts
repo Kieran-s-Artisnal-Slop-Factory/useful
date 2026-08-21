@@ -52,9 +52,17 @@ export const MATH_FONT_FILES: readonly string[] = [
   'KaTeX_Typewriter-Regular.woff2',
 ];
 
-/** The stylesheet plus every face — what the offline bundle downloads. */
+/**
+ * Both stylesheets plus every face — what the offline bundle downloads.
+ *
+ * `katex.css` is KaTeX's layout stylesheet with its `@font-face` blocks
+ * stripped: KaTeX declares the very same twenty families, so it borrows them
+ * from `mathlive-fonts.css` instead of declaring them twice. The notebook's
+ * `$…$` maths renders through it; MathLive never needs it.
+ */
 export const MATH_ASSETS: readonly string[] = [
   href('/math/mathlive-fonts.css'),
+  href('/math/katex.css'),
   ...MATH_FONT_FILES.map((name) => href(`/math/fonts/${name}`)),
 ];
 
@@ -63,7 +71,7 @@ export const MATH_ASSETS: readonly string[] = [
  * and checks this number, so a re-vendor that changes sizes fails the suite
  * rather than quietly lying to the offline dialog's progress bar.
  */
-export const MATH_FONT_BYTES = 262_804;
+export const MATH_FONT_BYTES = 282_448;
 
 /** True when every asset is already in the cache. */
 export async function fontsReady(): Promise<boolean> {
@@ -91,10 +99,28 @@ const LINK_ID = 'ml-fonts';
  * that never shows a formula should not carry the request.
  */
 export function ensureFontCss(): void {
-  if (document.getElementById(LINK_ID)) return;
+  appendStylesheet(LINK_ID, '/math/mathlive-fonts.css');
+}
+
+const KATEX_LINK_ID = 'katex-css';
+
+/**
+ * Put KaTeX's layout stylesheet in the document, once — and the font
+ * stylesheet with it, since `katex.css` declares no faces of its own.
+ *
+ * Called from the notebook's mount, never at module scope, for the same
+ * reason as `ensureFontCss`.
+ */
+export function ensureKatexCss(): void {
+  ensureFontCss();
+  appendStylesheet(KATEX_LINK_ID, '/math/katex.css');
+}
+
+function appendStylesheet(id: string, path: string): void {
+  if (document.getElementById(id)) return;
   const link = document.createElement('link');
-  link.id = LINK_ID;
+  link.id = id;
   link.rel = 'stylesheet';
-  link.href = href('/math/mathlive-fonts.css');
+  link.href = href(path);
   document.head.append(link);
 }

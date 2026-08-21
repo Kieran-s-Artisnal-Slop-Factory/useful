@@ -2,7 +2,7 @@
 
 IndexedDB is the source of truth. There is no server: every row a tool creates lives in one database (`useful`) in the visitor's browser profile, and the only way it leaves is the JSON backup file. Four modules under `src/lib/db/` own it — the schema ([types.ts](../../src/lib/db/types.ts)), the connection and migrations ([db.ts](../../src/lib/db/db.ts)), the only sanctioned read/write path ([repo.ts](../../src/lib/db/repo.ts)), and backup export/import ([export.ts](../../src/lib/db/export.ts)) — plus a change queue that nothing drains yet ([outbox.ts](../../src/lib/db/outbox.ts)) and a persistent-storage request ([persistence.ts](../../src/lib/db/persistence.ts)).
 
-_Describes the code as of v0.2.0 (unreleased; schema v11) — verify against source when in doubt._
+_Describes the code as of v0.2.0 (unreleased; schema v12) — verify against source when in doubt._
 
 ## File map
 
@@ -37,6 +37,8 @@ Every store is keyed on `id` (`keyPath: 'id'`) except `sync_outbox` (`keyPath: '
 | `napkin_templates` | v10 | — | — | — | — | Napkin-math templates: `name`, `description`, `formula_latex`, `formula_json`, `fields`. |
 | `napkin_calculations` | v10 | `template_id` | — | — | `template_id → napkin_templates` | One set of inputs run through a template, with its `result`. Deleted with the template. |
 | `config_schemas` | v11 | — | — | — | — | Config-playground schemas: `name`, `format` (`json` / `yaml`), `fields` (the Field/Type tree as JSON), `source` (the parse-mode document text). Read back through `normalizeSchemaRow`, never trusted. |
+| `notes` | v12 | `parent_id`, `tags` (multiEntry) | — | yes | `parent_id → notes` (nullable, self-referencing) | Notebook notes: `title`, `body_md`, `aliases`, `parent_id`, `tags`. Folders are notes. Read through `normalizeNote`; a missing, self or cyclic parent reads as root. Backlinks are computed, never stored. |
+| `note_assets` | v12 | `note_id` | — | — | `note_id → notes` | Images pasted into a note: `name`, `mime`, `bytes`, `data` (base64). Capped per asset; deleted with the note. |
 
 The foreign keys exist only in the test mirror ([schema.ts](../../tests/local/helpers/schema.ts) `references`) — IndexedDB enforces nothing; `assertInvariants` in the suite checks that every live child points at an existing parent.
 
@@ -62,6 +64,7 @@ Flags:
 | v9 | `sprites`. |
 | v10 | `napkin_templates`, `napkin_calculations` (+ index `template_id`). |
 | v11 | `config_schemas`. |
+| v12 | `notes` (+ indexes `parent_id`, `tags` multiEntry — the first multiEntry index in the schema), `note_assets` (+ index `note_id`). |
 
 Conventions, each enforced by nothing but review:
 

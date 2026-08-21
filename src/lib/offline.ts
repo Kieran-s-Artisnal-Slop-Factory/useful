@@ -97,7 +97,7 @@ const modelBundle: OfflineBundle = {
 const mathFontsBundle: OfflineBundle = {
   id: 'math-fonts',
   label: 'Maths fonts',
-  detail: 'The twenty KaTeX faces the napkin-math editor draws formulas with.',
+  detail: 'The twenty KaTeX faces and two stylesheets that napkin-math and the notebook draw with.',
   bytes: MATH_FONT_BYTES,
   ready: () => fontsReady(),
   async run(onNote) {
