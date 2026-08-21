@@ -22,7 +22,9 @@ their own browser.
   secrets (passwords, keys, tokens, identifiers), logos (seeded avatars and
   identicons, or an icon/emoji badge).
 - **Playgrounds** — a SQL playground running real SQLite or Postgres in the
-  tab.
+  tab, and a configuration playground that validates, prettifies and extracts
+  schemas from JSON/YAML, generates sample documents, and emits parsers and
+  generators in four languages or as a web component.
 
 Everything runs locally: no account, no server, no telemetry.
 
@@ -31,7 +33,8 @@ Everything runs locally: no account, no server, no telemetry.
 - `preferences` — singleton, field-merged; per-tool defaults (timer completion
   defaults, last-used timezone pair, last-used photography sensor format, the
   image tools' JPG quality, the last-open SVG-editor document, the last SQL
-  playground engine; the Preferences page shows what has been remembered)
+  playground engine, the config playground's last mode and open schema; the
+  Preferences page shows what has been remembered)
 - `timers` — countdown timers; running timers store an absolute `end_at`
   deadline, so nothing writes per tick
 - `stopwatch` — singleton; start epoch + accumulated elapsed + lap list
@@ -58,6 +61,9 @@ Everything runs locally: no account, no server, no telemetry.
   engine id (`sqlite` / `pglite`): the editor buffer and an optional SQL
   snapshot of the database. The live database is in a Web Worker's memory; only
   the SQL needed to rebuild it is stored
+- `config_schemas` — a config-playground schema: its name, format (`json` /
+  `yaml`), the Field/Type table as a JSON tree, and the parse-mode document
+  text it was extracted from. Text only, so it rides backups byte-identically
 
 Every table also carries bookkeeping fields (`id`, `updated_at`,
 `deleted_at`, `server_seq`) that power soft deletes and keep the door open

@@ -2,13 +2,13 @@
 
 IndexedDB is the source of truth. There is no server: every row a tool creates lives in one database (`useful`) in the visitor's browser profile, and the only way it leaves is the JSON backup file. Four modules under `src/lib/db/` own it — the schema ([types.ts](../../src/lib/db/types.ts)), the connection and migrations ([db.ts](../../src/lib/db/db.ts)), the only sanctioned read/write path ([repo.ts](../../src/lib/db/repo.ts)), and backup export/import ([export.ts](../../src/lib/db/export.ts)) — plus a change queue that nothing drains yet ([outbox.ts](../../src/lib/db/outbox.ts)) and a persistent-storage request ([persistence.ts](../../src/lib/db/persistence.ts)).
 
-_Describes the code as of v0.2.0 (unreleased; schema v7) — verify against source when in doubt._
+_Describes the code as of v0.2.0 (unreleased; schema v11) — verify against source when in doubt._
 
 ## File map
 
 | File | Role |
 | --- | --- |
-| [types.ts](../../src/lib/db/types.ts) | Entity interfaces (`SyncFields`, `Preferences`, `Timer`, `Stopwatch`, `Event`, `Todo`, `TodoComment`, `SvgDocument`, `SqlPlayground`) and the `STORES` map — every backed-up store, its indexes and its `singleton` / `fieldMerge` flags. `FIELD_MERGED_STORES` is derived from it. |
+| [types.ts](../../src/lib/db/types.ts) | Entity interfaces (`SyncFields`, `Preferences`, `Timer`, `Stopwatch`, `Event`, `Todo`, `TodoComment`, `SvgDocument`, `SqlPlayground`, `Sprite`, `NapkinTemplate`, `NapkinCalculation`, `ConfigSchema`) and the `STORES` map — every backed-up store, its indexes and its `singleton` / `fieldMerge` flags. `FIELD_MERGED_STORES` is derived from it. |
 | [db.ts](../../src/lib/db/db.ts) | `DB_NAME = 'useful'`, the ordered `MIGRATIONS` list, `DB_VERSION = MIGRATIONS.length`, `getDB()` (memoised `openDB` from `idb`), `closeDB()` for the test harness. |
 | [repo.ts](../../src/lib/db/repo.ts) | `all`, `get`, `byIndex`, `put`, `patch`, `bulkPut`, `putReconciled`, `canonicalRow`, `getSingleton`, `putSingleton`, `softDelete`, `softDeleteMany`, `withSyncFields`, `newId`, `nowIso`, `domainKeys`, `SYNC_META`, `SINGLETON_ID`. |
 | [export.ts](../../src/lib/db/export.ts) | `exportData`, `downloadExport`, `importData` (modes `'replace'` / `'merge'`), `clearAllData`, the `ExportEnvelope` shape. |
@@ -28,11 +28,15 @@ Every store is keyed on `id` (`keyPath: 'id'`) except `sync_outbox` (`keyPath: '
 | `sync_outbox` | v2 | — | — | — | — | Change queue. **Not in `STORES`**: never exported, never validated by the suite. |
 | `timers` | v3 | — | — | — | — | Countdown timers; running ones store an absolute `end_at`. |
 | `stopwatch` | v3 | — | yes | — | — | The one stopwatch: `started_at`, `elapsed_before_pause_ms`, `laps`, `state`. |
-| `events` | v4 | `start` | — | — | — | Calendar events. |
+| `events` | v4 | `start`, `series_id` (v8) | — | — | `series_id → events` (nullable) | Calendar events, including recurring series and the detached occurrences pulled out of them. |
 | `todos` | v4 | `status`, `due_date` | — | yes | `recurrence_parent_id → todos` (nullable) | TODOs incl. recurrence rule and kanban `rank`. |
 | `todo_comments` | v4 | `todo_id` | — | — | `todo_id → todos` | Comment child rows. |
 | `svg_documents` | v5 | — | — | — | — | SVG-editor documents; `layers` is plain JSON. |
 | `sql_playgrounds` | v7 | — | — | — | — | One workspace per engine, **row id = engine id** (`sqlite` / `pglite`): `buffer`, `snapshot`, `snapshot_at`. Written by [sql/store.ts](../../src/lib/sql/store.ts) through `put`/`patch` with an explicit `id`, not `withSyncFields`' UUID. |
+| `sprites` | v9 | — | — | — | — | Sprite-editor documents: `size`, `rows` (array of strings), `colors` (character → colour); plain JSON. |
+| `napkin_templates` | v10 | — | — | — | — | Napkin-math templates: `name`, `description`, `formula_latex`, `formula_json`, `fields`. |
+| `napkin_calculations` | v10 | `template_id` | — | — | `template_id → napkin_templates` | One set of inputs run through a template, with its `result`. Deleted with the template. |
+| `config_schemas` | v11 | — | — | — | — | Config-playground schemas: `name`, `format` (`json` / `yaml`), `fields` (the Field/Type tree as JSON), `source` (the parse-mode document text). Read back through `normalizeSchemaRow`, never trusted. |
 
 The foreign keys exist only in the test mirror ([schema.ts](../../tests/local/helpers/schema.ts) `references`) — IndexedDB enforces nothing; `assertInvariants` in the suite checks that every live child points at an existing parent.
 
@@ -54,6 +58,10 @@ Flags:
 | v5 | `svg_documents`. |
 | v6 | No schema change: a data sweep. Opens a cursor over each of the seven stores that existed at v6 (named as literals, skipped when the database lacks one) and, for each row with `deleted_at` set, rewrites it keeping only `TOMBSTONE_KEEP` (`id`, `updated_at`, `deleted_at`, `server_seq`, `field_updated_at`). Clocks are left exactly as stored — restamping a cleanup pass would beat real edits and resurrect deletions under LWW. |
 | v7 | `sql_playgrounds`. |
+| v8 | `events` gains the `series_id` index. The recurrence columns themselves need no migration: readers default them. |
+| v9 | `sprites`. |
+| v10 | `napkin_templates`, `napkin_calculations` (+ index `template_id`). |
+| v11 | `config_schemas`. |
 
 Conventions, each enforced by nothing but review:
 

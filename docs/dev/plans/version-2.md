@@ -151,7 +151,7 @@ and the phases below are written to the answers, not the defaults.
 | 6 ✅ | Logo generator (port) | `@dicebear/*`, `jdenticon`, `lucide-static` | — | **DONE 2026-08-19.** |
 | 7 ✅ | DataTable + SQL playground | — | — | **DONE 2026-08-19.** Adds `src/lib/table/` |
 | 8 ✅ | Napkin math | `mathlive`, `@cortex-js/compute-engine` | v10 | **DONE 2026-08-19.** Adds `src/lib/codegen/` |
-| 9 | Configuration playground | `yaml`, `@codemirror/lang-json`, `@codemirror/lang-yaml` | v11 | Extends `src/lib/codegen/` |
+| 9 ✅ | Configuration playground | `yaml`, `@codemirror/lang-json`, `@codemirror/lang-yaml` | v11 | **DONE 2026-08-21.** Extends `src/lib/codegen/` |
 | 10 | Notebook | `@milkdown/*`, `mermaid`, `katex`, CodeMirror markdown | v12 | Heaviest; most open questions |
 | 11 | Hardening + release | — | — | |
 
@@ -836,7 +836,7 @@ JavaScript, Go and Rust each disagree in a different place.
 
 ---
 
-## Phase 9 — Configuration playground
+## Phase 9 — Configuration playground — DONE (2026-08-21)
 
 **Goal:** `/tools/config-playground/` — understand, validate and generate
 JSON/YAML. Two modes, sketched in
@@ -929,6 +929,48 @@ and exercised.
 **Docs:** `docs/dev/tools/config-playground.md`, `docs/user/config-playground.md`.
 
 **CHANGELOG:** Features; note DB v11 and the new dependencies.
+
+**Outcome:** built as scoped — `src/lib/config/` (model, formats, inference,
+validation, generation, word lists, parsing), `src/lib/codegen/config.ts` +
+`configWebcomponent.ts`, [ConfigEditor.svelte](../../../src/components/ConfigEditor.svelte)
+over the CodeMirror chassis, and
+[ConfigPlaygroundApp.svelte](../../../src/components/apps/ConfigPlaygroundApp.svelte);
+197 unit cases across seven files and 12 Playwright cases. Written up in
+[tools/config-playground.md](../tools/config-playground.md). Decisions taken
+while building, beyond the plan:
+
+- **Extraction is live only while the table is the extractor's own work.**
+  "The schema in hand survives the switch" and "its schema is extracted as you
+  type" conflict the moment a hand-built schema meets a pasted document: live
+  extraction would overwrite it on the first keystroke. So extraction stops
+  rewriting the table once the fields came from anywhere else — opened from the
+  library, or carried through Create and back — and parse mode instead reports
+  how the document fits the schema in hand. **Extract from document** resumes
+  the live behaviour, and the page says which state it is in.
+- **Nested objects** render as the plan proposed: one flattened path per row
+  (`address.city`, `workplaces[].name`) with indentation and a collapse toggle
+  per branch, editable in Create mode and read-only in Parse mode.
+- **`maxAliasCount` is a `toJS()` option in `yaml` 2.9, not a parse option**,
+  and `parseDocument` never expands aliases; the bomb is caught where it
+  would expand and reported as an ordinary error.
+- **The octal audit keys on the source text**, because YAML 1.2 reads `0123`
+  as the number 123 and a check on the parsed value would never fire.
+- **Emitted code unrolls the schema per language; the web component
+  interprets it.** The four-language files carry explicit per-field checks and
+  assignments (readable, no runtime schema), while the component embeds the
+  fields as data and one shared `CONFIG_JS_RUNTIME` interpreter — with drift
+  tests holding that runtime to `validate.ts` and `generate.ts`. The format
+  checks the emitted Python, JavaScript and Go carry are `formats.ts`'s own
+  pattern sources, kept portable (RE2-safe, no flags) for exactly that reuse;
+  only Rust, with no regex in its standard library, gets hand-rolled
+  approximations.
+- **Three honest limits, stated in the output itself:** the Rust parser uses
+  `serde_json` (Rust has no JSON in its standard library); a YAML-format parser
+  takes already-decoded data rather than pretending to parse YAML without a
+  dependency; and the web component accepts JSON input only.
+- **No schema import/export beyond the library.** The plan lists none and the
+  sketch's "Schema Export" heading is the table itself; the generated code and
+  the example documents are the things that leave the page.
 
 ---
 

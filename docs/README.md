@@ -37,7 +37,8 @@ Per tool, under [`dev/tools/`](dev/tools/):
 [secrets](dev/tools/secrets.md) ·
 [logo generator](dev/tools/logo-generator.md) ·
 [napkin math](dev/tools/napkin-math.md) ·
-[SQL playground](dev/tools/sql-playground.md)
+[SQL playground](dev/tools/sql-playground.md) ·
+[config playground](dev/tools/config-playground.md)
 
 ## For users — [`user/`](user/)
 
@@ -62,6 +63,7 @@ the app.
 | [image-editor.md](user/image-editor.md) | The layered raster editor (session-only — read the gotchas) |
 | [sprite-editor.md](user/sprite-editor.md) | Pixel art on a character grid |
 | [sql-playground.md](user/sql-playground.md) | Real SQLite and Postgres in the tab |
+| [config-playground.md](user/config-playground.md) | JSON and YAML: validate, prettify, extract a schema, generate samples and code |
 
 ## Plans
 

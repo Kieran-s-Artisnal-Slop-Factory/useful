@@ -17,6 +17,7 @@
  */
 import type { ConfigField, ConfigFieldKind, ConfigFieldType } from '../db/types';
 import { MAX_DEPTH, typeLabel } from '../config/model';
+import { FORMAT_SOURCES } from '../config/formats';
 import { functionName, type Language } from './identifiers';
 
 export interface ConfigCodeTemplate {
@@ -84,16 +85,12 @@ type FormatKind = 'email' | 'phone' | 'uri' | 'date' | 'date-time';
 const FORMAT_ORDER: readonly FormatKind[] = ['email', 'phone', 'uri', 'date', 'date-time'];
 
 /** One pattern text per format, used verbatim by Python's re, JavaScript
- * regex literals and Go's RE2 (no lookarounds, no backrefs). None contain a
- * single quote, a forward slash or a backtick, so each language's literal
- * syntax can wrap them without further escaping. */
-const FORMAT_PATTERNS: Record<FormatKind, string> = {
-  email: '^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$',
-  phone: '^\\+?[0-9][0-9\\s().-]{5,}$',
-  uri: '^[A-Za-z][A-Za-z0-9+.-]*:[^\\s]+$',
-  date: '^\\d{4}-\\d{2}-\\d{2}$',
-  'date-time': '^\\d{4}-\\d{2}-\\d{2}[T ]\\d{2}:\\d{2}(:\\d{2}(\\.\\d+)?)?(Z|[+-]\\d{2}:?\\d{2})?$',
-};
+ * regex literals and Go's RE2. These are the page's OWN patterns
+ * (formats.ts keeps them portable for exactly this reason), so a generated
+ * parser and the inference that produced its schema agree on what an email,
+ * a URI or a phone number is. Rust gets hand-rolled approximations below,
+ * because it has no regex in its standard library. */
+const FORMAT_PATTERNS: Record<FormatKind, string> = FORMAT_SOURCES;
 
 const FORMAT_CONST: Record<FormatKind, string> = {
   email: 'EMAIL',

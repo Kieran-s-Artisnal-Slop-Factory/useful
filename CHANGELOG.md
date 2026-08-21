@@ -2,6 +2,55 @@
 
 ## Features
 
+- **Configuration playground** (`/tools/config-playground/`): understand,
+  validate and generate JSON and YAML. **Parse** mode takes a document in a
+  syntax-highlighted editor with completion, sniffs the format (a leading `{`
+  or `[` is JSON; a manual override covers the rest), lints it as you type — a
+  **Valid** badge, or positioned errors in the gutter and under the editor —
+  prettifies it, and extracts its schema into a Field/Type table: strings,
+  integers, numbers, booleans, email / phone / URI / date / date-time formats
+  spotted by pattern, enums when a few values repeat, optional keys, nullable
+  values, nested objects, arrays of objects, and unions when a key's type
+  varies. **Create** mode builds the same table by hand — add rows, pick types,
+  nest objects and arrays — chooses JSON or YAML, and generates *n* sample
+  documents from it. One **Switch** control moves between the two and the
+  schema in hand survives the switch, so a hand-built schema can be checked
+  against a real document: parse mode reports, field by field, how the pasted
+  document fits it.
+  - **YAML is the eemeli `yaml` package, not `js-yaml`.** `js-yaml` throws on
+    the first error and discards comments, so a prettify pass would silently
+    delete every comment in the document — data loss, not a formatting nit.
+    `yaml` collects every error with character positions (they drop straight
+    into the editor's diagnostics) and round-trips comments and anchors through
+    prettify.
+  - **The YAML 1.1 traps are called out.** A bare `NO` is a string here (YAML
+    1.2) and `false` under a 1.1 parser — the Norway problem; `12:30` was the
+    number 750 and `0123` was octal. Each is flagged with its line, along with
+    integers past 2⁵³, `.nan` / `.inf`, anchors and aliases (shared structure
+    is lost on the way to JSON) and non-string keys. Alias expansion is capped,
+    so a pasted "billion laughs" document is refused rather than obeyed.
+  - **Schema inference and validation are hand-rolled** — a few hundred lines
+    of pure logic each. The npm options either do not merge across samples or
+    compile schemas with `new Function`, which a hardened CSP blocks.
+  - **Generated sample data is seeded and hand-rolled**: a mulberry32 PRNG over
+    curated word lists, reserved example domains and 555-01xx phone numbers, so
+    nothing generated ever names a real person or a reachable host. The same
+    seed reproduces the same documents, and a property test generates a hundred
+    and validates every one.
+  - **Code generation**, in the same card shape as napkin math: a **parser**
+    (validate a document and surface each field, every problem reported at
+    once) or a **generator** (seeded samples), in **Python, JavaScript, Go or
+    Rust** as plain typed functions whose docstrings list the fields — the
+    schema is unrolled into explicit per-field checks, so the file documents
+    the format it handles — or as a **dependency-free web component** that
+    takes a pasted document, or a count and a button. The emitted files are
+    standard library only, with one stated exception (the Rust parser uses
+    `serde_json`) and two honest refusals (a YAML-format parser asks for the
+    decoded data rather than pretending to parse YAML, and the web component
+    accepts JSON input only). Tests load both components in a real page.
+  - Schemas save to a searchable **library**, and the page remembers which
+    mode and schema were open.
+
 - **Napkin math** (`/tools/napkin-math/`): write a formula and get a little
   calculator for it. Its variables become typed input fields — whole number or
   not, positive-only or not, zero allowed or not, required or not — the result
@@ -190,6 +239,24 @@
 
 ## Other
 
+- Database schema **v11**: new `config_schemas` (name, format, the Field/Type
+  tree as JSON, the parse-mode source text), plus
+  `preferences.config_last_mode` and `preferences.config_last_schema_id`.
+  JSON-native, so rows ride backup export/import; a stored row is normalised on
+  read and never trusted.
+- New dependencies for the config playground: `yaml` (ISC),
+  `@codemirror/lang-json`, `@codemirror/lang-yaml` and `@codemirror/lint` (all
+  MIT). The page's own chunk is ~197 KB minified with the YAML parser inside
+  it; the two language packages and the linter load lazily into the editor's
+  language compartment as one bundle, so no other route pays for any of it.
+  All are fingerprinted chunks the service worker's crawl finds, so there is
+  no new offline bundle.
+- Service worker: `tools/config-playground/` added to the precached shell,
+  cache bumped to **v16**.
+- New `src/lib/config/` (model, inference, formats, validation, generation,
+  parsing) and two new files under `src/lib/codegen/` (`config.ts`,
+  `configWebcomponent.ts`) — phase 9 extends the code generator by importing
+  from it, not by editing it.
 - **Napkin math: saving a calculation no longer refuses silently.** The button
   was live, the template had never been written, and the only clue was a
   transient line at the far end of a long page. Saving a calculation now saves
