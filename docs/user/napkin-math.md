@@ -10,6 +10,8 @@ Type into the **Formula** box. It is a proper maths editor: `/` makes a fraction
 
 Type a whole word — `revenue`, `count`, `rate` — and it becomes **one variable**, not a row of letters multiplied together. That is the point of the tool: a formula you can read six months later.
 
+Under the box are buttons for the things nobody types from memory — **Σ Sum**, **Π Product**, **∫ Integral**, **÷ Fraction**, **√ Root**. Each drops a working example at the cursor, bounds and all, so you edit something that already parses rather than building it up from nothing.
+
 As soon as the formula has variables, they appear in **Fields**, one row each. For every one you can set:
 
 - a **label**, which is what the input is called;
@@ -56,7 +58,8 @@ A shared template carries the **formula only**. The numbers you have run through
 - **Templates live in this browser only.** They are in your backups (Settings → Backup), but not in a file anywhere until you export one. Clearing site data deletes them.
 - **Deleting a template deletes its calculations**, and it says so before it does.
 - **The generated code is a starting point.** It has no tests and no packaging, and it does exactly what the formula says — including any rounding surprise the formula already had.
-- **Some formulas cannot become code.** An integral is a fine thing to write down and has no plain-function form; the generator names what it could not do rather than producing something that looks right and is not.
+- **Some formulas cannot become code.** A factorial, for instance: the generator names what it could not write rather than producing something that looks right and is not. Sums, products and integrals *do* become code — a real loop in every language.
+- **A generated integral is approximate.** It uses Simpson's rule, which is exact for simple polynomials and close for everything else. This page works the same way, so the two agree. A generated sum or product rounds its bounds to whole numbers.
 - **Rounding is not the same everywhere**, and the generated code accounts for it. This page rounds a half away from zero; Python and JavaScript each do something different with `-2.5`. Where they disagree, the generated file carries a small helper so the answer matches what you saw here.
 - **The first visit downloads the formula editor and its maths engine** — a bit under a megabyte of gzipped code between them, plus a quarter of a megabyte of fonts. After that it is cached and works offline like everything else; the fonts have their own entry in Settings → Offline.
 - **The clipboard can be blocked.** If a copy button says so, use the matching download instead.

@@ -49,6 +49,7 @@
     inlineShortcuts: unknown;
     onInlineShortcut: (mf: unknown, symbol: string) => string;
     getValue(format: string): unknown;
+    executeCommand(command: string | [string, ...unknown[]]): boolean;
   }
   let field: Field | undefined;
   let ready = $state(false);
@@ -114,6 +115,24 @@
 
   export function focusField() {
     field?.focus();
+  }
+
+  /**
+   * Put `latex` where the cursor is.
+   *
+   * Through the mathfield's own `insert` command rather than by splicing the
+   * value string: only the field knows where the caret is, and rebuilding the
+   * value would move it to the end and lose the selection. `#0` in the LaTeX
+   * marks where the caret should land afterwards.
+   */
+  export function insert(latex: string) {
+    if (!ready || !field) return;
+    field.focus();
+    field.executeCommand(['insert', latex, { focus: true, feedback: false, scrollIntoView: true }]);
+    // The command mutates the field without firing `input`, so the change
+    // would otherwise never reach the page's own state.
+    value = field.value;
+    onchange?.(field.value);
   }
 </script>
 

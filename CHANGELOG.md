@@ -218,6 +218,23 @@
   Go and JavaScript. Plus one that would not have compiled at all: **Rust
   cannot compare an `f64` with an integer literal**, so its guards now use
   `0.0`.
+- **Sums, products and integrals now generate code.** Each becomes a small
+  emitted loop helper taking the bounds and a closure over the bound index —
+  `lambda x:` in Python, `(x) =>` in JavaScript, `func(x float64) float64` in
+  Go, `|x: f64|` in Rust — so one helper per operation covers every occurrence
+  and the closure captures the outer parameters itself. A bound index that
+  would shadow a parameter is renamed. An integral is Simpson's rule with 1000
+  intervals and the generated code says so: exact for low-order polynomials,
+  approximate otherwise, which is also how this page evaluates one.
+- The formula box gained **insert buttons** for sum, product, integral,
+  fraction and root. Each drops a skeleton that already parses and already has
+  bounds, so the field list appears at once — through the mathfield's own
+  `insert` command, so it lands at the cursor rather than replacing the value.
+- **The Code card forgets a formula when the formula changes.** Generated
+  source, and especially a refusal like "this formula uses Sum", describes one
+  formula; it used to stay on screen while the reader typed a different one,
+  and after starting a new template. It now clears on every formula change, on
+  opening another template, and on New.
 - **The generated web component now shows a typeset formula**, not
   `$\(costPerMonth*12\)*years$` as text. The markup comes from
   `convertLatexToMarkup` in MathLive's main entry — already loaded on that page,

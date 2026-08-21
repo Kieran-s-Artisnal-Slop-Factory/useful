@@ -58,9 +58,11 @@ function paren(f: Fragment, need: Prec): string {
 }
 
 /** Which emitted helpers a language needs for this formula. */
-export type Helper = 'round' | 'mod';
+export type Helper = 'round' | 'mod' | 'sum' | 'product' | 'integrate';
 
 interface Dialect {
+  /** A one-argument closure over `body`, as that language spells one. */
+  lambda(parameter: string, body: string): string;
   /** `x ** y`, `math.Pow(x, y)`, `x.powf(y)` — whatever raises to a power. */
   power(base: Fragment, exponent: Fragment): Fragment;
   /** A plain unary maths call, e.g. `sqrt`. */
@@ -76,6 +78,7 @@ interface Dialect {
 
 const DIALECTS: Record<Language, Dialect> = {
   python: {
+    lambda: (p, body) => `lambda ${p}: ${body}`,
     power: (b, x) => ({ text: `${paren(b, PREC.UNARY)} ** ${paren(x, PREC.UNARY)}`, prec: PREC.POWER }),
     call: (name, args) => `math.${name}(${args.join(', ')})`,
     // A bare integer would make `7 / 2` real anyway in Python 3, but writing
@@ -86,6 +89,7 @@ const DIALECTS: Record<Language, Dialect> = {
     e: 'math.e',
   },
   javascript: {
+    lambda: (p, body) => `(${p}) => ${body}`,
     power: (b, x) => ({ text: `${paren(b, PREC.UNARY)} ** ${paren(x, PREC.UNARY)}`, prec: PREC.POWER }),
     call: (name, args) => `Math.${name}(${args.join(', ')})`,
     number: (v) => String(v),
@@ -94,6 +98,7 @@ const DIALECTS: Record<Language, Dialect> = {
     e: 'Math.E',
   },
   go: {
+    lambda: (p, body) => `func(${p} float64) float64 { return ${body} }`,
     // Go has no power operator at all.
     power: (b, x) => atom(`math.Pow(${b.text}, ${x.text})`),
     call: (name, args) => `math.${name[0]!.toUpperCase()}${name.slice(1)}(${args.join(', ')})`,
@@ -107,6 +112,7 @@ const DIALECTS: Record<Language, Dialect> = {
     e: 'math.E',
   },
   rust: {
+    lambda: (p, body) => `|${p}: f64| ${body}`,
     power: (b, x) => atom(`(${b.text} as f64).powf(${x.text})`),
     call: (name, args) => `(${args[0]} as f64).${name}(${args.slice(1).join(', ')})`,
     number: (v) => (Number.isInteger(v) ? `${v}.0` : String(v)),
@@ -138,7 +144,8 @@ const UNARY_MATH: Record<string, { python: string; javascript: string; go: strin
 /** Every head the emitter handles. The evaluator whitelists the same set. */
 export const SUPPORTED_OPERATORS: readonly string[] = [
   'Add', 'Subtract', 'Multiply', 'Divide', 'Rational', 'Negate', 'Power', 'Root',
-  'Min', 'Max', 'Mod', 'Round', 'Log', ...Object.keys(UNARY_MATH),
+  'Min', 'Max', 'Mod', 'Round', 'Log', 'Sum', 'Product', 'Integrate',
+  ...Object.keys(UNARY_MATH),
 ];
 
 export interface EmitResult {
@@ -179,7 +186,15 @@ export function emitExpression(
     return d.call(name, args);
   };
 
-  function walk(node: unknown): Fragment {
+  /**
+   * Emit `node`.
+   *
+   * `scope` is the name map in force here: the outer one for most of a
+   * formula, and the outer one plus a bound index inside a sum, product or
+   * integral. A bound index is not a field, so it never appears in the
+   * caller's map and has to be named on the way in.
+   */
+  function walk(node: unknown, scope: ReadonlyMap<string, string> = names): Fragment {
     const literal = numberOf(node);
     if (literal !== null) return atom(d.number(literal));
 
@@ -193,7 +208,7 @@ export function emitExpression(
         return atom(d.e);
       }
       if (node === 'Nothing') throw new UnsupportedOperator('an empty formula');
-      return atom(names.get(node) ?? node);
+      return atom(scope.get(node) ?? node);
     }
 
     if (!Array.isArray(node) || node.length === 0) {
@@ -205,25 +220,25 @@ export function emitExpression(
 
     switch (head) {
       case 'Add': {
-        const parts = args.map(walk).map((f) => paren(f, PREC.ADD));
+        const parts = args.map((a) => walk(a, scope)).map((f) => paren(f, PREC.ADD));
         return { text: parts.join(' + '), prec: PREC.ADD };
       }
       case 'Subtract': {
-        const [a, b] = args.map(walk);
+        const [a, b] = args.map((a) => walk(a, scope));
         // The right operand needs MUL strength: `a - (b + c)` is not `a - b + c`.
         return { text: `${paren(a!, PREC.ADD)} - ${paren(b!, PREC.MUL)}`, prec: PREC.ADD };
       }
       case 'Negate': {
-        const inner = walk(args[0]);
+        const inner = walk(args[0], scope);
         return { text: `-${paren(inner, PREC.UNARY)}`, prec: PREC.UNARY };
       }
       case 'Multiply': {
-        const parts = args.map(walk).map((f) => paren(f, PREC.MUL));
+        const parts = args.map((a) => walk(a, scope)).map((f) => paren(f, PREC.MUL));
         return { text: parts.join(' * '), prec: PREC.MUL };
       }
       case 'Divide':
       case 'Rational': {
-        const [a, b] = args.map(walk);
+        const [a, b] = args.map((a) => walk(a, scope));
         // A Rational is a literal fraction; emitting `1 / 2` keeps it exact in
         // every language that has real division, which all four do here.
         return { text: `${paren(a!, PREC.MUL)} / ${paren(b!, PREC.UNARY)}`, prec: PREC.MUL };
@@ -231,8 +246,8 @@ export function emitExpression(
       case 'Power': {
         // `e^x` and `exp(x)` are the SAME node, so the exponential has to be
         // recognised here or it would be emitted as a power of a constant.
-        if (args[0] === 'ExponentialE') return atom(mathCall(UNARY_MATH['Exp']![language], [walk(args[1]).text]));
-        return d.power(walk(args[0]), walk(args[1]));
+        if (args[0] === 'ExponentialE') return atom(mathCall(UNARY_MATH['Exp']![language], [walk(args[1], scope).text]));
+        return d.power(walk(args[0], scope), walk(args[1], scope));
       }
       case 'Root': {
         const index = numberOf(args[1]);
@@ -240,23 +255,23 @@ export function emitExpression(
         // target language's `pow`. Rather than emit that, refuse: an odd root
         // over a possibly-negative value has no portable spelling.
         if (index === null || index % 2 === 0) {
-          return d.power(walk(args[0]), atom(`1 / ${d.number(index ?? 2)}`));
+          return d.power(walk(args[0], scope), atom(`1 / ${d.number(index ?? 2)}`));
         }
         throw new UnsupportedOperator(
           `an odd root (index ${index}), which the target languages cannot do over negative values`
         );
       }
       case 'Sqrt':
-        return atom(mathCall(UNARY_MATH['Sqrt']![language], [walk(args[0]).text]));
+        return atom(mathCall(UNARY_MATH['Sqrt']![language], [walk(args[0], scope).text]));
       case 'Log': {
-        const value = walk(args[0]).text;
+        const value = walk(args[0], scope).text;
         if (args.length === 1) {
           // A bare Log is base 10 in MathJSON.
           return atom(
             language === 'rust' ? `(${value} as f64).log10()` : mathCall('log10', [value])
           );
         }
-        const base = walk(args[1]).text;
+        const base = walk(args[1], scope).text;
         usesMath = true;
         return language === 'rust'
           ? atom(`(${value} as f64).log(${base})`)
@@ -267,18 +282,18 @@ export function emitExpression(
         const kind = head.toLowerCase() as 'min' | 'max';
         if (language === 'go') usesMath = true;
         if (language === 'javascript') usesMath = false;
-        return atom(d.minmax(kind, args.map((a) => walk(a).text)));
+        return atom(d.minmax(kind, args.map((a) => walk(a, scope).text)));
       }
       case 'Mod': {
         // Floored, following the engine. Only Python's `%` already agrees.
-        const [a, b] = args.map(walk);
+        const [a, b] = args.map((a) => walk(a, scope));
         if (language === 'python') return { text: `${paren(a!, PREC.MUL)} % ${paren(b!, PREC.UNARY)}`, prec: PREC.MUL };
         helpers.add('mod');
         return atom(`_mod(${a!.text}, ${b!.text})`);
       }
       case 'Round': {
-        const value = walk(args[0]).text;
-        const digits = args.length > 1 ? walk(args[1]).text : null;
+        const value = walk(args[0], scope).text;
+        const digits = args.length > 1 ? walk(args[1], scope).text : null;
         if (language === 'go' || language === 'rust') {
           if (digits === null) {
             usesMath = language === 'go';
@@ -292,9 +307,43 @@ export function emitExpression(
         helpers.add('round');
         return atom(`_round(${value}, ${digits ?? '0'})`);
       }
+      case 'Sum':
+      case 'Product':
+      case 'Integrate': {
+        const helper = head === 'Sum' ? 'sum' : head === 'Product' ? 'product' : 'integrate';
+        // `["Limits", index, lower, upper]`. Without it there is no range to
+        // walk, and an indefinite sum has no value to compute.
+        const limits = args[1];
+        if (!Array.isArray(limits) || limits[0] !== 'Limits' || limits.length < 4) {
+          throw new UnsupportedOperator(`${head} without bounds`);
+        }
+        const indexSymbol = String(limits[1]);
+        // An integral's body sometimes arrives wrapped: `\int x^2 dx` parses
+        // to `["Function", ["Block", body], "x"]` while `\int x \, dx` gives
+        // the bare body. Both shapes reach here.
+        let body = args[0];
+        if (Array.isArray(body) && body[0] === 'Function') {
+          const inner = body[1];
+          body = Array.isArray(inner) && inner[0] === 'Block' ? inner[1] : inner;
+        }
+        // Name the index through the same machinery as everything else, with
+        // the outer names in play so it cannot collide with a parameter.
+        const indexName = identifierMap([...scope.keys(), indexSymbol], language).get(indexSymbol)!;
+        const inner = new Map(scope);
+        inner.set(indexSymbol, indexName);
+
+        const lower = walk(limits[2], scope).text;
+        const upper = walk(limits[3], scope).text;
+        const term = d.lambda(indexName, walk(body, inner).text);
+        helpers.add(helper);
+        // Go's helpers round their bounds with math.Round.
+        if (language === 'go') usesMath = true;
+        return atom(`_${helper}(${lower}, ${upper}, ${term})`);
+      }
+
       default: {
         const unary = UNARY_MATH[head];
-        if (unary && args.length === 1) return atom(mathCall(unary[language], [walk(args[0]).text]));
+        if (unary && args.length === 1) return atom(mathCall(unary[language], [walk(args[0], scope).text]));
         throw new UnsupportedOperator(head);
       }
     }

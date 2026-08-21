@@ -106,6 +106,29 @@ const HELPER_SOURCE: Record<Language, Record<Helper, string>> = {
     scaled = value * factor
     return (math.floor(scaled + 0.5) if scaled >= 0 else math.ceil(scaled - 0.5)) / factor`,
     mod: '',
+    sum: `def _sum(lower, upper, term):
+    """Add \`term(i)\` for each whole number from lower to upper, inclusive."""
+    return sum(term(i) for i in range(round(lower), round(upper) + 1))`,
+    product: `def _product(lower, upper, term):
+    """Multiply \`term(i)\` for each whole number from lower to upper, inclusive."""
+    total = 1.0
+    for i in range(round(lower), round(upper) + 1):
+        total *= term(i)
+    return total`,
+    integrate: `def _integrate(lower, upper, f, steps=1000):
+    """Definite integral by the composite Simpson\\'s rule.
+
+    APPROXIMATE. Exact for polynomials up to cubic; everything else carries
+    an error that shrinks with \`steps\`. The formula editor integrates
+    numerically too, so the two agree to about the same tolerance.
+    """
+    if steps % 2:
+        steps += 1
+    h = (upper - lower) / steps
+    total = f(lower) + f(upper)
+    for i in range(1, steps):
+        total += f(lower + i * h) * (4 if i % 2 else 2)
+    return total * h / 3`,
   },
   javascript: {
     // Math.round is half UP, so Math.round(-2.5) is -2 rather than -3.
@@ -119,6 +142,28 @@ const HELPER_SOURCE: Record<Language, Record<Helper, string>> = {
     mod: `function _mod(a, b) {
   // Floored modulo: the sign follows the divisor, as the formula editor does.
   return ((a % b) + b) % b;
+}`,
+    sum: `function _sum(lower, upper, term) {
+  // Add term(i) for each whole number from lower to upper, inclusive.
+  let total = 0;
+  for (let i = Math.round(lower); i <= Math.round(upper); i++) total += term(i);
+  return total;
+}`,
+    product: `function _product(lower, upper, term) {
+  // Multiply term(i) for each whole number from lower to upper, inclusive.
+  let total = 1;
+  for (let i = Math.round(lower); i <= Math.round(upper); i++) total *= term(i);
+  return total;
+}`,
+    integrate: `function _integrate(lower, upper, f, steps = 1000) {
+  // Definite integral by the composite Simpson\\'s rule. APPROXIMATE: exact for
+  // polynomials up to cubic, and otherwise carrying an error that shrinks with
+  // \`steps\`. The formula editor integrates numerically too.
+  if (steps % 2) steps += 1;
+  const h = (upper - lower) / steps;
+  let total = f(lower) + f(upper);
+  for (let i = 1; i < steps; i++) total += f(lower + i * h) * (i % 2 ? 4 : 2);
+  return (total * h) / 3;
 }`,
   },
   go: {
@@ -134,6 +179,41 @@ func _round(value float64, digits float64) float64 {
 func _mod(a, b float64) float64 {
 	return math.Mod(math.Mod(a, b)+b, b)
 }`,
+    sum: `// _sum adds term(i) for each whole number from lower to upper, inclusive.
+func _sum(lower, upper float64, term func(float64) float64) float64 {
+\\ttotal := 0.0
+\\tfor i := math.Round(lower); i <= math.Round(upper); i++ {
+\\t\\ttotal += term(i)
+\\t}
+\\treturn total
+}`,
+    product: `// _product multiplies term(i) for each whole number from lower to upper,
+// inclusive.
+func _product(lower, upper float64, term func(float64) float64) float64 {
+\\ttotal := 1.0
+\\tfor i := math.Round(lower); i <= math.Round(upper); i++ {
+\\t\\ttotal *= term(i)
+\\t}
+\\treturn total
+}`,
+    integrate: `// _integrate is a definite integral by the composite Simpson\\'s rule.
+//
+// APPROXIMATE: exact for polynomials up to cubic, and otherwise carrying an
+// error that shrinks with the step count. The formula editor integrates
+// numerically too, so the two agree to about the same tolerance.
+func _integrate(lower, upper float64, f func(float64) float64) float64 {
+\\tconst steps = 1000
+\\th := (upper - lower) / steps
+\\ttotal := f(lower) + f(upper)
+\\tfor i := 1; i < steps; i++ {
+\\t\\tweight := 2.0
+\\t\\tif i%2 == 1 {
+\\t\\t\\tweight = 4.0
+\\t\\t}
+\\t\\ttotal += f(lower+float64(i)*h) * weight
+\\t}
+\\treturn total * h / 3
+}`,
   },
   rust: {
     round: `/// Round half away from zero at a number of digits, matching the formula
@@ -147,6 +227,41 @@ fn _round(value: f64, digits: f64) -> f64 {
 /// Rust's % truncates instead.
 fn _mod(a: f64, b: f64) -> f64 {
     ((a % b) + b) % b
+}`,
+    sum: `/// Add \`term(i)\` for each whole number from lower to upper, inclusive.
+fn _sum(lower: f64, upper: f64, term: impl Fn(f64) -> f64) -> f64 {
+    let mut total = 0.0;
+    let mut i = lower.round();
+    while i <= upper.round() {
+        total += term(i);
+        i += 1.0;
+    }
+    total
+}`,
+    product: `/// Multiply \`term(i)\` for each whole number from lower to upper, inclusive.
+fn _product(lower: f64, upper: f64, term: impl Fn(f64) -> f64) -> f64 {
+    let mut total = 1.0;
+    let mut i = lower.round();
+    while i <= upper.round() {
+        total *= term(i);
+        i += 1.0;
+    }
+    total
+}`,
+    integrate: `/// Definite integral by the composite Simpson\\'s rule.
+///
+/// APPROXIMATE: exact for polynomials up to cubic, and otherwise carrying an
+/// error that shrinks with the step count. The formula editor integrates
+/// numerically too, so the two agree to about the same tolerance.
+fn _integrate(lower: f64, upper: f64, f: impl Fn(f64) -> f64) -> f64 {
+    const STEPS: i32 = 1000;
+    let h = (upper - lower) / STEPS as f64;
+    let mut total = f(lower) + f(upper);
+    for i in 1..STEPS {
+        let weight = if i % 2 == 1 { 4.0 } else { 2.0 };
+        total += f(lower + i as f64 * h) * weight;
+    }
+    total * h / 3.0
 }`,
   },
 };
@@ -186,7 +301,12 @@ export function generateFunction(template: CodeTemplate, language: Language): st
     .filter(Boolean)
     .join('\n\n');
   // A Python `_round` uses math.floor, so it pulls the import in by itself.
-  const needsMath = usesMath || (language === 'python' && helpers.has('round')) || helpers.has('mod');
+  const needsMath =
+    usesMath ||
+    (language === 'python' && helpers.has('round')) ||
+    helpers.has('mod') ||
+    // Go's loop helpers round their bounds with math.Round.
+    (language === 'go' && (helpers.has('sum') || helpers.has('product')));
 
   const param = (field: NapkinField) => names.get(field.name)!;
 

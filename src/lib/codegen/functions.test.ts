@@ -401,3 +401,123 @@ describe('generateFunction', () => {
     });
   });
 });
+
+describe('Sum, Product and Integrate', () => {
+  const sumTemplate: CodeTemplate = {
+    name: 'Summation',
+    description: '',
+    formulaLatex: String.raw`\sum_{x=1}^{4}\left(x+3+y\right)`,
+    formulaJson: ['Sum', ['Add', 'x', 'y', 3], ['Limits', 'x', 1, 4]],
+    fields: [field('y')],
+  };
+  const productTemplate: CodeTemplate = {
+    name: 'Rising factorial',
+    description: '',
+    formulaLatex: String.raw`\prod_{k=1}^{n}\left(k+a\right)`,
+    formulaJson: ['Product', ['Add', 'a', 'k'], ['Limits', 'k', 1, 'n']],
+    fields: [field('a'), field('n')],
+  };
+  const integralTemplate: CodeTemplate = {
+    name: 'Area under',
+    description: '',
+    formulaLatex: String.raw`\int_{2}^{3}x^2dx`,
+    // The body arrives wrapped when the LaTeX carries a `dx`.
+    formulaJson: ['Integrate', ['Function', ['Block', ['Power', 'x', 2]], 'x'], ['Limits', 'x', 2, 3]],
+    fields: [],
+  };
+
+  it('emits a loop helper and a closure over the bound index', () => {
+    for (const language of LANGUAGES) {
+      const out = generateFunction(sumTemplate, language);
+      expect(out, language).toContain('_sum(');
+      // The helper travels with the function that calls it.
+      expect(out, language).toMatch(/(def|function|func|fn) _sum/);
+      // The index is the closure's parameter, not a parameter of the function
+      // itself — the signature takes `y` alone.
+      // Go capitalises the name, so match on the tail of it. Compare the
+      // PARAMETER LIST rather than the whole line — `export` has an x in it.
+      const signature = out.split('\n').find((line) => /ummation\(/.test(line));
+      expect(signature, language).toBeDefined();
+      const params = /ummation\(([^)]*)\)/.exec(signature!)![1]!;
+      expect(params, language).not.toContain('x');
+      expect(params, language).toContain('y');
+    }
+  });
+
+  it('spells the closure the way each language does', () => {
+    expect(generateFunction(sumTemplate, 'python')).toContain('lambda x:');
+    expect(generateFunction(sumTemplate, 'javascript')).toContain('(x) =>');
+    expect(generateFunction(sumTemplate, 'go')).toContain('func(x float64) float64 { return');
+    expect(generateFunction(sumTemplate, 'rust')).toContain('|x: f64|');
+  });
+
+  it('handles a product, including bounds that are themselves variables', () => {
+    const out = generateFunction(productTemplate, 'javascript');
+    expect(out).toContain('_product(1, n,');
+    expect(out).toContain('function _product');
+  });
+
+  it('unwraps an integral body however it arrived', () => {
+    // `\int x^2 dx` wraps the body in Function/Block; `\int x \, dx` does not.
+    const wrapped = generateFunction(integralTemplate, 'javascript');
+    const bare: CodeTemplate = {
+      ...integralTemplate,
+      formulaJson: ['Integrate', ['Power', 'x', 2], ['Limits', 'x', 2, 3]],
+    };
+    expect(wrapped).toContain('_integrate(2, 3, (x) => x ** 2)');
+    expect(generateFunction(bare, 'javascript')).toContain('_integrate(2, 3, (x) => x ** 2)');
+  });
+
+  it('refuses one without bounds rather than inventing a range', () => {
+    const unbounded: CodeTemplate = {
+      ...sumTemplate,
+      formulaJson: ['Sum', ['Add', 'x', 'y']],
+    };
+    expect(() => generateFunction(unbounded, 'python')).toThrow(/Sum without bounds/);
+  });
+
+  it('renames a bound index that would shadow a parameter', () => {
+    // A hand-built formula can bind `x` while a field is also called `x`. The
+    // engine would not produce that, but an imported file could, and silently
+    // shadowing the parameter inside the loop would change the answer.
+    const clashing: CodeTemplate = {
+      ...sumTemplate,
+      formulaJson: ['Sum', ['Add', 'x', 'y'], ['Limits', 'x', 1, 4]],
+      fields: [field('x'), field('y')],
+    };
+    const out = generateFunction(clashing, 'javascript');
+    expect(out).toContain('function summation(x, y)');
+    // The index took a different name, so the parameter is still reachable.
+    expect(out).toContain('(x_2) =>');
+  });
+
+  it('pulls in the maths library only where the helper needs it', () => {
+    // Go's loops round their bounds with math.Round; Python's do not.
+    expect(generateFunction(sumTemplate, 'go')).toContain('"math"');
+    expect(generateFunction(sumTemplate, 'python')).not.toContain('import math');
+  });
+
+  it('says an integral is approximate, because it is', () => {
+    for (const language of LANGUAGES) {
+      expect(generateFunction(integralTemplate, language), language).toMatch(/APPROXIMATE/);
+      expect(generateFunction(integralTemplate, language), language).toMatch(/Simpson/);
+    }
+  });
+
+  it('computes the same answers the engine does', () => {
+    // The point of the whole exercise: run the emitted JavaScript and check it
+    // against arithmetic done by hand.
+    const run = (source: string, name: string) =>
+      new Function(`${source.replace('export function', 'function')}; return ${name};`)();
+
+    // x from 1 to 4 of (x + 3 + y), at y = 5: 9 + 10 + 11 + 12 = 42.
+    expect(run(generateFunction(sumTemplate, 'javascript'), 'summation')(5)).toBe(42);
+    // k from 1 to 4 of (k + 1): 2 * 3 * 4 * 5 = 120.
+    expect(run(generateFunction(productTemplate, 'javascript'), 'risingFactorial')(1, 4)).toBe(120);
+    // The integral of x^2 from 2 to 3 is 19/3; Simpson is exact up to a cubic.
+    expect(run(generateFunction(integralTemplate, 'javascript'), 'areaUnder')()).toBeCloseTo(
+      19 / 3,
+      9
+    );
+  });
+});

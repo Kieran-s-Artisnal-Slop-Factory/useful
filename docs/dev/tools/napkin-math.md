@@ -19,6 +19,7 @@ _Describes the code as of v0.2.0 (unreleased; schema v10) — verify against sou
 | [codegen/webcomponent.ts](../../../src/lib/codegen/webcomponent.ts) | The dependency-free custom element. |
 | [codegen/latex.ts](../../../src/lib/codegen/latex.ts) | The mathfield's LaTeX reduced to readable Markdown maths for a comment. |
 | [codegen/formulaMarkup.ts](../../../src/lib/codegen/formulaMarkup.ts) | The formula as self-contained typeset HTML + CSS + embedded faces, for the web component. |
+| [MathField.svelte](../../../src/components/MathField.svelte) `insert()` | Puts a skeleton at the cursor, through the mathfield's own `insert` command. |
 | [CodeBlock.svelte](../../../src/components/CodeBlock.svelte) | Read-only source, highlighted by Prism. |
 | [CodeInput.svelte](../../../src/components/CodeInput.svelte) | A textarea with a highlighted underlay, for the import box. |
 | [math/fonts.ts](../../../src/lib/math/fonts.ts) | The vendored KaTeX faces and their offline bundle. |
@@ -145,6 +146,28 @@ So Python and JavaScript get a `_round` helper, and JavaScript, Go and Rust get 
 
 Two more shapes worth knowing: `e^x` and `\exp(x)` are the **same** MathJSON node (`["Power","ExponentialE","x"]`), so the emitter recognises that base and writes `exp`; and a bare `Log` means base 10, with the base as an optional second argument.
 
+### Sums, products and integrals become loops
+
+`Sum`, `Product` and `Integrate` are the three heads that are not expressions — they need a loop, and an expression emitter has nowhere to put one. Each becomes a call to a small emitted helper taking the bounds and **a closure over the bound index**, which every one of the four languages can express:
+
+| | closure |
+| --- | --- |
+| Python | `lambda x: …` |
+| JavaScript | `(x) => …` |
+| Go | `func(x float64) float64 { return … }` |
+| Rust | `\|x: f64\| …` |
+
+Closing over the index is what makes one helper per operation enough, rather than one generated function per occurrence with its free variables threaded through by hand — the closure captures the outer parameters itself.
+
+The index is named through the same `identifierMap` as everything else, **with the outer names in play**, so a formula that binds `x` while a field is also called `x` gets `x_2` for the index rather than silently shadowing the parameter inside the loop. The engine would not produce that, but an imported file could.
+
+An integral is **Simpson's rule with 1000 intervals, and the generated code says so** — exact for polynomials up to cubic, approximate for everything else. That is not a corner cut: the Compute Engine integrates numerically too (`\int_2^3 x^2` comes back as `6.33333333333333303727 ± 0.00000000000000000019`), so the generated function and the page agree to about the same tolerance. Claiming a closed form would be the dishonest option.
+
+Two shapes to know:
+
+- `["Sum", body, ["Limits", index, lower, upper]]`, and the same for `Product`. A `Limits` node is required — an unbounded sum has no range to walk, so it is refused rather than given an invented one.
+- `Integrate` wraps its body **sometimes**: `\int x^2 dx` parses to `["Integrate", ["Function", ["Block", body], "x"], …]` while `\int x \, dx` gives the bare body. Both reach the emitter and both are unwrapped.
+
 An **odd root** is refused rather than emitted. The engine says `(-8)^(1/3)` is `-2`; every target language's `pow` says `NaN`. There is no portable spelling, so the generator says so instead of producing something that is wrong for negative inputs only.
 
 Each field's constraint becomes a **guard clause** — `ValueError` in Python, `RangeError` in JavaScript, an `error` return in Go, `Result::Err` in Rust — so a generated function refuses what the page refuses. Labels and descriptions are free text and reach four kinds of comment, so they go through `commentSafe`, which neutralises the sequences that would end a comment early and spill the rest into the file as code.
@@ -216,9 +239,24 @@ The import box is the awkward one, because it *is* edited. [CodeInput.svelte](..
 
 One detail that is not obvious: the underlay's content ends with an extra newline. A textarea always reserves a line past its content, and without matching it the underlay is exactly one line shorter — which nothing shows until someone scrolls to the bottom and the highlight slides out of step with the text it sits behind.
 
+## The Code card holds one formula's worth of state
+
+Generated source, and especially a refusal like "this formula uses Factorial", describes **one** formula. Leaving either on screen after the formula has moved on is a statement about something that no longer exists — which is exactly what it did: an error raised for a sum stayed up while the reader typed a completely different formula, and again after they started a new template.
+
+`resetGenerator()` clears the source, the error and the size note, and runs from `onFormulaChange` (before the `await`, so a slow parse cannot leave a stale error up), from `openTemplate`, and from `newTemplate`.
+
+## Insert buttons
+
+`\sum_{x=1}^{n}\left(x\right)` is not something anyone types from memory, and a half-finished one does not parse — so the formula card carries buttons for sum, product, integral, fraction and root. Each inserts a skeleton that **already parses and already has bounds**, so the field list appears immediately and the reader edits a working formula instead of fighting an incomplete one.
+
+They go in through the mathfield's own `insert` command rather than by splicing the value string: only the field knows where the caret is, and rebuilding the value would move it to the end and drop the selection. The command mutates the field without firing `input`, so the wrapper pushes the new value out by hand afterwards.
+
+The index is `x`, not `i` — a bare `i` is the imaginary unit to the Compute Engine.
+
 ## Known limits
 
 - **Numbers only.** MathJSON has no string arithmetic, so a text field could never take part in the formula it is attached to. A field's *description* is free text, but it is documentation — it never reaches the maths.
+- **A generated integral is approximate**, and a generated sum or product rounds its bounds to whole numbers. Both are stated in the emitted comments.
 - **One formula per template**, and one result. No intermediate named steps.
 - **Built-in text shortcuts are off**, which is a real loss: `pi` no longer becomes π as you type. Type `\pi` instead, or use the virtual keyboard. The alternative was letting a variable called `sqrtish` silently corrupt the formula.
 - **`\mathrm{}` on a single letter renames it.** The editor's rule only fires on two or more letters, so this cannot happen by typing — but a formula pasted in through the import box can carry it, and `x_upright` is what the engine will call it.

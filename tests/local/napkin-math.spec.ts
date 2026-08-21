@@ -323,17 +323,85 @@ test.describe('napkin math', () => {
     await expect(page.getByTestId('napkin-result')).toHaveText('—');
   });
 
+  test('the insert buttons start a formula that already parses', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/napkin-math/');
+    await expect(page.getByTestId('napkin-no-fields')).toBeVisible({ timeout: 30_000 });
+
+    // A skeleton with bounds already in it: the field list appears at once,
+    // which is the whole point of not making someone type `\sum_{x=1}^{n}`.
+    await page.getByTestId('napkin-insert-sum').click();
+    await expect(page.getByTestId('napkin-field')).toHaveCount(1);
+    await expect(page.getByTestId('napkin-field').first()).toHaveAttribute('data-name', 'n');
+    await expect(page.getByTestId('napkin-formula-error')).toHaveCount(0);
+
+    for (const id of ['product', 'integral', 'fraction', 'root']) {
+      await page.getByTestId('napkin-new').click();
+      await page.getByTestId(`napkin-insert-${id}`).click();
+      await page.waitForTimeout(400);
+      await expect(page.getByTestId('napkin-formula-error'), id).toHaveCount(0);
+    }
+  });
+
+  test('sum, product and integral all reach code', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/napkin-math/');
+    await expect(page.getByTestId('napkin-no-fields')).toBeVisible({ timeout: 30_000 });
+
+    for (const [id, marker] of [
+      ['sum', '_sum('],
+      ['product', '_product('],
+      ['integral', '_integrate('],
+    ] as const) {
+      await page.getByTestId('napkin-new').click();
+      await page.getByTestId(`napkin-insert-${id}`).click();
+      await page.waitForTimeout(500);
+      await page.getByTestId('napkin-generate').click();
+      // No refusal, and a real loop in the output.
+      await expect(page.getByTestId('napkin-generate-error'), id).toHaveCount(0);
+      await expect(page.getByTestId('napkin-code'), id).toContainText(marker);
+    }
+  });
+
+  test('the Code card forgets everything when the formula moves on', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/napkin-math/');
+    await expect(page.getByTestId('napkin-no-fields')).toBeVisible({ timeout: 30_000 });
+
+    await page.getByTestId('napkin-insert-sum').click();
+    await page.waitForTimeout(500);
+    await page.getByTestId('napkin-generate').click();
+    await expect(page.getByTestId('napkin-code')).toContainText('_sum(');
+
+    // Generated code describes ONE formula. Leaving it up after the formula
+    // changed is a statement about something that no longer exists.
+    await page.getByTestId('napkin-insert-fraction').click();
+    await page.waitForTimeout(600);
+    await expect(page.getByTestId('napkin-code')).toHaveCount(0);
+    await expect(page.getByTestId('napkin-generate-error')).toHaveCount(0);
+    await expect(page.getByTestId('napkin-generate-note')).toHaveCount(0);
+
+    // And a new template starts clean.
+    await page.getByTestId('napkin-generate').click();
+    await expect(page.getByTestId('napkin-code')).toBeVisible();
+    await page.getByTestId('napkin-new').click();
+    await expect(page.getByTestId('napkin-code')).toHaveCount(0);
+    await expect(page.getByTestId('napkin-generate-error')).toHaveCount(0);
+  });
+
   test('an operator the generator cannot write is refused by name', async ({ app }) => {
     const { page } = app;
     await app.goto('/tools/napkin-math/');
     await expect(page.getByTestId('napkin-no-fields')).toBeVisible({ timeout: 30_000 });
-    // A definite integral is a perfectly good formula and has no code form.
-    await typeFormula(page, '\\int_0^1 x');
+    // A factorial is a perfectly good formula with no rule in the emitter.
+    // (Sums, products and integrals used to be here; they generate code now.)
+    await typeFormula(page, 'n!');
     await page.getByTestId('napkin-generate').click();
     const error = page.getByTestId('napkin-generate-error');
     await expect(error).toBeVisible();
     // Named, not a silently wrong function.
-    await expect(error).toContainText(/Integrate|cannot|formula/i);
+    await expect(error).toContainText('Factorial');
+    await expect(page.getByTestId('napkin-code')).toHaveCount(0);
   });
 
   test('a field description reaches the inputs and the generated code', async ({ app }) => {

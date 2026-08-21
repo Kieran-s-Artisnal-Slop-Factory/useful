@@ -58,6 +58,47 @@
 
   type Target = Language | 'webcomponent';
 
+  /**
+   * Skeletons for the operations nobody can type from memory.
+   *
+   * Each one already parses and already has bounds, so the field list appears
+   * immediately and the reader edits a working formula rather than fighting a
+   * half-finished one. The index is `x` rather than `i`, because a bare `i` is
+   * the imaginary unit to the engine.
+   */
+  const INSERTS: { id: string; label: string; title: string; latex: string }[] = [
+    {
+      id: 'sum',
+      label: '\u2211 Sum',
+      title: 'Sum over a range',
+      latex: String.raw`\sum_{x=1}^{n}\left(x\right)`,
+    },
+    {
+      id: 'product',
+      label: '\u220F Product',
+      title: 'Product over a range',
+      latex: String.raw`\prod_{x=1}^{n}\left(x\right)`,
+    },
+    {
+      id: 'integral',
+      label: '\u222B Integral',
+      title: 'Definite integral',
+      latex: String.raw`\int_{0}^{1}\left(x^2\right)dx`,
+    },
+    {
+      id: 'fraction',
+      label: '\u00F7 Fraction',
+      title: 'Fraction',
+      latex: String.raw`\frac{a}{b}`,
+    },
+    {
+      id: 'root',
+      label: '\u221A Root',
+      title: 'Square root',
+      latex: String.raw`\sqrt{x}`,
+    },
+  ];
+
   const TARGETS: { id: Target; label: string }[] = [
     { id: 'python', label: LANGUAGE_LABELS.python },
     { id: 'javascript', label: LANGUAGE_LABELS.javascript },
@@ -100,6 +141,7 @@
   /** What the last generate did that is worth saying out loud. */
   let generatedNote = $state<string | null>(null);
   let fileInput: HTMLInputElement | undefined = $state();
+  let formulaField: ReturnType<typeof MathField> | undefined = $state();
   let destroyed = false;
   /** Bumped per formula parse; a stale parse must not overwrite a newer one. */
   let parseToken = 0;
@@ -171,9 +213,25 @@
 
   // ---- the formula ---------------------------------------------------------
 
+  /**
+   * Everything the Code card is showing, forgotten.
+   *
+   * Called whenever the formula changes or a different template is opened. A
+   * generated file, and especially a refusal like "this formula uses Sum",
+   * describes ONE formula — leaving either on screen after the formula moved
+   * on is a statement about something that no longer exists.
+   */
+  function resetGenerator() {
+    generated = '';
+    generateError = null;
+    generatedNote = null;
+  }
+
   /** Reparse the formula and rebuild the field list around it. */
   async function onFormulaChange(latex: string) {
     formulaLatex = latex;
+    // Before the await, so a slow parse cannot leave a stale error up.
+    resetGenerator();
     const mine = ++parseToken;
     const parsed = await parseFormula(latex);
     if (destroyed || mine !== parseToken) return;
@@ -184,7 +242,6 @@
     // A field that no longer exists should not keep a stale typed value.
     const known = new Set(fields.map((f) => f.name));
     inputs = Object.fromEntries(Object.entries(inputs).filter(([key]) => known.has(key)));
-    generated = '';
     await recompute();
   }
 
@@ -234,7 +291,7 @@
     inputs = {};
     calcName = '';
     editingCalcId = null;
-    generated = '';
+    resetGenerator();
     formulaError = null;
     dropped = [];
     calculations = await byIndex<NapkinCalculation>('napkin_calculations', 'template_id', row.id);
@@ -254,7 +311,7 @@
     calcName = '';
     editingCalcId = null;
     calcError = null;
-    generated = '';
+    resetGenerator();
     formulaError = null;
     dropped = [];
     result = null;
@@ -455,9 +512,7 @@
   // ---- code generation -----------------------------------------------------
 
   async function generate() {
-    generateError = null;
-    generated = '';
-    generatedNote = null;
+    resetGenerator();
     if (!formulaJson) {
       generateError = 'Write a formula first.';
       return;
@@ -608,11 +663,24 @@
         <div class="field">
           <label class="inline" for="napkin-formula">Formula</label>
           <MathField
+            bind:this={formulaField}
             bind:value={formulaLatex}
             testid="napkin-formula"
             ariaLabel="Formula"
             onchange={onFormulaChange}
           />
+          <div class="row wrap inserts" role="group" aria-label="Insert an operation">
+            {#each INSERTS as item (item.id)}
+              <button
+                class="btn btn-sm"
+                data-testid={'napkin-insert-' + item.id}
+                title={item.title}
+                onclick={() => formulaField?.insert(item.latex)}
+              >
+                {item.label}
+              </button>
+            {/each}
+          </div>
           {#if formulaError}
             <p class="form-error" data-testid="napkin-formula-error">{formulaError}</p>
           {/if}
@@ -1047,6 +1115,10 @@
 
   .description-input {
     width: 14rem;
+  }
+
+  .inserts {
+    gap: var(--space-1);
   }
 
   .fields li {
