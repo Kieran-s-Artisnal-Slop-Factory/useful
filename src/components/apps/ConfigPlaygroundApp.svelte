@@ -21,7 +21,11 @@
   import Card from '../Card.svelte';
   import CodeBlock from '../CodeBlock.svelte';
   import ConfigEditor from '../ConfigEditor.svelte';
+  import DataTable from '../DataTable.svelte';
   import Explainer from '../Explainer.svelte';
+  import { inferSchema } from '../../lib/sql/infer-schema';
+  import type { DataRow } from '../../lib/table/types';
+  import { tabulateDocument, type TabulationKind } from '../../lib/config/tabulate';
   import { copyText, downloadText } from '../../lib/exportFile';
   import {
     all,
@@ -87,6 +91,21 @@
   let createFormat = $state<ConfigFormat>('json');
   let prettifyError = $state<string | null>(null);
 
+  // ---- the data ------------------------------------------------------------
+  /**
+   * Rows for the Data card. Extracted ON DEMAND: a large document would
+   * freeze the page if this ran on every keystroke, so the button is the only
+   * thing that runs it, and `dataSource` remembers which text the rows came
+   * from so the card can say when they are stale — without re-running.
+   */
+  let dataRows = $state<DataRow[]>([]);
+  let dataColumns = $state<string[]>([]);
+  let dataKind = $state<TabulationKind>('records');
+  let dataTotal = $state(0);
+  let dataTruncated = $state(false);
+  let dataSource = $state<string | null>(null);
+  let dataError = $state<string | null>(null);
+
   // ---- examples + code -----------------------------------------------------
   let amount = $state<number | null>(3);
   let examples = $state('');
@@ -118,6 +137,15 @@
       : []
   );
   const flatRows = $derived(flattenFields(fields, collapsed));
+  /** The rows came from a different text than the editor holds now. */
+  const dataStale = $derived(dataSource !== null && dataSource !== source);
+  // Recomputed only when the rows change — on extraction, never on a keystroke.
+  const dataSchema = $derived(
+    inferSchema(
+      dataRows,
+      dataColumns.map((name) => ({ name, type: '' }))
+    )
+  );
   const filtered = $derived(
     search.trim()
       ? schemas.filter((s: ConfigSchema) =>
@@ -219,6 +247,37 @@
     flash('Schema extracted — the table follows the document again.');
   }
 
+  // ---- the data ------------------------------------------------------------
+
+  function clearData() {
+    dataRows = [];
+    dataColumns = [];
+    dataTotal = 0;
+    dataTruncated = false;
+    dataSource = null;
+    dataError = null;
+  }
+
+  /** The one place rows are built — only ever on the button. */
+  function extractData() {
+    dataError = null;
+    if (!parsed.ok) {
+      dataError = 'Fix the document first — it does not parse.';
+      return;
+    }
+    const result = tabulateDocument(parsed.value);
+    if ('error' in result) {
+      dataError = result.error;
+      return;
+    }
+    dataRows = result.rows;
+    dataColumns = result.columns;
+    dataKind = result.kind;
+    dataTotal = result.total;
+    dataTruncated = result.truncated;
+    dataSource = source;
+  }
+
   function toggleCollapse(path: string) {
     const next = new Set(collapsed);
     if (next.has(path)) next.delete(path);
@@ -288,6 +347,7 @@
     collapsed = new Set();
     extractNote = null;
     prettifyError = null;
+    clearData();
     editor?.setText(doc.source);
     if (opts.remember !== false) {
       await putSingleton<Partial<Preferences>>('preferences', { config_last_schema_id: row.id });
@@ -305,6 +365,7 @@
     collapsed = new Set();
     extractNote = null;
     prettifyError = null;
+    clearData();
     editor?.setText('');
   }
 
@@ -768,6 +829,61 @@
       </div>
     </Card>
 
+    {#if mode === 'parse'}
+      <Card title="Data">
+        {#snippet actions()}
+          {#if dataStale}
+            <span class="badge warn-badge" data-testid="config-data-stale" title="The document changed since these rows were extracted">
+              Stale — the document changed
+            </span>
+          {/if}
+          <button
+            class="btn btn-sm btn-primary"
+            data-testid="config-extract-data"
+            disabled={!parsed.ok || source.trim() === ''}
+            onclick={extractData}
+            title="Tabulate the document's data. Runs only when pressed."
+          >
+            {dataSource === null ? 'Extract from document' : 'Extract again'}
+          </button>
+        {/snippet}
+        <div class="stack">
+          {#if dataError}
+            <p class="form-error" data-testid="config-data-error">{dataError}</p>
+          {/if}
+          {#if dataSource === null}
+            <p class="muted small" data-testid="config-data-empty">
+              The document's data as a table you can search, filter, sort and export — an
+              array becomes one row per record, an object one row per key. It is extracted
+              only when you press the button, so a large document never stalls the page while
+              you type.
+            </p>
+          {:else}
+            <p class="muted small" data-testid="config-data-count">
+              {dataTotal.toLocaleString()}
+              {dataKind === 'records'
+                ? dataTotal === 1 ? 'record' : 'records'
+                : dataTotal === 1 ? 'entry' : 'entries'}{dataTruncated
+                ? ` — showing the first ${dataRows.length.toLocaleString()}`
+                : ''}{dataStale ? ' — from the document as it was when extracted' : ''}
+            </p>
+            <!-- The same grid the SQL playground's results use, in its
+                 client-side mode: every row is already in memory. -->
+            <DataTable
+              testid="config-data"
+              schema={dataSchema}
+              rows={dataRows}
+              pageSize={25}
+              pageSizes={[10, 25, 50, 100, 0]}
+              exportFilename={`${fileStem}-data`}
+              empty="No rows matched."
+              dense
+            />
+          {/if}
+        </div>
+      </Card>
+    {/if}
+
     {#if mode === 'create'}
       <Card title="Examples">
         <div class="stack">
@@ -1021,6 +1137,11 @@
   .badge.bad {
     border-color: var(--color-danger);
     color: var(--color-danger);
+  }
+
+  .badge.warn-badge {
+    border-color: var(--color-warning);
+    color: var(--color-warning);
   }
 
   .issues {

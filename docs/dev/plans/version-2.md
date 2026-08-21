@@ -935,9 +935,16 @@ validation, generation, word lists, parsing), `src/lib/codegen/config.ts` +
 `configWebcomponent.ts`, [ConfigEditor.svelte](../../../src/components/ConfigEditor.svelte)
 over the CodeMirror chassis, and
 [ConfigPlaygroundApp.svelte](../../../src/components/apps/ConfigPlaygroundApp.svelte);
-197 unit cases across seven files and 12 Playwright cases. Written up in
+205 unit cases across eight files and 13 Playwright cases. Written up in
 [tools/config-playground.md](../tools/config-playground.md). Decisions taken
 while building, beyond the plan:
+
+- **A Data card, added the same day the phase closed.** Parse mode tabulates
+  the document into the SQL playground's `DataTable` (records for an array,
+  `path`/`type`/`value` entries for an object) — **on demand only**, with a
+  stale badge when the document moves on, because a large document would
+  otherwise freeze the page on every keystroke. The SQL playground's spec was
+  run before and after; the grid component itself was not touched.
 
 - **Extraction is live only while the table is the extractor's own work.**
   "The schema in hand survives the switch" and "its schema is extracted as you

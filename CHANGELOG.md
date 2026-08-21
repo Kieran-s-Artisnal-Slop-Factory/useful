@@ -50,6 +50,13 @@
     accepts JSON input only). Tests load both components in a real page.
   - Schemas save to a searchable **library**, and the page remembers which
     mode and schema were open.
+  - A **Data** card tabulates the document into the same data grid the SQL
+    playground's results use — search, filter tree, sort, paging, CSV — an
+    array as one row per record (nested objects become dotted columns) and an
+    object as one row per key. It runs **only when pressed**: a large document
+    would otherwise stall the page on every keystroke. Change the document
+    after extracting and the card says the rows are stale rather than
+    re-running behind your back.
 
 - **Napkin math** (`/tools/napkin-math/`): write a formula and get a little
   calculator for it. Its variables become typed input fields — whole number or

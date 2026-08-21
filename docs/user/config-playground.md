@@ -31,6 +31,12 @@ Two things to know about the table:
 
 Name it in **Schema name** and press **Save schema**. Nothing is saved until you do — looking at a document writes nothing.
 
+## Browsing the data
+
+Under the schema, the **Data** card turns the document itself into a table — the same grid the SQL playground shows its results in, with a search box, an AND/OR filter tree, sortable headers, paging and a CSV download. A document that is an array becomes one row per record, with nested objects spread into dotted columns (`address.city`) and arrays kept as JSON text in one cell; a document that is an object becomes one row per key — **path**, **type**, **value** — which is the readable view of a config file.
+
+It does nothing until you press **Extract from document**. That is deliberate: a large document would otherwise stall the page on every keystroke. If you edit the document after extracting, the card shows a **Stale — the document changed** badge and keeps the old rows until you press **Extract again**; it never re-runs on its own. Very large documents are cut at 20,000 rows, and the count line says so.
+
 ## Your library
 
 Saved schemas appear in the sidebar on the left, with a search box; each shows its name and whether it is JSON or YAML. Click one to open it — the document you saved with it comes back too — **New** starts blank, and the × deletes after asking. The page remembers which schema you had open and reopens it next time.
@@ -68,6 +74,7 @@ Change the schema, its name or its format and the generated code disappears — 
 - **The Rust parser needs `serde_json`**, and a YAML-schema parser in any language wants the decoded data, not the text — see above.
 - **The sample data is fake on purpose.** Reserved domains, `555-01xx` numbers, common names from a short list. It will never match a real person or reach a real server.
 - **A generated parser is stricter than the page about unknown keys.** The page only warns about a key the schema does not know; a generated parser counts it as a problem and refuses the document. The format checks are the page's own in Python, JavaScript, Go and the web component; Rust's are hand-rolled approximations, lenient rather than strict. Read the file before you trust it with production input.
+- **The Data card only runs when you press it.** Edit the document and the rows stay as they were, flagged stale, until you extract again — by design, so a big file never freezes the editor.
 - **The clipboard can be blocked.** If **Copy** says so, use **Download**.
 - **The first visit downloads the editor.** CodeMirror, the JSON and YAML language packages and the YAML parser — roughly 600 KB of script, about 200 KB compressed — after which it is cached and works offline like the rest of the app.
 - **Switching modes is remembered**, and so is the open schema. Reopening the page puts you back where you were, without writing anything.

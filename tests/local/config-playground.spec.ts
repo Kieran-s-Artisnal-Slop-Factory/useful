@@ -318,6 +318,56 @@ test.describe('config playground', () => {
     expect(errors).toEqual([]);
   });
 
+  test('data is tabulated only on demand, and goes stale honestly', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/config-playground/');
+    await expect(page.getByTestId('config-no-fields')).toBeVisible({ timeout: 30_000 });
+    const before = await app.dumpAll();
+
+    await setDocument(
+      page,
+      JSON.stringify([
+        { name: 'Ada', age: 36, address: { city: 'Toronto' } },
+        { name: 'Grace', age: 45, address: { city: 'New York' } },
+        { name: 'Linus', age: 28, address: { city: 'Helsinki' } },
+      ])
+    );
+    // Nothing is tabulated until asked — a large document must not stall typing.
+    await expect(page.getByTestId('config-data-empty')).toBeVisible();
+    await expect(page.getByTestId('config-data')).toHaveCount(0);
+
+    await page.getByTestId('config-extract-data').click();
+    const grid = page.getByTestId('config-data');
+    await expect(grid).toContainText('Toronto');
+    await expect(grid).toContainText('Helsinki');
+    // Nested objects become dotted columns, in the same grid the SQL results use.
+    await expect(grid).toContainText('address.city');
+    await expect(page.getByTestId('config-data-count')).toContainText('3 records');
+    await expect(page.getByTestId('config-data-stale')).toHaveCount(0);
+    // The grid's own search works over the rows.
+    await page.getByTestId('config-data-search').fill('Grace');
+    await expect(grid).toContainText('New York');
+    await expect(grid).not.toContainText('Toronto');
+    await page.getByTestId('config-data-search').fill('');
+
+    // Editing the document does NOT re-run the extraction; it says so instead.
+    await setDocument(page, '{"name": "x", "address": {"city": "Oslo"}}');
+    await expect(page.getByTestId('config-data-stale')).toBeVisible();
+    await expect(grid).toContainText('Toronto');
+    await expect(grid).not.toContainText('Oslo');
+
+    // Pressing again replaces the rows — an object root is a list of entries.
+    await page.getByTestId('config-extract-data').click();
+    await expect(page.getByTestId('config-data-stale')).toHaveCount(0);
+    await expect(page.getByTestId('config-data-count')).toContainText('2 entries');
+    await expect(grid).toContainText('address.city');
+    await expect(grid).toContainText('Oslo');
+    await expect(grid).not.toContainText('Toronto');
+
+    // And none of it wrote anything.
+    expect(await app.dumpAll()).toEqual(before);
+  });
+
   test('deleting a schema is a tombstone, and the library empties', async ({ app }) => {
     const { page } = app;
     await app.goto('/tools/config-playground/');
