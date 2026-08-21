@@ -54,7 +54,7 @@
   } from '../../lib/napkin/transfer';
   import { EXTENSIONS, generateFunction, LANGUAGE_LABELS, UnsupportedOperator, type Language } from '../../lib/codegen/functions';
   import { generateWebComponent } from '../../lib/codegen/webcomponent';
-  import { renderFormula } from '../../lib/codegen/formulaMarkup';
+  import { allFontsCss, renderFormula } from '../../lib/codegen/formulaMarkup';
 
   type Target = Language | 'webcomponent';
 
@@ -140,6 +140,16 @@
   let generateError = $state<string | null>(null);
   /** What the last generate did that is worth saying out loud. */
   let generatedNote = $state<string | null>(null);
+  /**
+   * Whether the web component carries the maths fonts itself.
+   *
+   * On, one file works anywhere. Off, the file is ~26 KB lighter per component
+   * and the page supplies the faces once for all of them — which is the better
+   * trade the moment there is more than one.
+   */
+  let embedFonts = $state(true);
+  /** Set when a generated component is relying on the page for its fonts. */
+  let needsSharedFonts = $state(false);
   let fileInput: HTMLInputElement | undefined = $state();
   let formulaField: ReturnType<typeof MathField> | undefined = $state();
   let destroyed = false;
@@ -225,6 +235,7 @@
     generated = '';
     generateError = null;
     generatedNote = null;
+    needsSharedFonts = false;
   }
 
   /** Reparse the formula and rebuild the field list around it. */
@@ -526,13 +537,16 @@
     };
     try {
       if (target === 'webcomponent') {
-        // The typeset formula, with the layout rules and the few KaTeX faces
-        // it needs inlined, so the component looks like this page does.
-        const rendered = await renderFormula(formulaLatex);
+        // The typeset formula, with the layout rules and — unless the reader
+        // asked otherwise — the few KaTeX faces it needs inlined.
+        const rendered = await renderFormula(formulaLatex, { embedFonts });
         generated = generateWebComponent(template, rendered ?? undefined);
-        generatedNote = rendered
-          ? `Includes the typeset formula — ${Math.round(rendered.fontBytes / 1024)} KB of fonts inlined.`
-          : 'The formula is shown as text: it could not be typeset.';
+        needsSharedFonts = !!rendered && !embedFonts;
+        generatedNote = !rendered
+          ? 'The formula is shown as text: it could not be typeset.'
+          : embedFonts
+            ? `Typeset formula, ${Math.round(rendered.fontBytes / 1024)} KB of fonts inlined.`
+            : `Typeset formula, fonts left out. The page must supply ${listOf(rendered.families)} — see below.`;
       } else {
         generated = generateFunction(template, target);
       }
@@ -553,6 +567,22 @@
   const generatedFilename = $derived(
     target === 'webcomponent' ? `${fileStem}.js` : `${fileStem}.${EXTENSIONS[target as Language]}`
   );
+
+  /** "a", "a and b", "a, b and c" — three faces joined by "and" reads badly. */
+  function listOf(items: readonly string[]): string {
+    if (items.length <= 1) return items[0] ?? '';
+    return `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`;
+  }
+
+  /** The shared stylesheet: every face, for a page hosting several components. */
+  async function downloadFontsCss() {
+    try {
+      downloadText(await allFontsCss(), 'napkin-math-fonts.css', 'text/css');
+      flash('Downloaded the shared fonts stylesheet.');
+    } catch (err) {
+      generateError = err instanceof Error ? err.message : 'Could not build the fonts stylesheet.';
+    }
+  }
 
   async function copyGenerated() {
     flash((await copyText(generated)) ? 'Copied the code.' : 'Clipboard blocked — download instead.');
@@ -881,6 +911,16 @@
               <option value={option.id}>{option.label}</option>
             {/each}
           </select>
+          {#if target === 'webcomponent'}
+            <label class="check">
+              <input
+                type="checkbox"
+                data-testid="napkin-embed-fonts"
+                bind:checked={embedFonts}
+              />
+              <span>Include the maths fonts</span>
+            </label>
+          {/if}
           <button class="btn btn-sm btn-primary" data-testid="napkin-generate" onclick={generate}>
             Generate
           </button>
@@ -898,6 +938,20 @@
         {/if}
         {#if generatedNote}
           <p class="muted small" data-testid="napkin-generate-note">{generatedNote}</p>
+        {/if}
+        {#if needsSharedFonts}
+          <div class="row wrap">
+            <button
+              class="btn btn-sm"
+              data-testid="napkin-download-fonts"
+              onclick={downloadFontsCss}
+            >
+              Download the shared fonts stylesheet
+            </button>
+            <span class="muted small">
+              Link it once per page and every component on it will find the faces.
+            </span>
+          </div>
         {/if}
         {#if generated}
           <CodeBlock code={generated} language={generatedLanguage} testid="napkin-code" />
@@ -993,6 +1047,30 @@
       <p>
         An operator the generator has no rule for is <strong>refused by name</strong>. It will not
         guess.
+      </p>
+      <h3>Sharing one copy of the maths fonts</h3>
+      <p>
+        A web component carries the KaTeX faces its own formula needs, so a single file works on a
+        page that has never heard of this app. Put two or three components on one page and you have
+        shipped those faces two or three times.
+      </p>
+      <p>
+        To send them once instead: turn <strong>Include the maths fonts</strong> off before you
+        generate, then use <strong>Download the shared fonts stylesheet</strong> for a single file
+        carrying all twenty faces. Link it in the page's <code>&lt;head&gt;</code> and every
+        component on the page will find them — <code>@font-face</code> belongs to the document, not
+        to a shadow root, so one declaration reaches inside all of them.
+      </p>
+      <pre class="code snippet">&lt;link rel="stylesheet" href="napkin-math-fonts.css"&gt;
+&lt;script type="module" src="rent-per-year.js"&gt;&lt;/script&gt;
+&lt;script type="module" src="unit-margin.js"&gt;&lt;/script&gt;
+
+&lt;rent-per-year&gt;&lt;/rent-per-year&gt;
+&lt;unit-margin&gt;&lt;/unit-margin&gt;</pre>
+      <p>
+        Without the fonts a component still <em>lays out</em> correctly — the positioning is all
+        CSS — it just draws in whatever serif the page has. So a missing stylesheet is a plainer
+        formula, never a broken one.
       </p>
     </Explainer>
   </div>
@@ -1119,6 +1197,15 @@
 
   .inserts {
     gap: var(--space-1);
+  }
+
+  .snippet {
+    overflow-x: auto;
+    padding: var(--space-2);
+    border: 1px solid var(--border-color);
+    background: var(--surface-raised-color);
+    font-size: var(--font-size-sm);
+    white-space: pre;
   }
 
   .fields li {

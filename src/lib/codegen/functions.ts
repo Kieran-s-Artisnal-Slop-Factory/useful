@@ -96,7 +96,15 @@ function fieldNote(field: NapkinField): string {
   return '';
 }
 
-const HELPER_SOURCE: Record<Language, Record<Helper, string>> = {
+/**
+ * The source of every emitted helper, per language.
+ *
+ * Exported because the web component generator needs the JavaScript column.
+ * It used to keep its own copy of two of these, which is exactly how a
+ * formula using `Sum` came to emit a call to `_sum` that was never defined:
+ * adding a helper here left the other list untouched and nothing complained.
+ */
+export const HELPER_SOURCE: Record<Language, Record<Helper, string>> = {
   python: {
     // Python's round() is banker's: round(2.5) is 2. The engine rounds half
     // away from zero, so 2.5 must come back 3.

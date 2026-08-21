@@ -1,0 +1,8 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import ConfigPlaygroundApp from '../../components/apps/ConfigPlaygroundApp.svelte';
+---
+
+<Layout title="Config playground">
+  <ConfigPlaygroundApp client:only="svelte" />
+</Layout>

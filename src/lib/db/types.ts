@@ -65,6 +65,10 @@ export interface Preferences extends SyncFields {
   napkin_last_template_id?: string;
   /** Last engine picked in the SQL playground ('sqlite' / 'pglite'). */
   sql_last_engine?: string;
+  /** Which side of the config playground was open last. */
+  config_last_mode?: 'parse' | 'create';
+  /** The config-playground schema to reopen. */
+  config_last_schema_id?: string;
   /** True once the post-install "download everything" offer has been made. */
   offline_prompt_seen?: boolean;
   /** When every offline bundle last finished downloading. */
@@ -276,6 +280,69 @@ export interface NapkinCalculation extends SyncFields {
   result: number | null;
 }
 
+/**
+ * How the config playground types a value: JSON's scalars, the five string
+ * formats its inference can spot, and the structural kinds. 'any' is the
+ * honest fallback for values the inference cannot pin down; 'union' only ever
+ * comes out of inference (the create-mode dropdown does not offer it).
+ */
+export type ConfigFieldKind =
+  | 'string'
+  | 'integer'
+  | 'number'
+  | 'boolean'
+  | 'email'
+  | 'phone'
+  | 'uri'
+  | 'date'
+  | 'date-time'
+  | 'enum'
+  | 'union'
+  | 'object'
+  | 'array'
+  | 'any';
+
+export interface ConfigFieldType {
+  kind: ConfigFieldKind;
+  /** kind 'enum': the allowed values. */
+  values?: Array<string | number | boolean>;
+  /** kind 'array': the element type. */
+  item?: ConfigFieldType;
+  /** kind 'object': the nested fields. */
+  fields?: ConfigField[];
+  /** kind 'union': the alternatives. */
+  variants?: ConfigFieldType[];
+}
+
+/**
+ * One key in a config schema. `optional` (the key may be missing) is tracked
+ * separately from `nullable` (the key is there but null) — a config format
+ * where the two mean different things to a reader deserves a schema that can
+ * say which one it saw.
+ */
+export interface ConfigField {
+  key: string;
+  type: ConfigFieldType;
+  optional: boolean;
+  nullable: boolean;
+}
+
+/**
+ * A named config-playground schema. Everything is plain JSON, so rows ride
+ * backup export/import byte-identically. Nothing read from a stored row is
+ * trusted: the generic data suite writes an ARRAY into every json column and
+ * a backup can be hand-edited, so `normalizeFields` in src/lib/config/model.ts
+ * re-shapes the `fields` column on every read.
+ */
+export interface ConfigSchema extends SyncFields {
+  name: string;
+  format: 'json' | 'yaml';
+  /** The root object's fields (the Field/Type table). */
+  fields: ConfigField[];
+  /** Parse mode's document text, so switching modes loses nothing. */
+  source: string;
+}
+
 export interface StoreIndex {
   name: string;
   multiEntry?: boolean;
@@ -311,6 +378,7 @@ export const STORES: Record<string, StoreDef> = {
   // against it — to list them, and to take them with it when it goes.
   napkin_calculations: { indexes: [{ name: 'template_id' }] },
   sql_playgrounds: { indexes: [] },
+  config_schemas: { indexes: [] },
 };
 
 export type StoreName = keyof typeof STORES;

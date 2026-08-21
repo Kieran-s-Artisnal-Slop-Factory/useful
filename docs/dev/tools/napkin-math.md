@@ -146,6 +146,12 @@ So Python and JavaScript get a `_round` helper, and JavaScript, Go and Rust get 
 
 Two more shapes worth knowing: `e^x` and `\exp(x)` are the **same** MathJSON node (`["Power","ExponentialE","x"]`), so the emitter recognises that base and writes `exp`; and a bare `Log` means base 10, with the base as an optional second argument.
 
+### One helper table, because two was a bug
+
+`Sum` produced a call to `_sum` that was never defined, and the component threw `ReferenceError` on the first keystroke. The cause was duplication: [functions.ts](../../../src/lib/codegen/functions.ts) held `HELPER_SOURCE` for the four languages, and [webcomponent.ts](../../../src/lib/codegen/webcomponent.ts) kept its own hand-written copy of two of them. Adding a helper to the emitter updated one list and left the other alone, and nothing anywhere compared them.
+
+`HELPER_SOURCE` is now exported and the web component reads its JavaScript column. A unit test also walks the generated source and asserts that **every `_name(` it calls has a matching `function _name(`** — a general guard rather than one case, so the next helper added is covered without anyone remembering to cover it.
+
 ### Sums, products and integrals become loops
 
 `Sum`, `Product` and `Integrate` are the three heads that are not expressions — they need a loop, and an expression emitter has nowhere to put one. Each becomes a call to a small emitted helper taking the bounds and **a closure over the bound index**, which every one of the four languages can express:
@@ -195,6 +201,8 @@ Only the faces the formula actually uses are embedded, as `data:` URIs. Which on
 The shadow root in that probe is load-bearing. Measuring against the napkin page's ambient styles answers a different question and answers it wrongly: this page has the KaTeX faces registered document-wide, so every span resolves to a KaTeX family whether or not the rules would have travelled. That mistake produced a component that rendered perfectly here and fell back to a serif everywhere else.
 
 MathLive's static CSS carries its own `@font-face` block pointing at `url(fonts/KaTeX_*.woff2)` — relative, so resolved against whatever page the component lands on. It is stripped, or every host would serve a row of 404s and sometimes prefer the broken rules over the embedded ones.
+
+The faces are **opt-out**. `Include the maths fonts` is on by default, because one file that works anywhere is the right default; turning it off drops a typical component from 78 KB to 15 KB and moves the faces to a stylesheet the page links once. `@font-face` belongs to the document rather than to a shadow root, so a single `<link>` reaches inside every component on the page — that shared file carries **all twenty** faces rather than one formula's, because the point of sharing it is that it works for all of them. Without any faces a component still lays out correctly (the positioning is pure CSS); it just draws in the page's serif.
 
 | formula | faces | file |
 | --- | --- | --- |

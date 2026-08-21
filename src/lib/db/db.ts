@@ -145,6 +145,15 @@ const MIGRATIONS: Migration[] = [
       store.createIndex('template_id', 'template_id');
     }
   },
+
+  // v11 — Phase 9 (Config playground): named schemas with their Field/Type
+  // tables and parse-mode source text. JSON-native, so rows ride backups
+  // unchanged.
+  (db) => {
+    if (!db.objectStoreNames.contains('config_schemas')) {
+      db.createObjectStore('config_schemas', { keyPath: 'id' });
+    }
+  },
 ];
 
 export const DB_VERSION = MIGRATIONS.length;

@@ -235,6 +235,22 @@
   formula; it used to stay on screen while the reader typed a different one,
   and after starting a new template. It now clears on every formula change, on
   opening another template, and on New.
+- **A generated web component using a sum, product or integral threw
+  `ReferenceError: _sum is not defined`.** The loop helpers were added to the
+  emitter's one table and the web component generator kept its own
+  hand-written copy of two others, so a helper added in one place was silently
+  missing from the other. There is now a single exported table, and a test
+  that walks the generated source asserting every `_name(` it calls has a
+  matching `function _name(` — a general guard, so the next helper is covered
+  without anyone remembering to cover it.
+- **The maths fonts in a web component are now opt-out.** They stay on by
+  default, because one file that works anywhere is the right default. Turning
+  them off drops a component from about 78 KB to 15 KB and reveals **Download
+  the shared fonts stylesheet** — one file with all twenty faces that a page
+  links once and every component on it picks up, because `@font-face` belongs
+  to the document rather than to a shadow root. Without any faces a component
+  still lays out correctly; it just draws in the page's serif. The steps are in
+  the tool's own "what the generated code does and does not do" note.
 - **The generated web component now shows a typeset formula**, not
   `$\(costPerMonth*12\)*years$` as text. The markup comes from
   `convertLatexToMarkup` in MathLive's main entry — already loaded on that page,

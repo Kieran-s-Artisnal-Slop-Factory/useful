@@ -20,6 +20,7 @@ const HEAVY = [
   { label: 'Postgres engine', match: /pglite/i },
   { label: 'city dataset', match: /cities/i },
   { label: 'CodeMirror', match: /codemirror|lezer/i },
+  { label: 'YAML parser', match: /yaml/i },
   // 78 KB for one card on the secrets page — it must arrive on its own.
   { label: 'EFF word list', match: /wordlist/i },
   // The three logo engines: 2.0 MB, 826 KB and 328 KB of chunk between them.

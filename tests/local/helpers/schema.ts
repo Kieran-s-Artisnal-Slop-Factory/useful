@@ -37,6 +37,8 @@ export const TABLES: TableMeta[] = [
       { name: 'svg_last_doc_id', type: 'text', nullable: true, references: null },
       { name: 'sprite_last_doc_id', type: 'text', nullable: true, references: null },
       { name: 'sql_last_engine', type: 'text', nullable: true, references: null },
+      { name: 'config_last_mode', type: 'text', nullable: true, references: null },
+      { name: 'config_last_schema_id', type: 'text', nullable: true, references: null },
       { name: 'offline_prompt_seen', type: 'boolean', nullable: true, references: null },
       { name: 'offline_ready_at', type: 'timestamp', nullable: true, references: null },
     ],
@@ -168,6 +170,17 @@ export const TABLES: TableMeta[] = [
       { name: 'buffer', type: 'text', nullable: false, references: null },
       { name: 'snapshot', type: 'text', nullable: true, references: null },
       { name: 'snapshot_at', type: 'timestamp', nullable: true, references: null },
+    ],
+  },
+  {
+    name: 'config_schemas',
+    fieldMerge: false,
+    singleton: false,
+    columns: [
+      { name: 'name', type: 'text', nullable: false, references: null },
+      { name: 'format', type: 'text', nullable: false, references: null },
+      { name: 'fields', type: 'json', nullable: false, references: null },
+      { name: 'source', type: 'text', nullable: false, references: null },
     ],
   },
 ];

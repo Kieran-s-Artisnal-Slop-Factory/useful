@@ -93,6 +93,10 @@ export const ICONS: Record<string, string> = {
   database:
     '<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5V19A9 3 0 0 0 21 19V5"/>' +
     '<path d="M3 12A9 3 0 0 0 21 12"/>',
+  // Lucide "braces" — curly brackets, the config playground.
+  braces:
+    '<path d="M8 3H7a2 2 0 0 0-2 2v5a2 2 0 0 1-2 2 2 2 0 0 1 2 2v5c0 1.1.9 2 2 2h1"/>' +
+    '<path d="M16 21h1a2 2 0 0 0 2-2v-5c0-1.1.9-2 2-2a2 2 0 0 1-2-2V5a2 2 0 0 0-2-2h-1"/>',
   scissors:
     '<circle cx="6" cy="6" r="3"/><path d="M8.12 8.12 12 12"/><path d="M20 4 8.12 15.88"/>' +
     '<circle cx="6" cy="18" r="3"/><path d="M14.8 14.8 20 20"/>',

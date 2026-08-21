@@ -14,7 +14,7 @@ import type { NapkinField } from '../db/types';
 import { emitExpression } from './expression';
 import { identifierMap } from './identifiers';
 import { latexToMarkdownMath } from './latex';
-import type { CodeTemplate } from './functions';
+import { HELPER_SOURCE, type CodeTemplate } from './functions';
 import type { RenderedFormula } from './formulaMarkup';
 
 /** Escape for an HTML text node or a double-quoted attribute value. */
@@ -65,27 +65,12 @@ export function generateWebComponent(template: CodeTemplate, formula?: RenderedF
   const tag = tagName(template.name);
   const cls = className(tag);
 
-  const helperSource: string[] = [];
-  if (helpers.has('round')) {
-    helperSource.push(
-      'function _round(value, digits = 0) {',
-      '  // Round half away from zero, matching the formula editor.',
-      '  const factor = 10 ** digits;',
-      '  const scaled = value * factor;',
-      '  return (scaled >= 0 ? Math.floor(scaled + 0.5) : Math.ceil(scaled - 0.5)) / factor;',
-      '}',
-      ''
-    );
-  }
-  if (helpers.has('mod')) {
-    helperSource.push(
-      'function _mod(a, b) {',
-      '  // Floored modulo: the sign follows the divisor, as the formula editor does.',
-      '  return ((a % b) + b) % b;',
-      '}',
-      ''
-    );
-  }
+  // Straight from the one table in functions.ts. A second copy here is what
+  // let `Sum` emit a call to `_sum` with no `_sum` to call.
+  const helperSource = [...helpers]
+    .map((helper) => HELPER_SOURCE.javascript[helper])
+    .filter(Boolean)
+    .flatMap((source) => [source, '']);
 
   const fieldData = template.fields.map((f) => ({
     key: f.name,

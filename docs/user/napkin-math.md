@@ -43,6 +43,8 @@ Templates you save appear in the sidebar, with a search box. Click one to open i
   The formula appears in the comment as Markdown maths — `$\(costPerMonth*12\)*years$` rather than the editor's `\left(\mathrm{...}\right)` — so it reads as a formula wherever the comment ends up.
 - **Web component** — a single `.js` file with no dependencies. Drop it in a page, use its tag, and you have the same calculator with the same rules — including the formula, **properly typeset**, exactly as it looks here. The maths fonts it needs are built into the file, so it looks right on a page that has never heard of this app and never asks the network for anything. Expect roughly 50–80 KB depending on the formula. The file opens with a worked example of how to style it from the host page, and lists every part you can reach.
 
+  **Putting several on one page?** Untick **Include the maths fonts** before generating — a component drops to about 15 KB — then use **Download the shared fonts stylesheet** for one file with every face in it, and link that in the page's `<head>`. All the components on the page will find the fonts there. Without the stylesheet they still work and still lay out properly; the formula is just drawn in the page's ordinary serif.
+
 **Export & import** handles the JSON:
 
 - The box shows the current template's JSON as you type, syntax-highlighted, with **Copy JSON** beside it. The generated code is highlighted too, and so is the import box as you paste into it.

@@ -134,6 +134,7 @@ describe('generateWebComponent', () => {
       markup: '<span class="ML__latex">x</span>',
       css: '.ML__latex{font-family:KaTeX_Main}',
       fontBytes: 1234,
+      families: ['KaTeX_Main'],
     });
     expect(withMarkup).toContain('<span class="ML__latex">x</span>');
     // The CSS goes inside the shadow root, which scopes it both ways.
@@ -155,6 +156,45 @@ describe('generateWebComponent', () => {
       fields: [field('revenue'), field('units')],
     });
     expect(rounded).toContain('function _round');
+  });
+
+  it('defines every helper it calls', () => {
+    // The general guard. A `Sum` used to emit a call to `_sum` that was never
+    // defined, because this file kept its own list of helper sources and
+    // adding one to the emitter left that list untouched. Checking the calls
+    // against the definitions catches the next one too, whatever it is.
+    const everyHelper: CodeTemplate = {
+      ...template,
+      formulaLatex: 'everything',
+      formulaJson: [
+        'Add',
+        ['Round', ['Divide', 'revenue', 'units'], 2],
+        ['Mod', 'revenue', 'cost'],
+        ['Sum', ['Add', 'k', 'revenue'], ['Limits', 'k', 1, 4]],
+        ['Product', ['Add', 'k', 'cost'], ['Limits', 'k', 1, 3]],
+        ['Integrate', ['Power', 'k', 2], ['Limits', 'k', 0, 1]],
+      ],
+    };
+    const out = generateWebComponent(everyHelper);
+    const called = new Set([...out.matchAll(/\b(_[a-z][A-Za-z0-9_]*)\s*\(/g)].map((m) => m[1]!));
+    expect(called.size).toBeGreaterThan(3);
+    for (const name of called) {
+      expect(out, `${name} is called but never defined`).toContain(`function ${name}(`);
+    }
+  });
+
+  it('runs a formula that uses every helper', () => {
+    const everyHelper: CodeTemplate = {
+      ...template,
+      name: 'Kitchen sink',
+      formulaJson: ['Sum', ['Add', 'k', 'revenue'], ['Limits', 'k', 1, 4]],
+      fields: [field('revenue')],
+    };
+    const source = generateWebComponent(everyHelper);
+    // Pull the plain function out of the module and check it computes: the
+    // sum of (k + revenue) for k = 1..4 at revenue = 10 is 11+12+13+14 = 50.
+    const helper = new Function(`${source.split('class ')[0]}; return { _sum };`)();
+    expect(helper._sum(1, 4, (k: number) => k + 10)).toBe(50);
   });
 
   it('parses as JavaScript', () => {

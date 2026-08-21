@@ -11,6 +11,7 @@
  * Plus the payload rules: MathLive never reaches another route, and the
  * keypress sounds are never fetched at all.
  */
+import { readFileSync } from 'node:fs';
 import { test, expect } from './helpers/app';
 import { assertIsolatedDelta, assertInvariants } from './helpers/oracle';
 
@@ -295,6 +296,95 @@ test.describe('napkin math', () => {
     // An untouched required input is not a mistake, so it says nothing.
     expect(rendered.error).toBe('');
     expect(failed, 'the component asked the network for something').toEqual([]);
+  });
+
+  test('a component built from a sum defines the helper it calls', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/napkin-math/');
+    await expect(page.getByTestId('napkin-no-fields')).toBeVisible({ timeout: 30_000 });
+    await page.getByTestId('napkin-name').fill('Rent per year');
+    await page.getByTestId('napkin-insert-sum').click();
+    await page.waitForTimeout(500);
+
+    await page.getByTestId('napkin-language').selectOption('webcomponent');
+    await page.getByTestId('napkin-generate').click();
+    await expect(page.getByTestId('napkin-code')).toContainText('customElements.define', {
+      timeout: 30_000,
+    });
+    const source = await page.getByTestId('napkin-code').innerText();
+    // The bug: the loop helper was emitted for the four languages and silently
+    // dropped from the web component, so the file called `_sum` with no `_sum`
+    // to call and threw ReferenceError on the first keystroke.
+    expect(source).toContain('_sum(');
+    expect(source).toContain('function _sum(');
+
+    const ran = await page.evaluate(async (code) => {
+      const failures: string[] = [];
+      const onError = (e: ErrorEvent) => failures.push(e.message);
+      window.addEventListener('error', onError);
+      const url = URL.createObjectURL(new Blob([code], { type: 'text/javascript' }));
+      await import(/* @vite-ignore */ url);
+      URL.revokeObjectURL(url);
+      const element = document.createElement('rent-per-year');
+      document.body.append(element);
+      await new Promise((r) => setTimeout(r, 400));
+      const input = element.shadowRoot!.querySelector('input')!;
+      input.value = '4';
+      input.dispatchEvent(new Event('input'));
+      await new Promise((r) => setTimeout(r, 300));
+      const out = {
+        result: element.shadowRoot!.querySelector('[part="result"]')!.textContent,
+        error: element.shadowRoot!.querySelector('[part="error"]')!.textContent,
+        failures,
+      };
+      element.remove();
+      window.removeEventListener('error', onError);
+      return out;
+    }, source);
+
+    // Sum of x for x = 1..4 is 10.
+    expect(ran.failures).toEqual([]);
+    expect(ran.result).toBe('10');
+    expect(ran.error).toBe('');
+  });
+
+  test('the maths fonts can be left out and supplied once by the page', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/napkin-math/');
+    await expect(page.getByTestId('napkin-no-fields')).toBeVisible({ timeout: 30_000 });
+    await page.getByTestId('napkin-name').fill('Unit margin');
+    await typeFormula(page, 'revenue/units');
+    await page.getByTestId('napkin-language').selectOption('webcomponent');
+
+    // On by default: one file that works anywhere.
+    await expect(page.getByTestId('napkin-embed-fonts')).toBeChecked();
+    await page.getByTestId('napkin-generate').click();
+    await expect(page.getByTestId('napkin-code')).toContainText('customElements.define', {
+      timeout: 30_000,
+    });
+    const withFonts = await page.getByTestId('napkin-code').innerText();
+    expect(withFonts).toContain('data:font/woff2;base64,');
+    await expect(page.getByTestId('napkin-download-fonts')).toHaveCount(0);
+
+    // Off: much smaller, still laid out, and the page is told what it owes.
+    await page.getByTestId('napkin-embed-fonts').uncheck();
+    await page.getByTestId('napkin-generate').click();
+    await expect(page.getByTestId('napkin-generate-note')).toContainText('fonts left out');
+    const without = await page.getByTestId('napkin-code').innerText();
+    expect(without).not.toContain('data:font/woff2');
+    // The layout rules still travel — a missing face is a plainer formula.
+    expect(without).toContain('ML__latex');
+    expect(without.length).toBeLessThan(withFonts.length / 2);
+    await expect(page.getByTestId('napkin-download-fonts')).toBeVisible();
+
+    // And the shared stylesheet carries every face, not just this formula's.
+    const download = page.waitForEvent('download');
+    await page.getByTestId('napkin-download-fonts').click();
+    const file = await download;
+    expect(file.suggestedFilename()).toBe('napkin-math-fonts.css');
+    const css = readFileSync(await file.path(), 'utf8');
+    expect((css.match(/@font-face/g) ?? []).length).toBe(20);
+    expect(css).toContain('data:font/woff2;base64,');
   });
 
   test('the generated Python carries the guards the page enforces', async ({ app }) => {

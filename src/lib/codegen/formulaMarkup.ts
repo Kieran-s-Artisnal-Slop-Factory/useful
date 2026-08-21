@@ -34,10 +34,12 @@ import { href } from '../paths';
 export interface RenderedFormula {
   /** Static HTML — no script, no custom element, no editing affordances. */
   markup: string;
-  /** Layout rules plus an `@font-face` per face the markup needs. */
+  /** Layout rules, plus an `@font-face` per face when they were embedded. */
   css: string;
-  /** Bytes of embedded font data, so a caller can report the cost. */
+  /** Bytes of embedded font data; 0 when the fonts were left out. */
   fontBytes: number;
+  /** The faces this formula needs, whether or not they travelled with it. */
+  families: string[];
 }
 
 /**
@@ -102,7 +104,10 @@ const base64 = (buffer: ArrayBuffer): string => {
  * the caller falls back to showing the readable text form, which is worse but
  * never broken.
  */
-export async function renderFormula(latex: string): Promise<RenderedFormula | null> {
+export async function renderFormula(
+  latex: string,
+  { embedFonts = true }: { embedFonts?: boolean } = {}
+): Promise<RenderedFormula | null> {
   const trimmed = latex.trim();
   if (!trimmed) return null;
 
@@ -116,15 +121,28 @@ export async function renderFormula(latex: string): Promise<RenderedFormula | nu
   if (!markup) return null;
 
   const faces = await collectFaces(markup);
-  const fontCss: string[] = [];
-  let fontBytes = 0;
+  const families = [...new Set([...faces.values()].map((key) => key.family))].sort();
+  // Without the faces the markup still LAYS OUT correctly — the positioning is
+  // all CSS — it just draws in whatever serif the host page has. That is the
+  // trade someone makes to keep the file small and share one stylesheet across
+  // several components.
+  if (!embedFonts) return { markup, css: layoutCss, fontBytes: 0, families };
+
+  const { css: fontCss, bytes } = await embedFaces(faces);
+  return { markup, css: `${fontCss}\n${layoutCss}`, fontBytes: bytes, families };
+}
+
+/** `@font-face` rules carrying the font bytes themselves. */
+async function embedFaces(faces: Map<string, FaceKey>): Promise<{ css: string; bytes: number }> {
+  const rules: string[] = [];
+  let bytes = 0;
   for (const [file, key] of faces) {
     try {
       const response = await fetch(href(`/math/fonts/${file}`));
       if (!response.ok) continue;
       const buffer = await response.arrayBuffer();
-      fontBytes += buffer.byteLength;
-      fontCss.push(
+      bytes += buffer.byteLength;
+      rules.push(
         `@font-face{font-family:"${key.family}";font-style:${key.italic ? 'italic' : 'normal'};` +
           `font-weight:${key.bold ? 700 : 400};font-display:swap;` +
           `src:url(data:font/woff2;base64,${base64(buffer)}) format("woff2")}`
@@ -134,8 +152,31 @@ export async function renderFormula(latex: string): Promise<RenderedFormula | nu
       // broken component — carry on with the rest.
     }
   }
+  return { css: rules.join('\n'), bytes };
+}
 
-  return { markup, css: `${fontCss.join('\n')}\n${layoutCss}`, fontBytes };
+/**
+ * A stylesheet carrying ALL twenty faces, for a page hosting several
+ * components.
+ *
+ * `@font-face` is document-scoped rather than tree-scoped, so one `<link>` on
+ * the host page reaches inside every component's shadow root. Every face is
+ * included rather than only the ones some particular formula needed, because
+ * the point of the shared file is that it works for all of them.
+ */
+export async function allFontsCss(): Promise<string> {
+  const faces = new Map<string, FaceKey>();
+  for (const file of MATH_FONT_FILES) {
+    const match = /^(KaTeX_[A-Za-z0-9]+)-(Regular|Bold|Italic|BoldItalic)\.woff2$/.exec(file);
+    if (!match) continue;
+    faces.set(file, {
+      family: match[1]!,
+      bold: match[2]!.includes('Bold'),
+      italic: match[2]!.includes('Italic'),
+    });
+  }
+  const { css } = await embedFaces(faces);
+  return `/* KaTeX faces for napkin-math web components. Link this ONCE per page. */\n${css}\n`;
 }
 
 /**
