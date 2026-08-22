@@ -14,6 +14,7 @@
  * worse than not offering it. UUID v1 is absent because it embeds the host's
  * MAC address by design.
  */
+import { encodeBytes } from '../encode/base64';
 
 /* ------------------------------------------------------------- alphabets --- */
 
@@ -130,16 +131,16 @@ export function toHex(bytes: Uint8Array): string {
   return out;
 }
 
-export function toBase64(bytes: Uint8Array): string {
-  let binary = '';
-  for (const b of bytes) binary += String.fromCharCode(b);
-  return btoa(binary);
-}
+/**
+ * Base64 and base64url come from [encode/base64.ts](../encode/base64.ts) — one
+ * implementation for the whole app, and the only one that reports WHERE a
+ * pasted string stopped being base64. Re-exported under these names so the
+ * catalogue below reads as it always did.
+ */
+export const toBase64 = (bytes: Uint8Array): string => encodeBytes(bytes);
 
 /** base64url: the URL/filename-safe alphabet, padding stripped (RFC 4648 §5). */
-export function toBase64Url(bytes: Uint8Array): string {
-  return toBase64(bytes).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-}
+export const toBase64Url = (bytes: Uint8Array): string => encodeBytes(bytes, { url: true });
 
 /** RFC 4648 base32, padded — what authenticator apps read. */
 export function toBase32(bytes: Uint8Array): string {

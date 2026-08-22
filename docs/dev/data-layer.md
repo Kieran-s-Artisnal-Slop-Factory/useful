@@ -2,7 +2,7 @@
 
 IndexedDB is the source of truth. There is no server: every row a tool creates lives in one database (`useful`) in the visitor's browser profile, and the only way it leaves is the JSON backup file. Four modules under `src/lib/db/` own it — the schema ([types.ts](../../src/lib/db/types.ts)), the connection and migrations ([db.ts](../../src/lib/db/db.ts)), the only sanctioned read/write path ([repo.ts](../../src/lib/db/repo.ts)), and backup export/import ([export.ts](../../src/lib/db/export.ts)) — plus a change queue that nothing drains yet ([outbox.ts](../../src/lib/db/outbox.ts)) and a persistent-storage request ([persistence.ts](../../src/lib/db/persistence.ts)).
 
-_Describes the code as of v0.2.1 (unreleased; schema v12) — verify against source when in doubt._
+_Describes the code as of v0.3.0 (unreleased; schema v12) — verify against source when in doubt._
 
 ## File map
 

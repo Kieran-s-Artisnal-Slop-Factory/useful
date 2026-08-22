@@ -2,7 +2,7 @@
 
 Two suites. `npm test` is a Playwright suite that builds the production site, serves `dist/` on a local port, drives the real UI in Chromium and audits every IndexedDB write through a typed oracle exposed by a test-only hook (`window.__useful`); a reporter fails the run unless the oracle was shown to catch injected faults. `npm run test:unit` is Vitest over the pure modules under `src/lib/`. There is no server, so the two things worth guarding are a backup that does not round-trip and a write that changes more than it claimed to — both suites exist to catch those.
 
-_Describes the code as of v0.2.1 (unreleased; schema v12) — verify against source when in doubt._
+_Describes the code as of v0.3.0 (unreleased; schema v12) — verify against source when in doubt._
 
 ## Suites at a glance
 
@@ -143,6 +143,8 @@ All specs import `test` from `helpers/app` and select by `data-testid`. "Zero wr
 | Area | Files |
 |---|---|
 | Registry / shell | [registry.test.ts](../../src/lib/registry.test.ts) (unique ids, app-absolute routes with trailing slash, known categories, every icon key resolves, `searchRegistry`), [fuzzy.test.ts](../../src/lib/fuzzy.test.ts) |
+| Text | [tokenize.test.ts](../../src/lib/text/tokenize.test.ts) (grapheme vs code point vs UTF-16 vs UTF-8 counts, hyphen/apostrophe words, abbreviation-aware sentences, the syllable heuristic **including the words it gets wrong**) |
+| Encoding | [base64.test.ts](../../src/lib/encode/base64.test.ts) (RFC 4648 vectors, UTF-8 round trips where `btoa` throws, both alphabets, wrapped bodies, the reported offset of a bad character, `data:` URLs) |
 | Time | [duration.test.ts](../../src/lib/time/duration.test.ts), [timezone.test.ts](../../src/lib/time/timezone.test.ts), [cities.test.ts](../../src/lib/time/cities.test.ts) |
 | Scheduler | [rank.test.ts](../../src/lib/scheduler/rank.test.ts), [recurrence.test.ts](../../src/lib/scheduler/recurrence.test.ts) |
 | Calculators | [numberBase.test.ts](../../src/lib/calc/numberBase.test.ts), [photography.test.ts](../../src/lib/calc/photography.test.ts), [transfer.test.ts](../../src/lib/calc/transfer.test.ts) |

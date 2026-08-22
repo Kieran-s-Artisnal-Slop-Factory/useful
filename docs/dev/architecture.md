@@ -2,7 +2,7 @@
 
 `useful` is a static Astro 7 site whose every page mounts one Svelte 5 island. There is no server: IndexedDB in the visitor's browser is the only copy of the data, a hand-written service worker makes the built site work offline, and the heavy optional pieces (an ML model, two SQL engines, a city dataset) load lazily on demand. This page is the maintainer's mental model — the stack, the runtime picture, the directory map, the cross-cutting systems and where each is documented, the invariants that must not break, and the recipe for adding a tool.
 
-_Describes the code as of v0.2.1 (unreleased; schema v12) — verify against source when in doubt._
+_Describes the code as of v0.3.0 (unreleased; schema v12) — verify against source when in doubt._
 
 ## The stack
 
@@ -76,6 +76,8 @@ The live SQL databases live only in their worker's memory; [store.ts](../../src/
 | [src/lib/db/](../../src/lib/db/) | The data layer: `types.ts` (entities + `STORES`), `db.ts` (`MIGRATIONS`, `getDB`), `repo.ts` (CRUD), `outbox.ts`, `export.ts` (backup), `persistence.ts` (persistent-storage request). |
 | [src/lib/](../../src/lib/) top level | Cross-cutting modules: `registry.ts`, `paths.ts`, `fuzzy.ts`, `icons.ts`, `markdown.ts` + `prism.ts`, `exportFile.ts`, `dragdrop.ts`, `offline.ts`, `testMode.ts`, `testHook.ts`. |
 | `src/lib/<domain>/` | Pure per-tool logic with co-located `*.test.ts`: `time/` (durations, timezones, `cities.json`, `engine.svelte.ts`), `scheduler/` (`rank`, `recurrence`), `calc/`, `gen/`, `img/`, `raster/`, `svg/`, `bg/`, `sql/`. |
+| [text/](../../src/lib/text/) | Segmentation shared by every text tool: `tokenize.ts` (graphemes, words, sentences, paragraphs, lines, syllables, and the four numbers that all get called length). One layer, so counts, diffs and transformations cannot disagree about where a word starts. |
+| [encode/](../../src/lib/encode/) | `base64.ts` — encode/decode for both alphabets over `TextEncoder`, validation that reports the offset where a string stopped being base64, and `data:` URL parse/build. Exists because `btoa` throws on non-Latin-1 text and `atob` returns rubbish instead of failing. |
 | [src/styles/](../../src/styles/) | `theme.css` (tokens, both themes via `light-dark()`), `global.css` (reset, base elements, layout, shared classes). |
 | [public/](../../public/) | `sw.js`, `manifest.webmanifest`, favicons, and the vendored ML assets under `models/` and `ort/` (with `models/PROVENANCE.txt`). |
 | [tests/local/](../../tests/local/) | The Playwright suite: `*.spec.ts` per area, `helpers/` (`app.ts` fixture, `oracle.ts` typed comparator, `schema.ts` `TABLES` mirror), `fixtures/`, `trust-gate.ts`. |

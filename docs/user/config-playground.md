@@ -2,7 +2,7 @@
 
 Paste a JSON or YAML file and find out what is in it: whether it parses, which lines will surprise an older YAML reader, and the shape of the data — every key, its type, whether it is always there and whether it is ever null — as a table you can keep. Or start from the table, build the shape by hand, and get example files and real code out of it: a parser that checks documents the way this page does, or a generator that invents sample ones, in Python, JavaScript, Go, Rust or as a single-file web component.
 
-_Describes the code as of v0.2.1 (unreleased; schema v12) — verify against source when in doubt._
+_Describes the code as of v0.3.0 (unreleased; schema v12) — verify against source when in doubt._
 
 ## Checking a document
 

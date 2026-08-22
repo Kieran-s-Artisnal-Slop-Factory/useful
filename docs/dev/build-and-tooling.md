@@ -2,7 +2,7 @@
 
 Eight npm scripts, seven `.mjs` scripts under `tools/`, and one CI workflow. `astro build` emits a static `dist/` with no runtime; everything third-party is either bundled by Vite or vendored into `public/` and committed, so a fresh clone builds a working app with no network access. This page covers what each command really does, what each generator script produces and when to re-run it, the dependency and payload rules, how the site deploys under a sub-path, and the release procedure.
 
-_Describes the code as of v0.2.1 (unreleased; schema v12) — verify against source when in doubt._
+_Describes the code as of v0.3.0 (unreleased; schema v12) — verify against source when in doubt._
 
 ## File map
 
@@ -234,9 +234,9 @@ To cut a release:
 2. **Add a dated section to [CHANGELOG.md](../../CHANGELOG.md)**, newest first: `# x.y.z (YYYY-MM-DD)` with `## Features`, `## Bug Fixes` and `## Other` beneath it. Call out schema changes explicitly and name the DB version whenever a migration ships — users carry their data across versions in their own browser.
 3. **Commit:** `git add VERSION CHANGELOG.md && git commit -m "Release $(cat VERSION)"`.
 
-Between releases, the standing checklist in [plan-phases.md](plans/plan-phases.md) governs: entries go under the current **unreleased** heading; if the newest heading already has a release date (as `# 0.2.0 (2026-08-21)` does now), bump `VERSION` first and open a new `x.y.z (unreleased)` heading. The same checklist covers the rest of a change's obligations — three schema files in lockstep, every write through `repo.ts`, both suites green, new routes in `SHELL` in [public/sw.js](../../public/sw.js) with `CACHE_NAME` bumped, links through `href()`, keyboard operability and AA contrast.
+Between releases, the standing checklist in [plan-phases.md](plans/plan-phases.md) governs: entries go under the current **unreleased** heading; if the newest heading already has a release date (as `# 0.2.1 (2026-08-21)` does now), bump `VERSION` first and open a new `x.y.z (unreleased)` heading — which is what `# 0.3.0 (unreleased)` is. The same checklist covers the rest of a change's obligations — three schema files in lockstep, every write through `repo.ts`, both suites green, new routes in `SHELL` in [public/sw.js](../../public/sw.js) with `CACHE_NAME` bumped, links through `href()`, keyboard operability and AA contrast.
 
-**`package.json` `"version"` is kept in sync with `VERSION`** (both `0.2.0` as of the 0.2.0 release; the drift the 0.2.0 bump once left behind was closed in Phase 11). Nothing reads either at runtime, but a release that bumps one and not the other is a release that lies to `npm`, so step 1 above means both files.
+**`package.json` `"version"` is kept in sync with `VERSION`** (both `0.3.0` since 0.3.0 opened; the same drift has now appeared twice — once at the 0.2.0 bump, once at the 0.3.0 one — because bumping `VERSION` is the memorable half of the pair). Nothing reads either at runtime, but a release that bumps one and not the other is a release that lies to `npm`, so step 1 above means both files.
 
 The 0.2.0 release also re-ran the audits Phase 11 calls for, recorded in the release commit: the a11y sweep over all 28 registered routes (registry-derived, nothing added by hand), the payload guard against the real build (MathLive, DiceBear, Lucide, Milkdown, mermaid and KaTeX stay off every page that does not use them), the offline suite with the `math-fonts` bundle registered and sized, and a static audit of what the background crawl reaches from the shell ([tools/audit-precache.mjs](../../tools/audit-precache.mjs), described in [service-worker-and-offline.md](service-worker-and-offline.md)).
 

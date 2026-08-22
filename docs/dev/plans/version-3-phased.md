@@ -132,9 +132,9 @@ nobody answers.
 
 | # | Question | Needed by | Default if unanswered |
 |---|----------|-----------|-----------------------|
-| Q1 | The TODO files Diff / Similarity / Analysis under **Calculators**. They are text tools, not arithmetic. New **Text** category, or Calculators as written? | Phase 0 | **New `Text` category.** Category is one field in the registry and routes do not encode it, so this is reversible at any time |
+| Q1 | The TODO files Diff / Similarity / Analysis under **Calculators**. They are text tools, not arithmetic. New **Text** category, or Calculators as written? | Phase 0 | **ANSWERED 2026-08-22: Calculators, exactly as the TODO has it.** No new category. Category is one field in the registry and routes do not encode it, so this stays reversible |
 | Q2 | Generators would reach 16 tools by the end of this release. Split the DevOps-flavoured ones (Docker Compose, Crontab, File tree) into their own category? | Phase 9 | **No** — Generators as the TODO has it, revisited at Phase 14 if the sidebar reads badly |
-| Q3 | Base64 sits under **Images** in the TODO but handles text as well. | Phase 4 | Images, with `text`/`encode`/`decode`/`data url` aliases so search lands either way |
+| Q3 | Base64 sits under **Images** in the TODO but handles text as well. | Phase 4 | **ANSWERED 2026-08-22: Images**, with `text`/`encode`/`decode`/`data url` aliases so search lands either way |
 | Q4 | MD5, SHA-224 and SHA-3 are not in WebCrypto. Hand-roll, or take `js-md5` + `js-sha3` (or `hash-wasm`)? | Phase 5 | **Hand-roll** in `src/lib/hash/`, against RFC 1321 / FIPS 180-4 / FIPS 202 vectors. ~450 lines total, no new dependency, and the vectors make it provable |
 | Q5 | bcrypt cannot be hand-rolled sanely (Eksblowfish + 4 KB of S-box tables). Import `bcryptjs`, or offer PBKDF2 only? | Phase 6 | **`bcryptjs`** (MIT, pure JS, ~25 KB) in a Web Worker, cost capped at 12, with a progress state — a cost-14 hash on the main thread freezes the tab for seconds |
 | Q6 | "Diffie-Hellman" — WebCrypto has ECDH, not classic finite-field DH. | Phase 6 | **Both, honestly labelled:** ECDH/X25519 for the real key agreement, plus a small-number BigInt visualizer (Alice/Bob/shared secret with 3-digit primes) marked as a teaching toy that is not secure |
@@ -153,7 +153,7 @@ nobody answers.
 
 | Phase | Goal | New deps | DB | Notes |
 |-------|------|----------|----|-------|
-| 0 | Groundwork: version drift, shared text + base64 modules | — | — | Unblocks 1–4, 7 |
+| 0 ✅ | Groundwork: version drift, shared text + base64 modules | — | — | **DONE 2026-08-22.** Unblocks 1–4, 7 |
 | 1 | Diff | — | — | |
 | 2 | Similarity | — | — | Shares Phase 0's tokenizer |
 | 3 | Text analysis | — | — | |
@@ -175,7 +175,7 @@ first takes v13.
 
 ---
 
-## Phase 0 — Groundwork
+## Phase 0 — Groundwork — DONE (2026-08-22)
 
 **Goal:** the shared modules Phases 1–4 and 7 all import, and the release
 bookkeeping that is wrong today. Nothing user-visible except the version fix.
@@ -202,24 +202,42 @@ bookkeeping that is wrong today. Nothing user-visible except the version fix.
    data-URL parse/build. `toBase64`, `toBase64Url` and `HEX` currently live in
    [secrets.ts](../../../src/lib/gen/secrets.ts); they move here and `secrets.ts`
    re-exports, so no call site changes and there is one implementation.
-4. **Registry categories.** Add `Text` to `CATEGORY_ORDER` (Q1), between
-   `Notes` and `Images`. `registry.test.ts` asserts every category is known, so
-   this lands before the tools do.
-5. **Docs drift.** [testing.md](../testing.md) says "as of v0.2.1 (unreleased)";
-   0.2.1 shipped. Re-stamp the version lines in the dev docs that carry them.
+4. **Registry categories: none added** (Q1, answered). Diff, Similarity and
+   Text analysis register under **Calculators**, and Base64 under **Images**,
+   exactly as the TODO files them. `registry.test.ts` asserts every category is
+   one of the known ones, so an invented category would have failed the suite
+   rather than quietly appearing in the sidebar.
+5. **Docs drift.** Forty-two doc pages said "as of v0.2.1 (unreleased)";
+   0.2.1 shipped on 2026-08-21. All of them now read `v0.3.0 (unreleased;
+   schema v12)`, and [build-and-tooling.md](../build-and-tooling.md)'s two
+   version paragraphs name the right headings again.
 
 **Data model:** none.
 
-**Tests:** unit — `tokenize.ts` (family-emoji counts as one grapheme, `"a̋"` as
-one, CJK sentence splitting, `Mr. Smith` not split, syllables against a hand-
-built word table, `sizes()` on a string where all four numbers differ);
-`base64.ts` (round-trips Unicode, rejects `=` in the middle, decodes both
-alphabets, data-URL round trip). Playwright — the existing suites stay green
+**Tests:** unit — 39 new cases. `tokenize.ts`: a ZWJ family is one grapheme
+(3 / 11 / 17 for the same string), hyphenated and apostrophised words stay
+whole, CJK segments without spaces, `Mr. Smith` and `J. R. R. Tolkien` are not
+split while `…etc. Then` still is, text with no terminator is one sentence, and
+the syllable heuristic is pinned **including the four words it gets wrong**, so
+a rule change cannot move every readability score in silence. `base64.ts`: the
+RFC 4648 vectors, `café` (where `btoa` throws), both alphabets, a 76-column
+body, all 256 byte values round-tripped, and the reported offset of the first
+character that was not base64. Playwright — the existing suites stay green
 unchanged.
 
-**Docs:** [testing.md](../testing.md), [architecture.md](../architecture.md)
-(the two new shared modules), [build-and-tooling.md](../build-and-tooling.md)
-(version authority note).
+**Docs:** [architecture.md](../architecture.md) gained a row per new module,
+[testing.md](../testing.md) a row per new unit file, and
+[build-and-tooling.md](../build-and-tooling.md) its version paragraphs.
+
+**Left for later, deliberately:** four more hand-rolled base64 encoders survive
+in [assets.ts](../../../src/lib/notebook/assets.ts),
+[formulaMarkup.ts](../../../src/lib/codegen/formulaMarkup.ts),
+[mathFonts.ts](../../../src/lib/notebook/mathFonts.ts) and
+[exportFile.ts](../../../src/lib/exportFile.ts). They are byte-level, correct,
+and covered by slow specs; folding them into the shared module is a Phase 14
+job, not a groundwork one. (The shared encoder was measured against the chunked
+`btoa` path they use — 190 ms vs 159 ms for 4 MB, byte-identical output — so
+there is no performance argument for keeping them.)
 
 **CHANGELOG:** Other.
 
@@ -261,7 +279,7 @@ Playwright — paste two texts, assert the marked ranges; switch granularity;
 copy the unified diff; zero DB writes across the whole session.
 
 **Docs:** `docs/dev/tools/text-tools.md` (new; grows through Phases 2–3),
-`docs/user/text-tools.md`.
+`docs/user/text-tools.md`. Registered under **Calculators** (Q1).
 
 **CHANGELOG:** Features.
 
@@ -881,12 +899,17 @@ assert its entries; import a fixture compose file and assert the report.
 3. **Payload pass**: `bcryptjs` and `figlet` confirmed lazy through
    `payload.spec.ts`; the hand-rolled hash and diff modules confirmed small
    enough not to need laziness.
-4. **Sidebar review (Q2)** now that Generators is large — either it reads fine
+4. **One base64, finally**: fold the four remaining hand-rolled encoders
+   (notebook assets, formula markup, maths fonts, `dataUrlToBlob`) onto
+   [base64.ts](../../../src/lib/encode/base64.ts) and re-run the specs that
+   cover them — deferred out of Phase 0 on purpose, because each one is behind
+   a slow suite.
+5. **Sidebar review (Q2)** now that Generators is large — either it reads fine
    or the DevOps split happens here, where it is one field per tool.
-5. **Docs**: [README.md](../../../README.md) "What's in it" and Tables sections;
+6. **Docs**: [README.md](../../../README.md) "What's in it" and Tables sections;
    [docs/README.md](../../README.md) map; the per-tool pages written in each
    phase re-read as a set for consistency of voice.
-6. **Release**: `VERSION` / `package.json` / CHANGELOG per the standing
+7. **Release**: `VERSION` / `package.json` / CHANGELOG per the standing
    checklist, date the `0.3.0` heading, note DB v13 prominently since users
    carry their data in their browser.
 

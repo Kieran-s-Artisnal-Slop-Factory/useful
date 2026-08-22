@@ -1,6 +1,48 @@
 # 0.3.0 (unreleased)
 
+## Features
+
+- **Two shared modules the 0.3.0 text and encoding tools are built on**, landed
+  ahead of the tools themselves so every one of them counts and encodes the
+  same way.
+  - **`src/lib/text/tokenize.ts` is the app's one segmentation layer.**
+    Graphemes, words, sentences, paragraphs, lines, syllables and the four
+    numbers that all get called "length" — user-perceived characters, code
+    points, UTF-16 units and UTF-8 bytes — come from here, so a count, a diff
+    and a case transformation can never disagree about where a word starts.
+    `Intl.Segmenter` does the work, which is what makes a ZWJ family emoji one
+    character rather than eleven and lets text with no spaces in it be
+    segmented at all; a regex fallback covers a runtime without it and says so
+    through `segmenterAvailable()`.
+    - **Sentence breaking is post-processed for abbreviations**, because the
+      Unicode rules split `Mr. Smith` in two and a sentence count 30% too high
+      drags every readability score with it. Titles and initials never end a
+      sentence; the softer class (`etc.`, `p.m.`, dotted acronyms) ends one
+      only when the next word starts with a capital — `5 p.m. tomorrow` runs
+      on, `5 p.m. They left` does not.
+    - **The syllable counter's mistakes are pinned in its tests.** There is no
+      exact method without a pronunciation dictionary; the words this heuristic
+      gets wrong (`business`, `poem`, `science`) are asserted as wrong, so a
+      change to the rules cannot move every score in the app silently.
+  - **`src/lib/encode/base64.ts` replaces `btoa`/`atob` for the whole app.**
+    `btoa` throws on any character above U+00FF — `btoa('café')` is an
+    exception — and `atob` fed something that is not base64 returns whatever it
+    could make of the input instead of failing. So text goes through
+    `TextEncoder`/`TextDecoder` (UTF-8, always), and every decode is validated
+    first and reports **the offset in the original string** where the input
+    stopped being base64, which is the one thing needed to fix a pasted token.
+    Both alphabets, optional padding, MIME line wrapping, `data:` URL
+    parse/build, and size predictions for the +33% everyone forgets.
+    `secrets.ts` now re-exports from it rather than carrying its own copy.
+
 ## Other
+
+- **`package.json` is back in step with `VERSION`** at `0.3.0`. The same drift
+  appeared at the 0.2.0 bump and was closed then too: bumping `VERSION` is the
+  memorable half of the pair, so both files are named in the release steps.
+- **Forty-two documentation pages were stamped "as of v0.2.1 (unreleased)"**
+  after 0.2.1 shipped. They now read v0.3.0 (unreleased; schema v12), and
+  `build-and-tooling.md`'s two version paragraphs name the current headings.
 
 - **The 0.3.0 wish list is now a plan.** `docs/dev/plans/version-3.md` stays as
   the raw list of what the release should contain;
