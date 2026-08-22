@@ -31,11 +31,15 @@ Per tool, under [`dev/tools/`](dev/tools/):
 [text tools](dev/tools/text-tools.md) ·
 [generators](dev/tools/generators.md) ·
 [image tools](dev/tools/image-tools.md) ·
+[base64](dev/tools/base64.md) ·
 [background remover](dev/tools/background-remover.md) ·
 [SVG editor](dev/tools/svg-editor.md) ·
 [image editor](dev/tools/image-editor.md) ·
 [sprite editor](dev/tools/sprite-editor.md) ·
 [secrets](dev/tools/secrets.md) ·
+[hashing](dev/tools/hashing.md) ·
+[encryption](dev/tools/encryption.md) ·
+[JWT](dev/tools/jwt.md) ·
 [logo generator](dev/tools/logo-generator.md) ·
 [napkin math](dev/tools/napkin-math.md) ·
 [SQL playground](dev/tools/sql-playground.md) ·
@@ -59,9 +63,13 @@ the app.
 | [text-tools.md](user/text-tools.md) | Diff, Similarity and Text analysis — compare, score and count text |
 | [generators.md](user/generators.md) | Themes and colours, gradients, glassmorphism, regex, QR |
 | [secrets.md](user/secrets.md) | Passwords, keys, tokens and identifiers |
+| [hashing.md](user/hashing.md) | MD5, SHA-1, SHA-2, SHA-3, SHAKE, HMAC, salt and pepper |
+| [encryption.md](user/encryption.md) | AES with a password, RSA keys, key agreement, bcrypt, one-time pad |
+| [jwt.md](user/jwt.md) | Decode, verify and sign JSON Web Tokens |
 | [logo-generator.md](user/logo-generator.md) | Seeded avatars, identicons, and icon or emoji badges |
 | [napkin-math.md](user/napkin-math.md) | Formulas that document themselves, with code you can take away |
 | [images.md](user/images.md) | Converter, resizer, compressor, background remover |
+| [base64.md](user/base64.md) | Text and images in and out of base64, and data URLs |
 | [svg-editor.md](user/svg-editor.md) | The layered vector editor |
 | [image-editor.md](user/image-editor.md) | The layered raster editor (session-only — read the gotchas) |
 | [sprite-editor.md](user/sprite-editor.md) | Pixel art on a character grid |

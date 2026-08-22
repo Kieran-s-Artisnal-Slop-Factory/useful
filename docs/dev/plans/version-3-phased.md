@@ -157,10 +157,10 @@ nobody answers.
 | 1 ✅ | Diff | — | — | **DONE 2026-08-22.** |
 | 2 ✅ | Similarity | — | — | **DONE 2026-08-22.** Shares Phase 0's tokenizer |
 | 3 ✅ | Text analysis | — | — | **DONE 2026-08-22.** |
-| 4 | Base64 | — | — | |
-| 5 | Hashing (+ HMAC, salt & pepper) | — | — | Unblocks 6, 7 |
-| 6 | Encryption & key exchange | `bcryptjs` | — | |
-| 7 | JWT | — | — | Built on Phase 5's key plumbing |
+| 4 ✅ | Base64 | — | — | **DONE 2026-08-22.** |
+| 5 ✅ | Hashing (+ HMAC, salt & pepper) | — | — | **DONE 2026-08-22.** Unblocks 6, 7 |
+| 6 ✅ | Encryption & key exchange | `bcryptjs` | — | **DONE 2026-08-22.** |
+| 7 ✅ | JWT | — | — | **DONE 2026-08-22.** Built on Phase 5's key plumbing |
 | 8 | ASCII art (image + text) | `figlet` | — | Vendors fonts |
 | 9 | File tree | — | — | |
 | 10 | Crontab | — | — | |
@@ -416,7 +416,7 @@ heuristics".
 
 ---
 
-## Phase 4 — Base64
+## Phase 4 — Base64 — DONE (2026-08-22)
 
 **Goal:** text and images to base64 and back, without the traps.
 
@@ -442,11 +442,19 @@ heuristics".
 
 **Data model:** none.
 
-**Tests:** unit — covered by Phase 0's module tests, extended with magic-byte
-sniffing for PNG/JPG/GIF/WebP/SVG and the size-estimate maths. Playwright —
-encode a fixture image and assert the data URL renders in the preview; round
-trip it back to a download; a deliberately corrupt string reports its offset;
-zero DB writes.
+**Tests:** unit — Phase 0's base64 tests plus a new
+[sniff.test.ts](../../../src/lib/encode/sniff.test.ts): every image format the
+app handles, container brands matched through their wrappers (a `WEBP` tag
+without `RIFF` is not a WebP), PDF/ZIP/gzip/WOFF2, SVG recognised only when the
+text really opens as XML, and the text/binary fallbacks. Playwright — 8 cases,
+all zero-write.
+
+**Grown beyond the plan, on purpose:** the plan said "MIME type read from the
+file's magic bytes". That turned into
+[sniff.ts](../../../src/lib/encode/sniff.ts), a table-driven identifier shared
+by both directions — which is what lets a data URL that *claims* `image/jpeg`
+while containing a PNG be reported as a PNG. The label in a data URL is a
+claim; the bytes are the evidence, and the spec pins that.
 
 **Docs:** `docs/dev/tools/base64.md`, `docs/user/base64.md`.
 
@@ -454,7 +462,7 @@ zero DB writes.
 
 ---
 
-## Phase 5 — Hashing
+## Phase 5 — Hashing — DONE (2026-08-22)
 
 **Goal:** every hash the TODO asks for, plus the honesty about what a hash is
 for.
@@ -493,10 +501,25 @@ for.
 
 **Data model:** none. Nothing on this page is written anywhere (checklist 7).
 
-**Tests:** unit — the vector tables above, output-format conversions, salt/pepper
-composition order. Playwright — type a message, assert the known digest for each
-algorithm; switch output format; copy; assert `dumpAll()` unchanged across the
-session.
+**Tests:** unit — 21 cases across
+[digest.test.ts](../../../src/lib/hash/digest.test.ts) and
+[index.test.ts](../../../src/lib/hash/index.test.ts). Every algorithm is checked
+**twice**: against the published vectors (RFC 1321, FIPS 180-4, FIPS 202) and
+against Node's OpenSSL across the block boundaries — the constants catch a
+mistyped implementation, the cross-check catches a mistyped constant. It earned
+its keep immediately: MD5's third-round shift table was transposed, and the
+RFC's own vectors caught it on the first run. Playwright — 7 cases, each
+asserting the database is byte-identical afterwards.
+
+**Two things the plan under-specified:**
+
+1. **HMAC covers everything, not just the SHA-2 family.** WebCrypto's HMAC does
+   SHA-1/2; the generic construction over the local digests covers MD5,
+   SHA-224 and SHA-3 — using each algorithm's own block size (144/136/104/72
+   for SHA-3, not 64). Both paths are checked against OpenSSL.
+2. **SHA-256 survives an insecure context**, because this app implements it
+   too. `available(id)` answers per algorithm rather than per page, so the
+   degradation is precise instead of "crypto is off".
 
 **Docs:** `docs/dev/tools/hashing.md` (algorithm sources, which come from
 WebCrypto and which are ours, and why), `docs/user/hashing.md` (leads with
@@ -506,7 +529,7 @@ WebCrypto and which are ours, and why), `docs/user/hashing.md` (leads with
 
 ---
 
-## Phase 6 — Encryption & key exchange
+## Phase 6 — Encryption & key exchange — DONE (2026-08-22)
 
 **Goal:** the encrypt half of the TODO's "Hash & Encrypt", built on WebCrypto,
 with the teaching parts clearly marked as teaching parts.
@@ -548,13 +571,20 @@ with the teaching parts clearly marked as teaching parts.
 matcher in [payload.spec.ts](../../../tests/local/payload.spec.ts) so it cannot
 creep into the main bundle.
 
-**Tests:** unit — the bundle format round-trips; PEM/JWK export→import→export is
-stable; the OAEP size limit maths; the BigInt DH visualizer reaches the same
-shared secret from both sides; OTP XOR is its own inverse and key-length
-enforcement holds. Playwright — encrypt then decrypt with a password and get the
-plaintext back; a wrong password fails as an authentication error rather than
-garbage; generate an RSA pair and round-trip a short message; bcrypt hash then
-verify (cost 4, in CI time); zero DB writes.
+**Tests:** unit — 19 cases in
+[crypto.test.ts](../../../src/lib/crypto/crypto.test.ts): the bundle format and
+its round trip, a flipped ciphertext bit refused (which is the whole argument
+for GCM), a fresh salt and IV on every run, the OAEP limit at 2048 and 4096
+bits, PEM wrapping at 64 columns, both sides of ECDH agreeing on every curve
+the runtime has, a third party deriving something different, `modPow` where a
+double would overflow, and the pad refusing a short key. Playwright — 7 cases,
+each asserting the database is byte-identical afterwards, plus a payload case
+proving `bcryptjs` does not arrive until someone asks for a hash.
+
+**Answered by building it:** Q5 and Q6 both took their defaults —
+`bcryptjs` in a worker with the cost capped at 12, and ECDH beside a
+three-digit-prime demonstration that says in two places that it is not a
+cipher.
 
 **Docs:** `docs/dev/tools/encryption.md` (which primitive, which WebCrypto call,
 why GCM, why the worker), `docs/user/encryption.md` (leads with "this is for
@@ -564,7 +594,7 @@ learning and for small one-off jobs; it is not a key-management system").
 
 ---
 
-## Phase 7 — JWT
+## Phase 7 — JWT — DONE (2026-08-22)
 
 **Goal:** [jwt.io](https://www.jwt.io/)'s featureset, offline.
 
@@ -593,10 +623,17 @@ learning and for small one-off jobs; it is not a key-management system").
 
 **Data model:** none.
 
-**Tests:** unit — decode against fixture tokens for every algorithm; the claim
-table's date maths; `alg: none` refused; a tampered payload failing
-verification. Playwright — paste a token and assert the decoded claims; sign
-with a secret and verify the result in the same page; zero DB writes.
+**Tests:** unit — 16 cases in
+[jwt.test.ts](../../../src/lib/crypto/jwt.test.ts): the specification's own
+example token verifying with its published secret, the claim table's dates,
+`alg: none`, algorithm confusion, verifying with a private key refused, and a
+sign-then-verify round trip for **every** asymmetric algorithm the runtime
+supports (RS/PS/ES256-512, and EdDSA where present). Playwright — 6 cases,
+zero-write, including the one that matters most: a tampered payload still
+decodes and stops verifying.
+
+**Q7 took its default:** EdDSA is feature-detected, listed and disabled with
+the reason where Ed25519 is absent rather than silently missing.
 
 **Docs:** `docs/dev/tools/jwt.md`, `docs/user/jwt.md`.
 

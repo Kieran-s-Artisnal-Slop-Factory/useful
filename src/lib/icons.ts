@@ -104,6 +104,26 @@ export const ICONS: Record<string, string> = {
   scissors:
     '<circle cx="6" cy="6" r="3"/><path d="M8.12 8.12 12 12"/><path d="M20 4 8.12 15.88"/>' +
     '<circle cx="6" cy="18" r="3"/><path d="M14.8 14.8 20 20"/>',
+  // Lucide "ticket" — a token with a perforation, the JWT page.
+  ticket:
+    '<path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z"/>' +
+    '<path d="M13 5v2"/><path d="M13 11v2"/><path d="M13 17v2"/>',
+  // Lucide "lock" — the encryption page.
+  lock:
+    '<rect width="18" height="11" x="3" y="11" rx="2" ry="2"/>' +
+    '<path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
+  // Lucide "fingerprint" — the digest tools.
+  fingerprint:
+    '<path d="M12 10a2 2 0 0 0-2 2c0 1.02-.1 2.51-.26 4"/>' +
+    '<path d="M14 13.12c0 2.38 0 6.38-1 8.88"/>' +
+    '<path d="M17.29 21.02c.12-.6.43-2.3.5-3.02"/>' +
+    '<path d="M2 12a10 10 0 0 1 18-6"/><path d="M2 16h.01"/>' +
+    '<path d="M21.8 16c.2-2 .131-5.354 0-6"/>' +
+    '<path d="M5 19.5C5.5 18 6 15 6 12a6 6 0 0 1 .34-2"/>' +
+    '<path d="M8.65 22c.21-.66.45-1.32.57-2"/><path d="M9 6.8a6 6 0 0 1 9 5.2v2"/>',
+  // Lucide "arrow-right-left" — two arrows passing, encode and decode.
+  'arrow-right-left':
+    '<path d="m16 3 4 4-4 4"/><path d="M20 7H4"/><path d="m8 21-4-4 4-4"/><path d="M4 17h16"/>',
   // Lucide "type" — a serif A on its baseline, the text tools.
   type: '<polyline points="4 7 4 4 20 4 20 7"/><line x1="9" x2="15" y1="20" y2="20"/><line x1="12" x2="12" y1="4" y2="20"/>',
   // Lucide "ruler" — measuring the distance between two words.

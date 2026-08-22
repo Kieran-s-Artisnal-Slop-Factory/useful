@@ -13,7 +13,9 @@ their own browser.
   views, with recurrence, comments and due notifications.
 - **Images** — converter, resizer, compressor (target size or percentage),
   background remover (on-device segmentation model), layered SVG editor,
-  layered raster editor with EXIF viewing/editing, pixel-art sprite editor.
+  layered raster editor with EXIF viewing/editing, pixel-art sprite editor,
+  and base64 encoding for text and files (data URLs, with the type read from
+  the bytes rather than the label).
 - **Calculators** — number bases and bit operations, photography equivalence
   and light stops, file-transfer times, napkin math (a formula becomes a
   little calculator, and then a function in Python, JavaScript, Go or Rust),
@@ -23,7 +25,10 @@ their own browser.
 - **Generators** — theme builder and colour conversion, gradients,
   glassmorphism, regex snippets for four languages, QR create and read,
   secrets (passwords, keys, tokens, identifiers), logos (seeded avatars and
-  identicons, or an icon/emoji badge).
+  identicons, or an icon/emoji badge), hashing (MD5 through SHA-3 and SHAKE,
+  with HMAC, salt and pepper), encryption (AES with a password, RSA key pairs,
+  ECDH key agreement, bcrypt and a one-time pad) and JWTs (decode, verify,
+  sign).
 - **Notes** — a notebook of linked markdown notes: WYSIWYG or raw source
   over one string, `[[wiki links]]` with computed backlinks and aliases that
   survive renames, footnotes, mermaid diagrams, KaTeX maths, pasted images,

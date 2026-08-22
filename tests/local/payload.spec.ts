@@ -41,6 +41,10 @@ const HEAVY = [
   { label: 'mermaid', match: /mermaid/i },
   { label: 'KaTeX', match: /katex/i },
   { label: 'Excalidraw', match: /excalidraw/i },
+  // bcrypt is small (~25 KB) but it lives in a worker on one page, and the
+  // point of the worker is that it never runs on the main thread — a stray
+  // import would be a frozen tab, not just a slow page.
+  { label: 'bcryptjs', match: /bcrypt/i },
 ];
 
 /** Record every request URL the page makes while `work` runs. */
@@ -73,6 +77,26 @@ test.describe('payload discipline', () => {
     // It DOES arrive — as its own request, after the page is already usable.
     await expect(page.getByTestId('sec-value-memorable')).toContainText('-');
     expect(wordlist.length, 'the word list should be its own chunk').toBeLessThanOrEqual(1);
+  });
+
+  test('bcrypt reaches the encryption page only when it is asked to hash', async ({ app }) => {
+    const { page } = app;
+    const idle = await watch(page, async () => {
+      await app.goto('/tools/encryption/');
+      await expect(page.getByTestId('enc-nothing-stored')).toBeVisible();
+    });
+    expect(idle.filter((url) => /bcrypt/i.test(url)), 'bcrypt should not load with the page').toEqual(
+      []
+    );
+
+    const used = await watch(page, async () => {
+      await page.getByTestId('enc-bcrypt-card').getByText('Password hashing (bcrypt)').click();
+      await page.getByTestId('enc-bcrypt-password').fill('x');
+      await page.getByTestId('enc-bcrypt-cost').fill('4');
+      await page.getByTestId('enc-bcrypt-hash').click();
+      await expect(page.getByTestId('enc-bcrypt-hash-value')).toBeVisible({ timeout: 30_000 });
+    });
+    expect(used.some((url) => /bcrypt/i.test(url)), 'bcrypt should arrive on demand').toBe(true);
   });
 
   test('the home page pulls none of the heavy bundles', async ({ app }) => {

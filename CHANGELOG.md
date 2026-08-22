@@ -2,6 +2,103 @@
 
 ## Features
 
+- **JWT** (`/tools/jwt/`): decode, verify and sign JSON Web Tokens across
+  HS/RS/PS/ES256-512 and EdDSA. Stateless — no token, secret or key is written
+  anywhere.
+  - **The page is built around one distinction: decoding is not verifying.**
+    The decoded card is headed *Decoded — not verified* and says plainly that a
+    payload is base64url rather than encryption, because every JWT incident
+    starts with someone trusting a claim nobody checked. The claims table
+    renders `exp`, `nbf` and `iat` as both a date and an age, and a token with
+    no `exp` is called out as one that never expires on its own.
+  - **Two attacks are refused by name.** `alg: none` — the unsigned token the
+    original specification allowed — is reported before a key is even looked
+    at. And handing an HS* algorithm a PEM is refused as the
+    algorithm-confusion attack: a verifier holding an RSA public key that
+    trusts the token's own `alg` will use that PUBLIC key as an HMAC secret,
+    and anyone can forge tokens with a public key.
+  - **EdDSA is feature-detected**, listed and disabled with the reason where
+    the browser has no Ed25519, rather than silently missing.
+
+- **Encryption** (`/tools/encryption/`): AES-256-GCM with a password, RSA-OAEP
+  key pairs, ECDH key agreement, bcrypt and a one-time pad. Every operation is
+  user-triggered, and **nothing is stored** — there is deliberately no "save
+  this key pair" button, because a backup of this app is one plain JSON file.
+  - **AES-GCM, never CBC**, with a fresh 96-bit IV per operation and a PBKDF2
+    key at 600 000 iterations (OWASP's current figure). The ciphertext travels
+    as one self-describing line carrying its own salt, IV and iteration count,
+    so decrypting needs the password and nothing else remembered. An altered
+    bundle fails to decrypt rather than producing plausible rubbish, and a
+    test flips one bit to prove it.
+  - **RSA states its limit in the refusal.** RSA-OAEP at 2048 bits carries 190
+    bytes; past that the error gives the number, the actual length, and says
+    that hybrid encryption — a random AES key encrypted with RSA — is the
+    answer rather than a bigger key.
+  - **Two Diffie-Hellmans, and the difference is the point.** ECDH through
+    WebCrypto (P-256/384/521, and X25519 where the browser has it) runs both
+    sides and compares the derived secrets; beside it, the same idea over a
+    three-digit prime in `bigint` so the four lines of arithmetic can be read
+    — labelled **a demonstration, not a cipher**, since at that size the secret
+    falls out in a fraction of a second. WebCrypto has no finite-field DH at
+    all, which is a decision by the standards bodies rather than an omission.
+  - **bcrypt runs in a Web Worker** (new dependency: `bcryptjs`, MIT, imported
+    nowhere else), with the cost capped at 12 and the measured time reported —
+    a cost-12 hash in pure JavaScript is a frozen tab otherwise. The page says
+    when a passphrase went past bcrypt's 72-byte limit, which every
+    implementation truncates silently.
+  - **The one-time pad enforces the two rules it can** — a key as long as the
+    message (a short key is refused, never repeated) and a key from
+    `crypto.getRandomValues` — and states the third, which no web page can
+    enforce: never reuse it, and send it some other way.
+
+- **Hashing** (`/tools/hashing/`): twelve digests of the same message, computed
+  as you type — MD5, SHA-1, SHA-224/256/384/512, SHA3-224/256/384/512 and
+  SHAKE128/256 — with HMAC over any of them, salt, pepper and four output
+  formats. **Nothing on the page is written anywhere**, and its spec asserts
+  the database is byte-identical across the whole session.
+  - **Half of them are this app's own code, because no browser has them.**
+    WebCrypto does SHA-1 and the SHA-2 family and nothing else, so MD5
+    (RFC 1321), SHA-224 (the SHA-256 core with different initial values), SHA-3
+    (Keccak-f[1600]) and SHAKE are implemented here. Each is checked twice: against
+    the published vectors **and** against OpenSSL across the block boundaries.
+  - **`crypto.subtle` needs a secure context**, and the page says so instead of
+    throwing at the first click. Opened from a file or over plain `http:`,
+    SHA-1/384/512 grey out with the reason while the eight this app implements
+    keep working — SHA-256 included, since it exists on both sides.
+  - **HMAC works for every algorithm**, not just the platform's: the generic
+    construction runs over the local digests using each one's own block size
+    (144, 136, 104 and 72 bytes for the SHA-3 family — not 64, which is the
+    mistake waiting to be made).
+  - **Salt and pepper print the formula they used.** There is no standard order,
+    so `H(pepper ‖ salt ‖ message)` is shown and updates with the fields:
+    "salted SHA-256" tells nobody how to reproduce a digest.
+  - **A card that refuses to be misunderstood.** A salted SHA is not password
+    storage — these algorithms are built to be fast, a GPU runs billions of
+    guesses a second, and a salt only stops one precomputed table covering
+    every account. It names Argon2id, scrypt, bcrypt and PBKDF2 instead, and a
+    test asserts the wording is on the page.
+
+- **Base64** (`/tools/base64/`): text and files in and out of base64, in four
+  combinations — text or image, encode or decode. Nothing is uploaded and
+  nothing is saved.
+  - **It exists because `btoa` and `atob` are traps.** `btoa('café')` throws —
+    it refuses anything above U+00FF — and `atob` fed something that is not
+    base64 returns whatever it could make of the input rather than failing.
+    Text here goes through `TextEncoder` (UTF-8, always) and every decode is
+    validated first, with **the offending character highlighted in place** and
+    the twelve characters either side of it for context.
+  - **The type comes from the bytes, not the label.** A new magic-number
+    sniffer identifies what an uploaded file or a decoded blob actually is, so
+    a `data:image/jpeg` URL containing a PNG is reported as a PNG. Container
+    formats are matched by brand (RIFF/WEBP, `ftyp`/avif) rather than by
+    wrapper, and SVG — which has no magic number — is checked last, on the
+    decoded head.
+  - **The cost is stated, not implied**: every encode shows the before and
+    after size and the percentage, and a file over a megabyte gets a note about
+    what a data URL that size does to a stylesheet, a cache and a clipboard.
+  - Four copy shapes for an encoded image — the data URL, the base64 alone, a
+    CSS `background-image` line and an `<img>` tag.
+
 - **Text analysis** (`/tools/text-analysis/`): paste text and get its counts,
   how hard it is to read, what it repeats, and seven ways to change its case.
   Nothing is saved and the page writes nothing.
