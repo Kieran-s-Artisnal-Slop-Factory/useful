@@ -1,6 +1,8 @@
-- [x] Review `version-3.md` and split the plan into discrete phases that can be worked on add it into `version-3-phased.md`
-- [x] Update `README.md`
-
+- [ ] Work on `version-3-phased.md`, commit after each phase, and check off here and in the file
+  - [x] Phase 8
+  - [ ] Phase 9
+  - [ ] Phase 10
+  - [ ] Phase 11
 
 Ensure for each change:
 

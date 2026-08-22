@@ -23,7 +23,7 @@
 // Bump this on any meaningful change to this file: `activate` only purges
 // caches whose name differs, so a constant name makes that step dead code and
 // lets a previous deploy's (or a poisoned) entry survive forever.
-const CACHE_NAME = 'useful-cache-v25';
+const CACHE_NAME = 'useful-cache-v26';
 
 // Everything under this prefix belongs to this app. Cache Storage is keyed by
 // ORIGIN, not by service-worker scope, so if two of these apps are ever served
@@ -75,9 +75,33 @@ const SHELL = [
   'tools/sql-playground/',
   'tools/config-playground/',
   'tools/notebook/',
+  'tools/ascii-art/',
   'favicon.svg',
   'favicon-maskable.svg',
   'manifest.webmanifest',
+  // The FIGlet fonts the ASCII-art tool draws with (~180 KB for all
+  // fourteen). They are unfingerprinted public/ files, so the _astro/ crawl
+  // can never find them, and a text banner that only works online would be a
+  // strange thing to ship in an offline-only app. They sit in the SHELL
+  // rather than a bucket of their own because they are small and they change
+  // only when tools/build-figlet-fonts.mjs is re-run — which is also what
+  // checks that every one of them is listed here.
+  // (No apostrophes in this block: tools/audit-precache.mjs reads the array
+  // by matching single-quoted strings, and a contraction reads as a path.)
+  'figlet/standard.flf',
+  'figlet/slant.flf',
+  'figlet/small.flf',
+  'figlet/mini.flf',
+  'figlet/bigfig.flf',
+  'figlet/doom.flf',
+  'figlet/varsity.flf',
+  'figlet/script.flf',
+  'figlet/shadow.flf',
+  'figlet/ghost.flf',
+  'figlet/3d-diagonal.flf',
+  'figlet/fire-font-k.flf',
+  'figlet/pagga.flf',
+  'figlet/future.flf',
 ].map((p) => BASE + p);
 
 // The background remover's ML assets (segmentation model + ONNX Runtime wasm,

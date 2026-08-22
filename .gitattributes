@@ -1,0 +1,8 @@
+# FIGlet fonts are vendored data, not source: public/figlet/PROVENANCE.txt and
+# src/lib/ascii/fonts.json record a SHA-256 of each file AS SHIPPED, and
+# src/lib/ascii/provenance.test.ts re-checks it. They are pure text, so git
+# would otherwise autodetect them as text and rewrite their line endings on
+# checkout under core.autocrlf — every checksum would fail on a fresh clone
+# on Windows, and the bytes the app serves would not be the bytes we vouched
+# for. Stored and checked out verbatim.
+*.flf -text

@@ -2,6 +2,42 @@
 
 ## Features
 
+- **ASCII art** (`/tools/ascii-art/`): a picture rendered as characters, or
+  your words as a banner in one of fourteen FIGlet fonts. Both halves run on
+  this device, and nothing — not the image, not your words, not the font you
+  picked — is written anywhere.
+  - **A character cell is not square, and that is the whole conversion.**
+    Monospace cells are about twice as tall as they are wide, so the row count
+    folds that ratio in; without it every picture arrives at double height.
+    The SVG and PNG renderers lay out on exactly the same grid, so the
+    downloads reproduce what the text block shows.
+  - **Each character is an average, not a sample.** Every output cell owns a
+    rectangle of source pixels — computed from exact fractions, so nothing is
+    dropped or double-counted when the image does not divide evenly — and
+    averages it. A unit test converts a one-pixel checkerboard and asserts
+    mid-grey; a point sampler would return pure black or pure white and the
+    picture would shimmer as the width changed. Transparency is composited
+    onto the chosen background *before* averaging, so a transparent PNG is not
+    read as a rectangle of `@`.
+  - **Ten steps or seventy**, invertible for light-on-dark terminals, with an
+    optional per-character colour that survives into the HTML and SVG copies
+    and is honestly absent from the plain text. Output as text, `.txt`, HTML,
+    SVG or PNG — the PNG is the SVG through the same converter the image tools
+    use, so the two can never disagree.
+  - **Fourteen fonts ship, and the build refuses any it cannot account for.**
+    New dependency: `figlet` (MIT, ~50 KB, lazily imported and imported
+    nowhere else). `tools/build-figlet-fonts.mjs` vendors the fonts, quotes
+    each one's licence sentence out of its own `.flf` header into
+    `public/figlet/PROVENANCE.txt` with a SHA-256, and **exits 1 rather than
+    ship a font whose header states no licence** — which is why some
+    well-known ones are absent (`ANSI Shadow` names no author at all). The
+    refusal path has its own unit test, and the checksums are re-verified on
+    every run of the suite.
+  - **The picker draws every font in your own words**, each row rendered as it
+    scrolls into view, so a list nobody looked at costs nothing. The `figlet`
+    chunk and the fonts are both lazy, and `payload.spec.ts` watches the
+    network to keep them that way.
+
 - **JWT** (`/tools/jwt/`): decode, verify and sign JSON Web Tokens across
   HS/RS/PS/ES256-512 and EdDSA. Stateless — no token, secret or key is written
   anywhere.
@@ -220,6 +256,23 @@
     `secrets.ts` now re-exports from it rather than carrying its own copy.
 
 ## Other
+
+- **The install precache carries fonts for the first time** (service worker
+  cache `v26`): the fourteen `.flf` files are unfingerprinted `public/` files,
+  so the background crawl that discovers every other asset cannot see them, and
+  a banner tool that only works online would be a strange thing to ship in an
+  offline-only app. 178.5 KB for all fourteen. `tools/build-figlet-fonts.mjs`
+  fails if a vendored font is missing from the shell list, and a unit test
+  checks the same thing from the other direction.
+  - One footnote for anyone editing `public/sw.js`: **no apostrophes inside the
+    `SHELL` array**. `tools/audit-precache.mjs` reads that array by matching
+    single-quoted strings, so a contraction in a comment reads as a path.
+  - **The repository gained its first `.gitattributes`**, holding one line:
+    `*.flf -text`. The fonts are pure text, so git would have autodetected
+    them as source and rewritten their line endings on checkout under
+    `core.autocrlf` — which would have failed every recorded checksum on a
+    fresh clone on Windows, and meant the bytes the app serves were not the
+    bytes we vouched for.
 
 - **A bcrypt worker that stops answering now says so.** The full parallel test
   run turned up the one way that button could lie: if the worker's chunk never

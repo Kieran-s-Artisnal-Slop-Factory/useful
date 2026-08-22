@@ -1,0 +1,128 @@
+[
+  {
+    "id": "standard",
+    "name": "Standard",
+    "style": "Stroke",
+    "note": "The FIGlet default since 1993.",
+    "bytes": 30740,
+    "sha256": "44573a1b2145dfdf0110b6a2d3d98bdc47a98cca50795bd7b78278ee5ca96f79",
+    "licence": "Permission is hereby given to modify this font, as long as the modifier's name is placed on a comment line."
+  },
+  {
+    "id": "slant",
+    "name": "Slant",
+    "style": "Stroke",
+    "note": "Standard, leaning.",
+    "bytes": 15517,
+    "sha256": "0a1f6ebfa9b0a1658107765d5273f537e2a626c79a6fb431e1ca1e5330a74f2a",
+    "licence": "Permission is hereby given to modify this font, as long as the modifier's name is placed on a comment line."
+  },
+  {
+    "id": "small",
+    "name": "Small",
+    "style": "Stroke",
+    "note": "Half the height of Standard.",
+    "bytes": 12232,
+    "sha256": "6326d8a718cb57689d5eaa98d301b9297ef6f6300279635b901532a2f3d6aadf",
+    "licence": "Permission is hereby given to modify this font, as long as the modifier's name is placed on a comment line."
+  },
+  {
+    "id": "mini",
+    "name": "Mini",
+    "style": "Stroke",
+    "note": "Four rows — fits in a comment.",
+    "bytes": 9099,
+    "sha256": "45b79cc5974bd2254d6f09a35e23fb7977a1a742e1cf809807bc22585a7106d0",
+    "licence": "Permission is hereby given to modify this font, as long as the modifier's name is placed on a comment line."
+  },
+  {
+    "id": "bigfig",
+    "name": "Bigfig",
+    "style": "Stroke",
+    "note": "Letters drawn with letters.",
+    "bytes": 2938,
+    "sha256": "ce44e1dbcb6700e9e0790be7a7a5e27d7482cf989d00ebcd147c36a2cb9415a5",
+    "licence": "Permission is hereby given to modify this font, as long as the modifier's name is placed on a comment line."
+  },
+  {
+    "id": "doom",
+    "name": "Doom",
+    "style": "Stroke",
+    "note": "Heavy pipes and slashes.",
+    "bytes": 7553,
+    "sha256": "3d8fe9963526329ff9d5414a97b0f47e3a852d2f288a693f2938730f5a230e75",
+    "licence": "Permission is hereby given to modify this font, as long as the modifier's name is placed on a comment line."
+  },
+  {
+    "id": "varsity",
+    "name": "Varsity",
+    "style": "Stroke",
+    "note": "Collegiate outline.",
+    "bytes": 8810,
+    "sha256": "5931543e380090283d2d9ea80a05c08d37ba7a1c0dd63bf9463bba23887a53ee",
+    "licence": "Permission is hereby given to modify this font, as long as the modifier's name is placed on a comment line."
+  },
+  {
+    "id": "script",
+    "name": "Script",
+    "style": "Stroke",
+    "note": "Joined-up handwriting.",
+    "bytes": 16864,
+    "sha256": "d849d3c46d6af833fb722af017a2dbc99042602f67bd2d4b23eb305f4d4b8cc7",
+    "licence": "Permission is hereby given to modify this font, as long as the modifier's name is placed on a comment line."
+  },
+  {
+    "id": "shadow",
+    "name": "Shadow",
+    "style": "Shadow",
+    "note": "Standard with a drop shadow.",
+    "bytes": 14552,
+    "sha256": "be138f51d3928d6ea515262fe549ac2179c61a7a0c7bd20841639b8bd7f22649",
+    "licence": "Permission is hereby given to modify this font, as long as the modifier's name is placed on a comment line."
+  },
+  {
+    "id": "ghost",
+    "name": "Ghost",
+    "style": "Shadow",
+    "note": "Outlined and hollow.",
+    "bytes": 13144,
+    "sha256": "fd9840a6fc41180db7932ba359933fee2c62d2e648b824500228a3d392579ff4",
+    "licence": "Permission is hereby given to modify this font, as long as the modifier's name is placed on a comment line."
+  },
+  {
+    "id": "3d-diagonal",
+    "name": "3D Diagonal",
+    "style": "3-D",
+    "note": "Blocky, extruded, tall.",
+    "bytes": 25476,
+    "sha256": "ba96c495efa742b4a536ac95104df3918c7f29673da98e0bddc816da4d334265",
+    "licence": "Permission is hereby given to modify this font, as long as the modifier's name is placed on a comment line."
+  },
+  {
+    "id": "fire-font-k",
+    "name": "Fire Font-k",
+    "style": "Decorative",
+    "note": "Letters on fire.",
+    "bytes": 9946,
+    "sha256": "cadf9724b51ff32b9505fc853d5b435c56ef33fdbb4f3a927a09e91350d02396",
+    "licence": "Permission is hereby given to modify this font, as long as the modifier's name is placed on a comment line."
+  },
+  {
+    "id": "pagga",
+    "name": "Pagga",
+    "style": "Blocks",
+    "note": "Built from ░ ▀ █ — three rows.",
+    "bytes": 9825,
+    "sha256": "ac5693a0d48e73bc0ef816755fcb0ff04631fcc0a40ed35f22e21dfdafbbede2",
+    "licence": "the terms of the Do What The Fuck You Want To Public License, Version 2, as published by Sam Hocevar. See http://sam.zoy.org/wtfpl/COPYING for more details. as published by Sam Hocevar. See http://sam.zoy.org/wtfpl/COPYING for more details."
+  },
+  {
+    "id": "future",
+    "name": "Future",
+    "style": "Blocks",
+    "note": "Box-drawing strokes, one row tall.",
+    "bytes": 6136,
+    "sha256": "d3f82bef2625e99b750e81f230d5f4d2b122eb621250e94d2c5317da3e039682",
+    "licence": "the terms of the Do What The Fuck You Want To Public License, Version 2, as published by Sam Hocevar. See http://sam.zoy.org/wtfpl/COPYING for more details. as published by Sam Hocevar. See http://sam.zoy.org/wtfpl/COPYING for more details."
+  }
+]

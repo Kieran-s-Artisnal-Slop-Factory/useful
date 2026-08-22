@@ -8,8 +8,8 @@ _Describes the code as of v0.3.0 (unreleased; schema v12) — verify against sou
 
 | Tier | What | Where it lives | Filled by | Purged by |
 |---|---|---|---|---|
-| Precache | `SHELL`: every page route + `favicon.svg`, `favicon-maskable.svg`, `manifest.webmanifest` | Cache `CACHE_NAME` (`useful-cache-v18`) | `precacheShell()` at `install` | `activate` of a worker with a different `CACHE_NAME` |
-| Runtime cache | Every same-origin GET the page makes: `_astro/` JS/CSS/wasm/data chunks, navigated HTML | Same `useful-cache-v18` | The `fetch` handler (stale-while-revalidate) and the background crawl `warmAssetCache()` | Same version bump |
+| Precache | `SHELL`: every page route + `favicon.svg`, `favicon-maskable.svg`, `manifest.webmanifest` + the fourteen `figlet/*.flf` fonts (178.5 KB) | Cache `CACHE_NAME` (`useful-cache-v26`) | `precacheShell()` at `install` | `activate` of a worker with a different `CACHE_NAME` |
+| Runtime cache | Every same-origin GET the page makes: `_astro/` JS/CSS/wasm/data chunks, navigated HTML | Same `useful-cache-v26` | The `fetch` handler (stale-while-revalidate) and the background crawl `warmAssetCache()` | Same version bump |
 | Lazy bundles | Background remover model + ONNX runtime under `models/` and `ort/` | Cache `MODEL_CACHE` (`useful-models-v1`) — deliberately outside `CACHE_PREFIX` | `loadAssets()` in [runtime.ts](../../src/lib/bg/runtime.ts), or the SW's cache-first branch | Never by the SW; only `clearAssets()` (Background remover → "Remove downloaded model") or the user clearing site data |
 | Lazy bundles | The 20 KaTeX faces + their stylesheet under `math/` | Cache `FONT_CACHE` (`useful-fonts-v1`) — also outside `CACHE_PREFIX` | The `math-fonts` bundle in [offline.ts](../../src/lib/offline.ts), or the SW's cache-first branch | Never by the SW; only the user clearing site data |
 
@@ -153,6 +153,7 @@ Both flags live on the `preferences` singleton ([types.ts](../../src/lib/db/type
 ## Cache versioning rules
 
 - **Bump `CACHE_NAME` whenever `SHELL` changes or `sw.js` changes meaningfully.** `activate` only purges caches whose name differs; a constant name makes that step dead code and lets a previous deploy's (or a poisoned) entry live forever. Adding a page without a bump means existing installs never precache it (they still get it on visit via the fetch handler).
+- **No apostrophes inside the `SHELL` array — not even in a comment.** [tools/audit-precache.mjs](../../tools/audit-precache.mjs) reads the array by matching single-quoted strings out of `sw.js`, so a contraction in a comment reads as a shell path and the audit reports files that were never referenced.
 - Never rename `CACHE_PREFIX` casually — it is what makes the purge safe on a shared origin, and `Layout.astro`'s dev teardown deletes by the same prefix (hard-coded string `'useful-cache-'` there).
 - `MODEL_CACHE` must **not** start with `CACHE_PREFIX`; that is the whole reason a version bump does not re-download 15 MB. It is declared twice — `MODEL_CACHE` in `sw.js` and `MODEL_CACHE` in `runtime.ts` — and the two must stay identical. `ML_PREFIXES` in the SW and `BG_ASSETS` in `runtime.ts` must agree on the paths too.
 - Model files are treated as immutable: cache-first, no revalidation. Ship a changed model under a new filename (and update `BG_ASSETS`, sizes from `public/models/PROVENANCE.txt`).
@@ -160,7 +161,7 @@ Both flags live on the `preferences` singleton ([types.ts](../../src/lib/db/type
 
 ## Adding a page or a heavy asset
 
-**A new page**: add its route (relative to base, trailing slash) to `SHELL` and bump `CACHE_NAME`. Its chunks need nothing — the crawl discovers them from the HTML. One other hand-maintained route list exists and must be updated too: [registry.ts](../../src/lib/registry.ts) (sidebar, home tiles, palette search — and the a11y sweep, whose `ROUTES` is derived from `REGISTRY`). `SHELL` and the registry are the two lists that can drift; at 0.2.0 they hold the same 28 routes.
+**A new page**: add its route (relative to base, trailing slash) to `SHELL` and bump `CACHE_NAME`. Small unfingerprinted `public/` files a page cannot work without go in `SHELL` too — the crawl only discovers fingerprinted `_astro/` assets, so nothing else would ever reach them (the ASCII-art fonts are the first of these; `tools/build-figlet-fonts.mjs` fails if one is missing from the list). Its chunks need nothing — the crawl discovers them from the HTML. One other hand-maintained route list exists and must be updated too: [registry.ts](../../src/lib/registry.ts) (sidebar, home tiles, palette search — and the a11y sweep, whose `ROUTES` is derived from `REGISTRY`). `SHELL` and the registry are the two lists that can drift; at 0.2.0 they hold the same 28 routes.
 
 **A new lazy chunk** (a dynamic `import()` or a `new URL(..., import.meta.url)` asset that Vite fingerprints into `_astro/`): nothing to do. Stale-while-revalidate caches it on first use and the crawl reaches it if any cached JS/CSS/HTML mentions it. Add a matcher to `HEAVY` in `payload.spec.ts` if it must never ride along with pages that do not use it.
 

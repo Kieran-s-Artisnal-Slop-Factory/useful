@@ -40,6 +40,7 @@ Per tool, under [`dev/tools/`](dev/tools/):
 [hashing](dev/tools/hashing.md) ·
 [encryption](dev/tools/encryption.md) ·
 [JWT](dev/tools/jwt.md) ·
+[ASCII art](dev/tools/ascii-art.md) ·
 [logo generator](dev/tools/logo-generator.md) ·
 [napkin math](dev/tools/napkin-math.md) ·
 [SQL playground](dev/tools/sql-playground.md) ·
@@ -66,6 +67,7 @@ the app.
 | [hashing.md](user/hashing.md) | MD5, SHA-1, SHA-2, SHA-3, SHAKE, HMAC, salt and pepper |
 | [encryption.md](user/encryption.md) | AES with a password, RSA keys, key agreement, bcrypt, one-time pad |
 | [jwt.md](user/jwt.md) | Decode, verify and sign JSON Web Tokens |
+| [ascii-art.md](user/ascii-art.md) | A picture as characters, or words as a FIGlet banner |
 | [logo-generator.md](user/logo-generator.md) | Seeded avatars, identicons, and icon or emoji badges |
 | [napkin-math.md](user/napkin-math.md) | Formulas that document themselves, with code you can take away |
 | [images.md](user/images.md) | Converter, resizer, compressor, background remover |

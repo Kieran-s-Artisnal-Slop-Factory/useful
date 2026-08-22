@@ -1,6 +1,6 @@
 # Build and tooling
 
-Eight npm scripts, seven `.mjs` scripts under `tools/`, and one CI workflow. `astro build` emits a static `dist/` with no runtime; everything third-party is either bundled by Vite or vendored into `public/` and committed, so a fresh clone builds a working app with no network access. This page covers what each command really does, what each generator script produces and when to re-run it, the dependency and payload rules, how the site deploys under a sub-path, and the release procedure.
+Eight npm scripts, eight `.mjs` scripts under `tools/`, and one CI workflow. `astro build` emits a static `dist/` with no runtime; everything third-party is either bundled by Vite or vendored into `public/` and committed, so a fresh clone builds a working app with no network access. This page covers what each command really does, what each generator script produces and when to re-run it, the dependency and payload rules, how the site deploys under a sub-path, and the release procedure.
 
 _Describes the code as of v0.3.0 (unreleased; schema v12) — verify against source when in doubt._
 
@@ -17,6 +17,7 @@ _Describes the code as of v0.3.0 (unreleased; schema v12) — verify against sou
 | [tools/preview-server.mjs](../../tools/preview-server.mjs) | Foreground static server for `dist/`; what Playwright's `webServer` boots. |
 | [tools/build-bg-assets.mjs](../../tools/build-bg-assets.mjs) | Vendors the segmentation model + ONNX Runtime into `public/`, writes `PROVENANCE.txt`. |
 | [tools/build-city-dataset.mjs](../../tools/build-city-dataset.mjs) | Compacts a GeoNames dump into [cities.json](../../src/lib/time/cities.json). |
+| [tools/build-figlet-fonts.mjs](../../tools/build-figlet-fonts.mjs) | Vendors fourteen FIGlet fonts into `public/figlet/`, writes their `PROVENANCE.txt` and [fonts.json](../../src/lib/ascii/fonts.json), and **fails** on a font whose header states no licence. |
 | [tools/build-image-fixtures.mjs](../../tools/build-image-fixtures.mjs) | Writes the two binary TIFF fixtures the image specs upload. |
 | [tools/build-math-assets.mjs](../../tools/build-math-assets.mjs) | Vendors MathLive's twenty KaTeX faces, `mathlive-fonts.css` (verbatim) and a stripped `katex.css` into `public/math/`, writes its `PROVENANCE.txt`. |
 | [tools/build-wordlist.mjs](../../tools/build-wordlist.mjs) | Vendors the EFF Long Wordlist (7,776 words, CC BY 3.0 US) into [wordlist.json](../../src/lib/gen/wordlist.json) for the passphrase generator. |
@@ -85,6 +86,21 @@ node tools/build-wordlist.mjs [--force]
 ```
 
 Downloads the EFF Long Wordlist (7,776 words — five dice, 12.9 bits a word — CC BY 3.0 US, credited in the tool's UI) and writes [src/lib/gen/wordlist.json](../../src/lib/gen/wordlist.json), refusing any file that does not hold exactly 7,776 entries, because the entropy the passphrase card reports is computed from that count. The list is its own lazy chunk (78 KB) — see the secrets case in [payload.spec.ts](../../tests/local/payload.spec.ts).
+
+### `build-figlet-fonts.mjs` — the ASCII-art tool's fonts
+
+```sh
+node tools/build-figlet-fonts.mjs           # copy, checksum, write provenance
+node tools/build-figlet-fonts.mjs --check   # run every gate, write nothing
+```
+
+Copies fourteen `.flf` files (178.5 KB together) out of `node_modules/figlet/fonts/` into `public/figlet/`, under slugged filenames so no URL carries a `%20`. Three gates, and any of them fails the run without writing a byte:
+
+- **A font must state a licence in its own header.** A `.flf` header is free text; plenty name an author and stop. The script accepts the classic FIGlet grant ("Permission is hereby given to modify this font…"), the named licences (MIT, WTFPL, public domain, CC) and a copyright line with terms, and refuses everything else — which is why several good-looking fonts (`ANSI Shadow`, `Bloody`) are not here. The matched sentence is quoted verbatim into `public/figlet/PROVENANCE.txt`, following the header's hard wrapping to the end of the sentence.
+- **Every font must be listed in `SHELL` in [sw.js](../../public/sw.js).** They are unfingerprinted `public/` files that the background crawl cannot discover, so an unlisted font is a font that is missing offline.
+- **A Latin-1 font is transcoded to UTF-8** (three of the fourteen are), because the app reads them with `Response.text()`, which is UTF-8 — a raw `0xE9` would arrive as U+FFFD and draw the wrong glyph. `PROVENANCE.txt` records that it happened.
+
+Unusually for this directory, its pure parts are unit tested — the refusal path especially — from [provenance.test.ts](../../src/lib/ascii/provenance.test.ts), which also re-checksums the vendored files against [fonts.json](../../src/lib/ascii/fonts.json). Re-run it when `figlet` is upgraded or the font list changes, then commit `public/figlet/` and `fonts.json` together.
 
 ### `build-bg-assets.mjs` — the background remover's ML assets
 
@@ -191,8 +207,10 @@ The 15.8 MB of ML assets are deliberately **excluded** from the service worker's
 | `wordlist.json` | `import()` from the passphrase generator only |
 | `smol-toml` | `await import()` inside `parseAs` / `serializeAs` in [config/convert.ts](../../src/lib/config/convert.ts), so it arrives only when someone picks TOML in the convert dialog — which is itself mounted only while open |
 | `mathlive`, `@cortex-js/compute-engine` | `await import()` inside [MathField.svelte](../../src/components/MathField.svelte)'s mount, so only the napkin-math page pays. The KaTeX faces are vendored to `public/math/` and arrive through a stylesheet, on demand — two faces for a typical formula, not twenty |
+| `bcryptjs` | Imported inside the module Web Worker in [bcrypt-worker.ts](../../src/lib/crypto/bcrypt-worker.ts), constructed when someone asks for a hash |
+| `figlet` | `await import('figlet')` in [ascii/fonts.ts](../../src/lib/ascii/fonts.ts), plus one `.flf` fetched per font actually drawn — the picker's rows render as they scroll into view, so a list nobody looked at costs nothing |
 
-**Payload discipline is tested, not trusted.** [payload.spec.ts](../../tests/local/payload.spec.ts) watches real network requests and fails if any `HEAVY` matcher (ONNX runtime, model, SQLite, PGlite, cities, CodeMirror, the YAML and TOML parsers, the EFF word list, DiceBear, Lucide, Jdenticon, MathLive, the Compute Engine, the KaTeX faces) is hit by a page that should not need it, or if the precache contains anything under `/models/` or `/ort/`. **A new heavy dependency needs a new matcher there** — a lazy import is one careless refactor from becoming eager.
+**Payload discipline is tested, not trusted.** [payload.spec.ts](../../tests/local/payload.spec.ts) watches real network requests and fails if any `HEAVY` matcher (ONNX runtime, model, SQLite, PGlite, cities, CodeMirror, the YAML and TOML parsers, the EFF word list, DiceBear, Lucide, Jdenticon, MathLive, the Compute Engine, the KaTeX faces, bcryptjs, figlet) is hit by a page that should not need it, or if the precache contains anything under `/models/` or `/ort/`. **A new heavy dependency needs a new matcher there** — a lazy import is one careless refactor from becoming eager.
 
 **Versions are pinned to ranges proven together** (Astro 7 / Svelte 5 / idb 8); a major bump of any of them may break generated-code assumptions. `engines.node` is `>=22.12.0`.
 
@@ -246,5 +264,5 @@ The 0.2.0 release also re-ran the audits Phase 11 calls for, recorded in the rel
 - **CI builds but does not test.** A red suite still deploys. Running `npm test` locally before pushing is the only gate.
 - **`base` lives in two possible places** — the config file and the CI command line — and they can disagree. The CI flag is authoritative for what is actually published.
 - **Generated assets are committed, not built.** That trades repo size (~16 MB of ML binaries plus 1.4 MB of city data) for an offline-capable, network-free build. The alternative — fetching at build time — would make a fresh clone depend on a GitHub release URL staying up.
-- **`tools/*.mjs` have no tests and no npm scripts.** They are run by hand, rarely, by a maintainer who reads the header comment first. Each one's header is the real documentation for its arguments.
+- **`tools/*.mjs` have no npm scripts, and only one has tests.** They are run by hand, rarely, by a maintainer who reads the header comment first; each one's header is the real documentation for its arguments. The exception is [build-figlet-fonts.mjs](../../tools/build-figlet-fonts.mjs), whose pure parts are exported and covered by [provenance.test.ts](../../src/lib/ascii/provenance.test.ts) — a licence gate nobody has watched fail is a licence gate nobody should trust.
 - **The ORT vendoring is a workaround, not a preference.** The bundled ORT build claims to inline its loader, but the production bundle still resolves it as a sibling `/_astro/…` URL nothing emits; hosting the loader and pinning `wasmPaths` is the fix. If a future ORT release makes the bundled path work, both the vendoring and the pin can go.

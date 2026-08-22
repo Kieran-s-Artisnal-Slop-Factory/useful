@@ -161,7 +161,7 @@ nobody answers.
 | 5 ✅ | Hashing (+ HMAC, salt & pepper) | — | — | **DONE 2026-08-22.** Unblocks 6, 7 |
 | 6 ✅ | Encryption & key exchange | `bcryptjs` | — | **DONE 2026-08-22.** |
 | 7 ✅ | JWT | — | — | **DONE 2026-08-22.** Built on Phase 5's key plumbing |
-| 8 | ASCII art (image + text) | `figlet` | — | Vendors fonts |
+| 8 ✅ | ASCII art (image + text) | `figlet` | — | **DONE 2026-08-22.** Vendors 14 fonts; the build refuses unlicensed ones |
 | 9 | File tree | — | — | |
 | 10 | Crontab | — | — | |
 | 11 | Placeholders (text + images) | — | — | |
@@ -641,7 +641,7 @@ the reason where Ed25519 is absent rather than silently missing.
 
 ---
 
-## Phase 8 — ASCII art
+## Phase 8 — ASCII art — DONE (2026-08-22)
 
 **Goal:** pictures and words as text.
 
@@ -672,16 +672,45 @@ the reason where Ed25519 is absent rather than silently missing.
 
 **New dependency:** `figlet` (MIT).
 
-**Tests:** unit — the luminance→character mapping on a synthetic gradient, the
-aspect-ratio compensation, ramp inversion; the provenance script's refusal path
-(a font file with no licence header fails). Playwright — render a fixture image
-to ASCII and assert the dimensions of the result; type text, switch fonts,
-assert the output changes and is copyable; zero DB writes.
+**Tests:** unit — 46 cases across
+[image.test.ts](../../../src/lib/ascii/image.test.ts) (ramp shape and
+monotonicity, luminance, the cell-aspect compensation, box averaging proved on
+a one-pixel checkerboard, alpha compositing, invert, the clamps),
+[render.test.ts](../../../src/lib/ascii/render.test.ts) (SVG geometry,
+`textLength` on plain rows and explicit `x` on coloured ones, colour-run
+grouping, XML escaping, the CSS-colour filter, alignment) and
+[provenance.test.ts](../../../src/lib/ascii/provenance.test.ts) (the FIGfont
+header parser including a space hardblank and `tlf2a`, the licence matcher, the
+**refusal path**, Latin-1 transcoding, and the vendored files re-checksummed
+against the catalogue). Playwright — 8 zero-write cases in
+[ascii-art.spec.ts](../../../tests/local/ascii-art.spec.ts): a gradient PNG
+converted to an exact 80×20 rectangle that runs dark to light, invert, the
+width knob, colour mode and the SVG/PNG/txt downloads, plus the picker drawing
+a row only once it is scrolled to. One more in
+[payload.spec.ts](../../../tests/local/payload.spec.ts) holds `figlet` to a
+single lazy chunk and the picker to fewer than fourteen font fetches.
+
+**Q8 took its default:** `figlet` is imported rather than hand-rolled, and only
+fonts whose own header states redistribution terms are vendored — fourteen of
+them, covering all four shapes the TODO named (3D Diagonal, the stroke family,
+Fire Font-k, and Pagga/Future from block characters). Several obvious
+candidates are absent *because* the gate works: `ANSI Shadow` records its author
+as `?`, and `Bloody` names only its converter.
+
+**As built, two things the plan did not anticipate:**
+
+1. Two of the block fonts are **TOIlet** fonts (`tlf2a`), and one of them uses a
+   **space as its hardblank** — so the header fields have to be read from
+   `slice(6)` rather than by splitting the signature line.
+2. Three fonts are Latin-1, and the browser reads a `.flf` with
+   `Response.text()`. They are transcoded to UTF-8 at vendoring time, with the
+   fact recorded in `PROVENANCE.txt`.
 
 **Docs:** `docs/dev/tools/ascii-art.md` (including the font licence table),
 `docs/user/ascii-art.md`.
 
-**CHANGELOG:** Features.
+**CHANGELOG:** Features, plus an Other note for the `v26` cache bump — this is
+the first release whose install precache carries fonts.
 
 ---
 

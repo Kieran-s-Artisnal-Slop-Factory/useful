@@ -7,9 +7,18 @@
  * install precache. These tests watch the actual network to prove it, because
  * a lazy import is one careless refactor away from becoming eager.
  */
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { test, expect } from './helpers/app';
 
 type P = import('@playwright/test').Page;
+
+/** How many FIGlet fonts the app ships — read from the catalogue the build
+ * script writes, so this stays true when the list changes. */
+const FONT_COUNT: number = JSON.parse(
+  readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../../src/lib/ascii/fonts.json'), 'utf8')
+).length;
 
 /** Substrings that identify each heavy bundle in a request URL. */
 const HEAVY = [
@@ -45,6 +54,10 @@ const HEAVY = [
   // point of the worker is that it never runs on the main thread — a stray
   // import would be a frozen tab, not just a slow page.
   { label: 'bcryptjs', match: /bcrypt/i },
+  // The FIGfont renderer, ~50 KB, wanted by exactly one page. Anchored on the
+  // chunk filename rather than the word: `/figlet/standard.flf` is a font
+  // file the service worker precaches, and it is not this.
+  { label: 'figlet', match: /figlet[^/]*\.js/i },
 ];
 
 /** Record every request URL the page makes while `work` runs. */
@@ -168,6 +181,25 @@ test.describe('payload discipline', () => {
     expect(fonts.length, 'every face was fetched eagerly').toBeLessThan(20);
     // The keypress sounds are 227 KB nobody asked for.
     expect(urls.filter((u) => /\.wav/i.test(u)), 'a keypress sound was fetched').toEqual([]);
+  });
+
+  test('ascii art brings figlet as its own chunk, and its fonts one row at a time', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/');
+    const urls = await watch(page, async () => {
+      await page.goto('/tools/ascii-art/');
+      await expect(page.getByTestId('aa-output')).toContainText('_');
+    });
+    // It DOES arrive here — this is the page that needs it — but as one
+    // separately-loaded chunk rather than something baked into the island.
+    const chunks = urls.filter((u) => /figlet[^/]*\.js/i.test(u));
+    expect(chunks.length, 'figlet should arrive as exactly one lazy chunk').toBe(1);
+
+    // And the fourteen fonts are fetched by the picker as its rows scroll
+    // into view. A list nobody has looked at must not cost 178 KB.
+    const fonts = urls.filter((u) => /\.flf(\?|$)/i.test(u));
+    expect(fonts.length, 'the chosen font should load').toBeGreaterThanOrEqual(1);
+    expect(fonts.length, 'the whole catalogue was fetched to draw a list').toBeLessThan(FONT_COUNT);
   });
 
   test('the SQL playground loads one engine, not both', async ({ app }) => {

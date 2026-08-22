@@ -1,0 +1,106 @@
+FIGlet fonts vendored by tools/build-figlet-fonts.mjs — do not edit by hand.
+
+Source: the `figlet` npm package (MIT, https://github.com/patorjk/figlet.js),
+which redistributes the fonts below. Each entry quotes the licence statement
+found in that font's own .flf header; a font whose header states no licence is
+refused by the build rather than shipped.
+
+14 fonts, 178.5 KB total.
+
+## Standard  (figlet/standard.flf)
+style:    Stroke
+bytes:    30740
+sha256:   44573a1b2145dfdf0110b6a2d3d98bdc47a98cca50795bd7b78278ee5ca96f79
+author:   Standard by Glenn Chappell & Ian Chai 3/93 -- based on Frank's .sig | Modified by Paul Burton <solution@earthlink.net> 12/96 to include new parameter
+licence:  Permission is hereby given to modify this font, as long as the modifier's name is placed on a comment line.
+
+## Slant  (figlet/slant.flf)
+style:    Stroke
+bytes:    15517
+sha256:   0a1f6ebfa9b0a1658107765d5273f537e2a626c79a6fb431e1ca1e5330a74f2a
+author:   Slant by Glenn Chappell 3/93 -- based on Standard | Modified by Paul Burton <solution@earthlink.net> 12/96 to include new parameter
+licence:  Permission is hereby given to modify this font, as long as the modifier's name is placed on a comment line.
+
+## Small  (figlet/small.flf)
+style:    Stroke
+bytes:    12232
+sha256:   6326d8a718cb57689d5eaa98d301b9297ef6f6300279635b901532a2f3d6aadf
+author:   Small by Glenn Chappell 4/93 -- based on Standard | Modified by Paul Burton <solution@earthlink.net> 12/96 to include new parameter
+licence:  Permission is hereby given to modify this font, as long as the modifier's name is placed on a comment line.
+
+## Mini  (figlet/mini.flf)
+style:    Stroke
+bytes:    9099
+sha256:   45b79cc5974bd2254d6f09a35e23fb7977a1a742e1cf809807bc22585a7106d0
+author:   Mini by Glenn Chappell 4/93 | Modified by Paul Burton <solution@earthlink.net> 12/96 to include new parameter
+licence:  Permission is hereby given to modify this font, as long as the modifier's name is placed on a comment line.
+
+## Bigfig  (figlet/bigfig.flf)
+style:    Stroke
+bytes:    2938
+sha256:   ce44e1dbcb6700e9e0790be7a7a5e27d7482cf989d00ebcd147c36a2cb9415a5
+author:   Expansion font for bigfig program by Glenn Chappell 4/93 -- based on Mini
+licence:  Permission is hereby given to modify this font, as long as the modifier's name is placed on a comment line.
+
+## Doom  (figlet/doom.flf)
+style:    Stroke
+bytes:    7553
+sha256:   3d8fe9963526329ff9d5414a97b0f47e3a852d2f288a693f2938730f5a230e75
+author:   based on Big by Glenn Chappell 4/93 -- based on Standard
+licence:  Permission is hereby given to modify this font, as long as the modifier's name is placed on a comment line.
+
+## Varsity  (figlet/varsity.flf)
+style:    Stroke
+bytes:    8810  (transcoded Latin-1 → UTF-8)
+sha256:   5931543e380090283d2d9ea80a05c08d37ba7a1c0dd63bf9463bba23887a53ee
+author:   Author : myflix
+licence:  Permission is hereby given to modify this font, as long as the modifier's name is placed on a comment line.
+
+## Script  (figlet/script.flf)
+style:    Stroke
+bytes:    16864
+sha256:   d849d3c46d6af833fb722af017a2dbc99042602f67bd2d4b23eb305f4d4b8cc7
+author:   Script by Glenn Chappell 4/93 | Modified by Paul Burton <solution@earthlink.net> 12/96 to include new parameter
+licence:  Permission is hereby given to modify this font, as long as the modifier's name is placed on a comment line.
+
+## Shadow  (figlet/shadow.flf)
+style:    Shadow
+bytes:    14552
+sha256:   be138f51d3928d6ea515262fe549ac2179c61a7a0c7bd20841639b8bd7f22649
+author:   Shadow by Glenn Chappell 6/93 -- based on Standard & SmShadow | Modified by Paul Burton <solution@earthlink.net> 12/96 to include new parameter
+licence:  Permission is hereby given to modify this font, as long as the modifier's name is placed on a comment line.
+
+## Ghost  (figlet/ghost.flf)
+style:    Shadow
+bytes:    13144  (transcoded Latin-1 → UTF-8)
+sha256:   fd9840a6fc41180db7932ba359933fee2c62d2e648b824500228a3d392579ff4
+author:   Author : myflix
+licence:  Permission is hereby given to modify this font, as long as the modifier's name is placed on a comment line.
+
+## 3D Diagonal  (figlet/3d-diagonal.flf)
+style:    3-D
+bytes:    25476  (transcoded Latin-1 → UTF-8)
+sha256:   ba96c495efa742b4a536ac95104df3918c7f29673da98e0bddc816da4d334265
+author:   Author : nabis, LG Beard, Markus Gebhard and others
+licence:  Permission is hereby given to modify this font, as long as the modifier's name is placed on a comment line.
+
+## Fire Font-k  (figlet/fire-font-k.flf)
+style:    Decorative
+bytes:    9946
+sha256:   cadf9724b51ff32b9505fc853d5b435c56ef33fdbb4f3a927a09e91350d02396
+author:   Author : MJP | Based on Small.flf by Glenn Chappell 4/93 -- based on Standard
+licence:  Permission is hereby given to modify this font, as long as the modifier's name is placed on a comment line.
+
+## Pagga  (figlet/pagga.flf)
+style:    Blocks
+bytes:    9825
+sha256:   ac5693a0d48e73bc0ef816755fcb0ff04631fcc0a40ed35f22e21dfdafbbede2
+licence:  the terms of the Do What The Fuck You Want To Public License, Version 2, as published by Sam Hocevar. See http://sam.zoy.org/wtfpl/COPYING for more details.
+          as published by Sam Hocevar. See http://sam.zoy.org/wtfpl/COPYING for more details.
+
+## Future  (figlet/future.flf)
+style:    Blocks
+bytes:    6136
+sha256:   d3f82bef2625e99b750e81f230d5f4d2b122eb621250e94d2c5317da3e039682
+licence:  the terms of the Do What The Fuck You Want To Public License, Version 2, as published by Sam Hocevar. See http://sam.zoy.org/wtfpl/COPYING for more details.
+          as published by Sam Hocevar. See http://sam.zoy.org/wtfpl/COPYING for more details.
