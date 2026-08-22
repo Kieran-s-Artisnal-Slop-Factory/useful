@@ -163,7 +163,7 @@ nobody answers.
 | 7 ✅ | JWT | — | — | **DONE 2026-08-22.** Built on Phase 5's key plumbing |
 | 8 ✅ | ASCII art (image + text) | `figlet` | — | **DONE 2026-08-22.** Vendors 14 fonts; the build refuses unlicensed ones |
 | 9 ✅ | File tree | — | — | **DONE 2026-08-22.** Six listing formats in, four ways out |
-| 10 | Crontab | — | — | |
+| 10 ✅ | Crontab | — | — | **DONE 2026-08-22.** Parser, builder, next runs, systemd timer |
 | 11 | Placeholders (text + images) | — | — | |
 | 12 | Docker Compose builder | — | **v13** | `compose_projects` |
 | 13 | Docker Compose templates | — | — | Needs 12 |
@@ -786,7 +786,7 @@ the SVG and the PNG for free.
 
 ---
 
-## Phase 10 — Crontab
+## Phase 10 — Crontab — DONE (2026-08-22)
 
 **Goal:** [crontab.guru](https://crontab.guru/) with the parts that site leaves
 out — where the line goes, and what bites.
@@ -821,11 +821,34 @@ out — where the line goes, and what bites.
 
 **Data model:** none.
 
-**Tests:** unit — parse/describe/next-run tables covering every syntax form, the
-macros, the DOM/DOW OR rule, month-end (`0 0 31 * *` skipping February), leap
-years, and error offsets; the `OnCalendar=` translation. Playwright — type an
-expression, assert the description and the next runs; use the builder and assert
-the expression it writes; zero DB writes.
+**Tests:** unit — 40 cases in
+[cron.test.ts](../../../src/lib/cron/cron.test.ts): every syntax form and every
+macro, `5/10` read the way Vixie reads it, error offsets, the description for
+each shape, next runs across month ends (`0 0 31 * *` skipping February), leap
+years (`0 0 29 2 *`), the DOM/DOW OR rule proved against a real November, an
+expression that never runs, the `OnCalendar=` translation and its refusal, and
+the builder round-tripping every preset unchanged. Playwright — 15 zero-write
+cases in [crontab.spec.ts](../../../tests/local/crontab.spec.ts), including the
+caret under the exact bad character and the builder working in both directions.
+
+**Three things the plan did not anticipate, all now in the code and its tests:**
+
+1. **Sunday is 0 AND 7, and the fold has to happen after ranges expand.**
+   Normalising the 7 while reading a value makes `5-7` — Friday, Saturday,
+   Sunday — look like a range that runs backwards, and it gets refused.
+2. **"Restricted" means "does not begin with a star"**, which is the test Vixie
+   cron itself makes, not "matches fewer than every value". `0-6` in
+   day-of-week matches every day and is still restricted — and that is what
+   switches the day rule to OR. The wrong definition would hide the trap in the
+   one case people hit.
+3. **The builder needs one piece of state the text cannot carry.** Choosing
+   "Specific" before ticking anything writes `*` (an empty selection is not an
+   expression), which reads straight back as "Every" and snaps the control shut
+   before the first checkbox can be clicked. The chosen mode is remembered per
+   field until the expression is edited by hand.
+
+**Beyond the scope, because it fell out of the parse tree:** a pasted whole
+crontab line keeps its command, and the page says cron will run it with `sh -c`.
 
 **Docs:** `docs/dev/tools/crontab.md`, `docs/user/crontab.md` (leads with the
 DOM/DOW trap and the `PATH` surprise).

@@ -2,6 +2,43 @@
 
 ## Features
 
+- **Crontab** (`/tools/crontab/`): a cron expression read back in English, with
+  its next five runs, a builder that works in both directions, the same
+  schedule as a systemd timer, and — the part crontab.guru leaves out — where
+  the line actually goes and what will bite you. Nothing is written anywhere.
+  - **The day-of-month / day-of-week trap is printed in red.** `0 0 13 * 5` is
+    not "Friday the 13th": when both day fields are set to something other
+    than `*`, cron runs the job when **either** matches, so that line runs on
+    every 13th *and* every Friday. The parser detects the shape, the sentence
+    says so, the next-run list proves it, and the systemd translation refuses
+    rather than quietly ANDing it.
+  - **Two parser details that are wrong everywhere else.** Sunday is both 0
+    and 7, and the 7 is folded onto 0 only *after* ranges expand — otherwise
+    `5-7` (Friday, Saturday, Sunday) looks like a range running backwards and
+    gets refused. And "restricted", the thing the OR rule turns on, means
+    "does not begin with a star" — exactly the test Vixie cron makes — not
+    "matches fewer than every value", so `0-6` in day-of-week is restricted
+    even though it matches every day.
+  - **Six-field expressions are refused by name.** Quartz and Spring put
+    seconds in front; a five-field parser handed one reads every field one
+    place to the left and produces a schedule that looks plausible and is
+    wrong. The check is narrow enough that `0 0 12 * * who` is still five
+    fields and a command called `who`.
+  - **The next runs skip rather than tick**, which is how the page can say
+    that `0 0 30 2 *` never runs instead of spinning: a month that does not
+    match advances a whole month. They are computed in the browser's timezone,
+    which the page names, with the daylight-saving behaviour stated —
+    a daily job at a time that does not exist is skipped, and one at a time
+    that happens twice runs once.
+  - **The builder is derived from the text, not mirrored into its own state**,
+    so the two cannot drift; a field written in a shape the controls cannot
+    draw (`1-5/2,30`) is reported as such and left exactly as typed rather
+    than flattened into something they can.
+  - **Where the line goes, as a real section.** `crontab -e` takes no user
+    column and `/etc/cron.d` does — the mistake that eats an afternoon —
+    `run-parts` ignores anything with a file extension, and cron's `PATH` is
+    nearly empty while `%` means a newline.
+
 - **File tree** (`/tools/file-tree/`): the `├── └──` tree every README has,
   built by clicking or read back from a real directory listing. Nothing is
   written anywhere; a tree worth keeping leaves as a JSON file that re-imports

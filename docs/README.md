@@ -42,6 +42,7 @@ Per tool, under [`dev/tools/`](dev/tools/):
 [JWT](dev/tools/jwt.md) ·
 [ASCII art](dev/tools/ascii-art.md) ·
 [file tree](dev/tools/file-tree.md) ·
+[crontab](dev/tools/crontab.md) ·
 [logo generator](dev/tools/logo-generator.md) ·
 [napkin math](dev/tools/napkin-math.md) ·
 [SQL playground](dev/tools/sql-playground.md) ·
@@ -70,6 +71,7 @@ the app.
 | [jwt.md](user/jwt.md) | Decode, verify and sign JSON Web Tokens |
 | [ascii-art.md](user/ascii-art.md) | A picture as characters, or words as a FIGlet banner |
 | [file-tree.md](user/file-tree.md) | Draw a directory tree, or read one back from a listing |
+| [crontab.md](user/crontab.md) | Read and build cron expressions, and where the line goes |
 | [logo-generator.md](user/logo-generator.md) | Seeded avatars, identicons, and icon or emoji badges |
 | [napkin-math.md](user/napkin-math.md) | Formulas that document themselves, with code you can take away |
 | [images.md](user/images.md) | Converter, resizer, compressor, background remover |
