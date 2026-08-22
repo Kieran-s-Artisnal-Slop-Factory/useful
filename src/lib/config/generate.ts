@@ -9,22 +9,17 @@
  * guarantee that. Phone numbers sit in the fiction-reserved 555-01xx block.
  */
 import type { ConfigField, ConfigFieldType } from '../db/types';
+import { mulberry32 } from '../random';
 import { MAX_DEPTH } from './model';
 import { DOMAINS, FIRST_NAMES, LAST_NAMES, URI_PATHS, WORDS } from './words';
 
-/** The standard mulberry32 PRNG: 32-bit state, returns floats in [0, 1).
- * Small, fast, and unlike Math.random it takes a seed — determinism is the
- * whole point here, so a re-generate with the same seed is a no-op diff. */
-export function mulberry32(seed: number): () => number {
-  let state = seed >>> 0;
-  return () => {
-    state = (state + 0x6d2b79f5) >>> 0;
-    let t = state;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
+/**
+ * The seeded PRNG now lives in [random.ts](../random.ts) — it grew a second
+ * caller (the placeholder generators) and two copies would be two answers to
+ * "what does seed 42 produce". Re-exported here so this module's callers and
+ * its tests keep their import.
+ */
+export { mulberry32 };
 
 /**
  * Generate `count` documents (clamped to 1-1000) for a schema. Document i is

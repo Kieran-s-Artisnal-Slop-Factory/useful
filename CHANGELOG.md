@@ -2,6 +2,44 @@
 
 ## Features
 
+- **Placeholders** (`/tools/placeholders/`): filler text and filler images,
+  both seeded, both drawn on the device. Nothing is fetched — the only thing
+  on the page that leaves this machine is a card of links to photo sites, and
+  it says so.
+  - **Two text corpora, and the licence question is why there are two.**
+    Lorem ipsum from the standard public-domain word list, and **office speak
+    written for this repository** as a small grammar rather than a bag of
+    buzzwords — meeting-speak is recognisable by its shape, and a shuffled
+    word list just reads as noise. Nothing in the output is a phrase lifted
+    from an existing site. The traditional opening is only offered for the
+    corpus it belongs to.
+  - **Eight image generators, all SVG-first.** Plain colour, a fitted caption,
+    gradients, tinted fractal noise, a flow field, layered translucent
+    geometry, any Lucide icon, and nine hand-drawn scenes. SVG because a
+    placeholder is flat colour and geometry: it stays a couple of kilobytes at
+    any size, where a 4000-pixel PNG of a grey rectangle is megabytes of
+    nothing — and the PNG and JPG downloads then rasterize that same document
+    through the image tools' own converter, so they cannot disagree with the
+    preview.
+  - **Nine scenes, drawn in this repository** — three nature, three sport,
+    three city. Each is authored in a 160×90 box and placed with
+    `preserveAspectRatio="xMidYMid slice"`, which is what lets one drawing
+    fill any frame: the proportions hold and the frame crops, like
+    `object-fit: cover`. Hand-drawn because provenance for art we drew is one
+    sentence and provenance for art scraped off the web is a research project.
+  - **The seed is the whole contract.** The same seed and settings always draw
+    the same picture, so a placeholder regenerates identically on another
+    machine — and a batch is simply the seed varied per item, so image 3 of a
+    batch is exactly what typing that seed produces on its own. Batches zip
+    with names padded to the batch size, so a file listing sorts in order.
+  - **SVG has no conic gradient**, so the gradient tool's third option is
+    missing here and says why, rather than being quietly drawn as something
+    else. And the 2 MB icon set arrives only when the icon generator is
+    picked — `payload.spec.ts` watches the network to keep it that way.
+  - **One PRNG for the whole app.** `mulberry32` moved from the config
+    playground to `src/lib/random.ts` on its second caller: two copies would
+    be two answers to "what does seed 42 produce".
+
 - **Crontab** (`/tools/crontab/`): a cron expression read back in English, with
   its next five runs, a builder that works in both directions, the same
   schedule as a systemd timer, and — the part crontab.guru leaves out — where

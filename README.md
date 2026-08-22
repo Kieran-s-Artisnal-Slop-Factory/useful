@@ -29,7 +29,9 @@ An offline-only, local-first app there is no server, no account, and no network 
   fourteen vendored FIGlet fonts), file trees (built by hand or read back
   from a pasted `ls`, `dir` or `tree` listing) and crontab (an expression
   read back in English with its next runs, a builder, a systemd timer, and
-  where the line actually goes).
+  where the line actually goes) and placeholders (filler text from two
+  corpora, and eight seeded image generators including nine hand-drawn
+  scenes — all drawn on the device, nothing fetched).
 - **Notes** — a notebook of linked markdown notes: WYSIWYG or raw source
   over one string, `[[wiki links]]` with computed backlinks and aliases that
   survive renames, footnotes, mermaid diagrams, KaTeX maths, pasted images,

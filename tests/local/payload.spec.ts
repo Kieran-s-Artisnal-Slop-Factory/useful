@@ -202,6 +202,27 @@ test.describe('payload discipline', () => {
     expect(fonts.length, 'the whole catalogue was fetched to draw a list').toBeLessThan(FONT_COUNT);
   });
 
+  test('placeholders pulls the icon set only when the icon generator is picked', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/');
+    const idle = await watch(page, async () => {
+      await page.goto('/tools/placeholders/');
+      await expect(page.getByTestId('ph-text')).toContainText('Lorem ipsum');
+      await page.getByTestId('ph-mode').selectOption('image');
+      await page.getByTestId('ph-gen-flow').click();
+      await expect(page.getByTestId('ph-preview')).toBeVisible();
+    });
+    // Seven of the eight generators draw with arithmetic; 2 MB of icon set is
+    // not something the other seven should pay for.
+    expect(idle.filter((url) => /lucide/i.test(url)), 'Lucide loaded before the icon generator').toEqual([]);
+
+    const used = await watch(page, async () => {
+      await page.getByTestId('ph-gen-icon').click();
+      await expect(page.getByTestId('ph-icons').locator('button')).not.toHaveCount(0, { timeout: 60_000 });
+    });
+    expect(used.some((url) => /lucide/i.test(url)), 'Lucide should arrive on demand').toBe(true);
+  });
+
   test('the SQL playground loads one engine, not both', async ({ app }) => {
     const { page } = app;
     await app.goto('/');

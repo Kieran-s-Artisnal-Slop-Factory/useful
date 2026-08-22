@@ -8,8 +8,8 @@ _Describes the code as of v0.3.0 (unreleased; schema v12) — verify against sou
 
 | Tier | What | Where it lives | Filled by | Purged by |
 |---|---|---|---|---|
-| Precache | `SHELL`: every page route + `favicon.svg`, `favicon-maskable.svg`, `manifest.webmanifest` + the fourteen `figlet/*.flf` fonts (178.5 KB) | Cache `CACHE_NAME` (`useful-cache-v28`) | `precacheShell()` at `install` | `activate` of a worker with a different `CACHE_NAME` |
-| Runtime cache | Every same-origin GET the page makes: `_astro/` JS/CSS/wasm/data chunks, navigated HTML | Same `useful-cache-v28` | The `fetch` handler (stale-while-revalidate) and the background crawl `warmAssetCache()` | Same version bump |
+| Precache | `SHELL`: every page route + `favicon.svg`, `favicon-maskable.svg`, `manifest.webmanifest` + the fourteen `figlet/*.flf` fonts (178.5 KB) | Cache `CACHE_NAME` (`useful-cache-v29`) | `precacheShell()` at `install` | `activate` of a worker with a different `CACHE_NAME` |
+| Runtime cache | Every same-origin GET the page makes: `_astro/` JS/CSS/wasm/data chunks, navigated HTML | Same `useful-cache-v29` | The `fetch` handler (stale-while-revalidate) and the background crawl `warmAssetCache()` | Same version bump |
 | Lazy bundles | Background remover model + ONNX runtime under `models/` and `ort/` | Cache `MODEL_CACHE` (`useful-models-v1`) — deliberately outside `CACHE_PREFIX` | `loadAssets()` in [runtime.ts](../../src/lib/bg/runtime.ts), or the SW's cache-first branch | Never by the SW; only `clearAssets()` (Background remover → "Remove downloaded model") or the user clearing site data |
 | Lazy bundles | The 20 KaTeX faces + their stylesheet under `math/` | Cache `FONT_CACHE` (`useful-fonts-v1`) — also outside `CACHE_PREFIX` | The `math-fonts` bundle in [offline.ts](../../src/lib/offline.ts), or the SW's cache-first branch | Never by the SW; only the user clearing site data |
 

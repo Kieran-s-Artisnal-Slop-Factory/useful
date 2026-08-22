@@ -164,7 +164,7 @@ nobody answers.
 | 8 ✅ | ASCII art (image + text) | `figlet` | — | **DONE 2026-08-22.** Vendors 14 fonts; the build refuses unlicensed ones |
 | 9 ✅ | File tree | — | — | **DONE 2026-08-22.** Six listing formats in, four ways out |
 | 10 ✅ | Crontab | — | — | **DONE 2026-08-22.** Parser, builder, next runs, systemd timer |
-| 11 | Placeholders (text + images) | — | — | |
+| 11 ✅ | Placeholders (text + images) | — | — | **DONE 2026-08-22.** Two corpora, eight image generators, nine drawn scenes |
 | 12 | Docker Compose builder | — | **v13** | `compose_projects` |
 | 13 | Docker Compose templates | — | — | Needs 12 |
 | 14 | Hardening + release | — | — | Last |
@@ -857,7 +857,7 @@ DOM/DOW trap and the `PATH` surprise).
 
 ---
 
-## Phase 11 — Placeholders
+## Phase 11 — Placeholders — DONE (2026-08-22)
 
 **Goal:** one page, two modes: filler text and filler images.
 
@@ -900,12 +900,33 @@ DOM/DOW trap and the `PATH` surprise).
 
 **Data model:** none. (`preferences` may remember the last size preset.)
 
-**Tests:** unit — the text generator is deterministic per seed and honours the
-counts; each image generator produces valid SVG of the requested dimensions
-(parsed, not string-matched); the aspect-ratio maths; zip naming for a batch.
-Playwright — generate text and copy it; generate each image type and assert the
-preview's intrinsic size; export a batch of three and assert the archive's
-entries; zero DB writes.
+**Tests:** unit — 30 cases in
+[placeholder.test.ts](../../../src/lib/placeholder/placeholder.test.ts): the
+PRNG deterministic per seed, text honouring its counts and clamps and the
+corpus rule, every image generator **parsed** for size, structure and escaping,
+the noise filter carrying the seed, the nine scenes each parsing and cropping
+rather than distorting, batch naming and clamping, and the aspect maths.
+Playwright — 11 zero-write cases in
+[placeholders.spec.ts](../../../tests/local/placeholders.spec.ts), asserting
+the preview's INTRINSIC size rather than its CSS box, plus one more in
+[payload.spec.ts](../../../tests/local/payload.spec.ts) holding the icon set
+off the other seven generators.
+
+**Three things worth recording:**
+
+1. **Parsing needed a parser.** The unit suite runs in node, which has no
+   `DOMParser`, and a DOM library would be a dependency added for one file — so
+   `placeholder.test.ts` carries a ~30-line XML parser. It catches exactly what
+   `toContain` cannot: an unbalanced tag, a stray `<`, a mis-typed attribute.
+2. **The lorem opening belongs to lorem.** Bolting "Lorem ipsum dolor sit amet"
+   onto office speak reads as a bug; the generator ignores the flag for the
+   other corpus and the page hides the checkbox there.
+3. **SVG has no conic gradient.** The generator offers the two kinds SVG can
+   draw and says why the third is missing, rather than drawing something else.
+
+**Q11 and Q12 both took their defaults:** no in-browser model for the text (the
+seeded corpus is better placeholder text anyway), and the scenes are authored
+in-repo — nine of them, three per theme, as hand-written SVG.
 
 **Docs:** `docs/dev/tools/placeholders.md`, `docs/user/placeholders.md`.
 
