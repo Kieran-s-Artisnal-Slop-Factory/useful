@@ -138,7 +138,10 @@ test.describe('encryption', () => {
     await page.getByTestId('enc-bcrypt-hash').click();
 
     const hash = page.getByTestId('enc-bcrypt-hash-value');
-    await expect(hash).toBeVisible({ timeout: 30_000 });
+    // 90 s, not 30: the module's own patience is 60 s, and under a full
+    // parallel run the worker's chunk queues behind the service worker's
+    // background crawl on a single-threaded preview server.
+    await expect(hash).toBeVisible({ timeout: 90_000 });
     const value = (await hash.textContent()) ?? '';
     expect(value.startsWith('$2')).toBe(true);
     expect(value).toContain('$04$');
@@ -148,7 +151,7 @@ test.describe('encryption', () => {
     await page.getByTestId('enc-verify-hash').fill(value);
     await page.getByTestId('enc-verify').click();
     await expect(page.getByTestId('enc-verify-result')).toContainText('matches the hash', {
-      timeout: 30_000,
+      timeout: 90_000,
     });
 
     await page.getByTestId('enc-verify-password').fill('wrong horse');

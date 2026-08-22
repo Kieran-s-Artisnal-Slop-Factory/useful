@@ -221,6 +221,13 @@
 
 ## Other
 
+- **A bcrypt worker that stops answering now says so.** The full parallel test
+  run turned up the one way that button could lie: if the worker's chunk never
+  arrives — on a saturated connection, or a network that drops it — the page sat
+  on "Working…" forever, which is indistinguishable from the frozen tab the
+  worker exists to prevent. It now gives up after a minute, drops the worker,
+  and reports that nothing was hashed.
+
 - **`package.json` is back in step with `VERSION`** at `0.3.0`. The same drift
   appeared at the 0.2.0 bump and was closed then too: bumping `VERSION` is the
   memorable half of the pair, so both files are named in the release steps.

@@ -47,11 +47,39 @@ function ensureWorker(): Worker {
   return worker;
 }
 
+/**
+ * Longest a cost-12 hash can reasonably take, with room to spare. A worker
+ * that has not answered by then is not slow, it is gone — and a button stuck
+ * on "Working…" forever is indistinguishable from a hung page, which is the
+ * failure this whole worker exists to avoid.
+ */
+const TIMEOUT_MS = 60_000;
+
 function send(request: Omit<BcryptRequest, 'id'>): Promise<BcryptResponse> {
   const id = nextId++;
   const active = ensureWorker();
   return new Promise<BcryptResponse>((resolve, reject) => {
-    pending.set(id, { resolve, reject });
+    const timer = setTimeout(() => {
+      pending.delete(id);
+      // Drop the worker too: whatever state it is in, it is not answering.
+      worker?.terminate();
+      worker = null;
+      reject(
+        new Error(
+          'The bcrypt worker did not answer within a minute. Reload the page and try again — nothing was hashed.'
+        )
+      );
+    }, TIMEOUT_MS);
+    pending.set(id, {
+      resolve: (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      reject: (error) => {
+        clearTimeout(timer);
+        reject(error);
+      },
+    });
     active.postMessage({ ...request, id } satisfies BcryptRequest);
   });
 }

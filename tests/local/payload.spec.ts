@@ -94,7 +94,7 @@ test.describe('payload discipline', () => {
       await page.getByTestId('enc-bcrypt-password').fill('x');
       await page.getByTestId('enc-bcrypt-cost').fill('4');
       await page.getByTestId('enc-bcrypt-hash').click();
-      await expect(page.getByTestId('enc-bcrypt-hash-value')).toBeVisible({ timeout: 30_000 });
+      await expect(page.getByTestId('enc-bcrypt-hash-value')).toBeVisible({ timeout: 90_000 });
     });
     expect(used.some((url) => /bcrypt/i.test(url)), 'bcrypt should arrive on demand').toBe(true);
   });
