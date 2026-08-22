@@ -1,0 +1,8 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import ComposeApp from '../../components/apps/ComposeApp.svelte';
+---
+
+<Layout title="Docker Compose">
+  <ComposeApp client:only="svelte" />
+</Layout>

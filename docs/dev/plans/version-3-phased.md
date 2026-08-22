@@ -165,8 +165,8 @@ nobody answers.
 | 9 ✅ | File tree | — | — | **DONE 2026-08-22.** Six listing formats in, four ways out |
 | 10 ✅ | Crontab | — | — | **DONE 2026-08-22.** Parser, builder, next runs, systemd timer |
 | 11 ✅ | Placeholders (text + images) | — | — | **DONE 2026-08-22.** Two corpora, eight image generators, nine drawn scenes |
-| 12 | Docker Compose builder | — | **v13** | `compose_projects` |
-| 13 | Docker Compose templates | — | — | Needs 12 |
+| 12 ✅ | Docker Compose builder | — | **v13** | **DONE 2026-08-22.** `compose_projects`; model in, YAML out |
+| 13 ✅ | Docker Compose templates | — | — | **DONE 2026-08-22.** 9 stacks, 10 snippets, best-effort import |
 | 14 | Hardening + release | — | — | Last |
 
 Twelve new tool pages, one migration, two dependencies. The migration number
@@ -209,7 +209,7 @@ bookkeeping that is wrong today. Nothing user-visible except the version fix.
    rather than quietly appearing in the sidebar.
 5. **Docs drift.** Forty-two doc pages said "as of v0.2.1 (unreleased)";
    0.2.1 shipped on 2026-08-21. All of them now read `v0.3.0 (unreleased;
-   schema v12)`, and [build-and-tooling.md](../build-and-tooling.md)'s two
+   schema v13)`, and [build-and-tooling.md](../build-and-tooling.md)'s two
    version paragraphs name the right headings again.
 
 **Data model:** none.
@@ -934,7 +934,7 @@ in-repo — nine of them, three per theme, as hand-written SVG.
 
 ---
 
-## Phase 12 — Docker Compose builder
+## Phase 12 — Docker Compose builder — DONE (2026-08-22)
 
 **Goal:** build a valid `compose.yaml` through a UI that knows what each field
 does — the largest piece of this release.
@@ -986,24 +986,41 @@ does — the largest piece of this release.
 JSON-native structures only. `types.ts`, `db.ts`, `TABLES` and the README Tables
 section all move together.
 
-**Tests:** unit — emit golden files for a handful of projects (single service,
-service with healthcheck and resources, multi-network, secrets + configs) parsed
-back with `yaml` and compared structurally; every validation rule (cycle,
-duplicate port, undeclared volume, host-network-plus-ports); key ordering
-stability. Playwright — build a two-service project through the UI, assert the
-emitted YAML; save, reload, and get the same project back; the isolated-delta
-assertion naming exactly the project row; backup round-trip (generic suite picks
-the store up once mirrored).
+**Tests:** unit — 31 cases in
+[compose.test.ts](../../../src/lib/compose/compose.test.ts): the model
+re-shaping anything at all (the generic data suite writes an ARRAY into every
+json column), emit writing only what was set, both port and mount syntaxes, key
+order — **including that re-emitting an unchanged project is byte-identical**,
+which is the property the ordering exists for — and every validation rule.
+Playwright — 18 cases in
+[docker-compose.spec.ts](../../../tests/local/docker-compose.spec.ts): building
+and editing write nothing, saving writes exactly one row with the
+isolated-delta assertion naming it, a reload reopens the same project without
+writing, delete is a tombstone, and the generic data suite picked the store up
+through the `TABLES` mirror for the backup round trip.
+
+**Two things worth recording:**
+
+1. **A leftover Playwright server on 4330 makes the suite skip the build**
+   (`reuseExistingServer`), so a fix appears not to take and the same test
+   fails identically twice. Two five-minute runs were spent on that before
+   `stat` on `dist/` against the source showed dist was ten minutes older.
+2. **`not.toContainText` is the wrong assertion for an element that
+   disappears** — the library block is hidden entirely when the last project
+   goes, and a locator that resolves to nothing errors rather than passing.
+   `toHaveCount(0)` on the specific row is the honest form.
 
 **Docs:** `docs/dev/tools/docker-compose.md` (model → YAML pipeline, with a
 mermaid diagram, and the validation rules), `docs/user/docker-compose.md` (leads
-with host networking, macvlan prerequisites and the secrets-in-backups note).
+with the secrets-in-backups note, then host networking, bind-vs-named volumes,
+`depends_on` waiting for started rather than ready, and macvlan prerequisites).
 
-**CHANGELOG:** Features; note DB v13.
+**CHANGELOG:** Features; DB v13 noted, and the 61 doc pages stamped
+`schema v12` were moved to v13 in the same pass.
 
 ---
 
-## Phase 13 — Docker Compose templates
+## Phase 13 — Docker Compose templates — DONE (2026-08-22)
 
 **Goal:** somewhere to start, and something to steal from.
 
@@ -1029,14 +1046,30 @@ with host networking, macvlan prerequisites and the secrets-in-backups note).
 
 **Data model:** none beyond Phase 12's store.
 
-**Tests:** unit — every template and snippet emits a document that parses and
-passes Phase 12's validators (a table-driven test over the whole catalogue, so a
-broken template cannot ship); injection's unique-naming and dependency-adding;
-the import reporter listing unrepresentable keys. Playwright — load a template,
-assert the services appear; inject a snippet into it; download the archive and
-assert its entries; import a fixture compose file and assert the report.
+**Tests:** unit — 81 cases in
+[catalogue.test.ts](../../../src/lib/compose/catalogue.test.ts), table-driven
+over **every** stack and snippet: each must validate with zero errors, emit a
+document that parses, pin a tag on every image it uses, and survive a JSON
+round trip through the store. Plus injection (renaming, volume declaration,
+port moving), the archive read back with `zipEntries`, and the importer's
+report. Playwright — 6 of the page's 18 cases cover this phase, including a
+real `.zip` download whose `compose.yaml` parses.
 
-**Docs:** the Compose pages gain a template catalogue with what each pins.
+**Two things the plan did not anticipate:**
+
+1. **Injection had to move host ports as well as rename services.** Injecting
+   the Go snippet into the starter project produced two services publishing
+   8080 — a stack that fails at `up` time with "address already in use", which
+   is a confusing thing to get from clicking "add Go". Only the host side
+   moves; a port RANGE is left alone and the validator flags it instead,
+   because silently rewriting what someone typed is worse than the warning.
+2. **The round trip needed argv re-quoting.** `["sh", "-c", "a && b"]` joined
+   with spaces and re-split is five arguments, so a template that imported
+   cleanly re-emitted as a different command. Caught by asserting that every
+   template survives emit → import → emit unchanged, not by reading the code.
+
+**Docs:** the Compose pages carry the template catalogue and say that every tag
+is pinned and every tag moves.
 
 **CHANGELOG:** Features.
 

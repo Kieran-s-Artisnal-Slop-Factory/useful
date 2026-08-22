@@ -401,6 +401,32 @@ export interface StoreDef {
   singleton?: boolean;
 }
 
+/**
+ * A named Docker Compose project.
+ *
+ * `model` holds the whole project — services, networks, volumes, secrets and
+ * configs — as plain JSON-native structures. **The model is the source of
+ * truth and the YAML is a projection of it**, never the other way round: a
+ * stored YAML string would drift from the editor the first time either side
+ * changed, and re-parsing text on every keystroke is how a builder loses your
+ * comments and your key order.
+ *
+ * Nothing read from a stored row is trusted: the generic data suite writes an
+ * ARRAY into every json column and a backup can be hand-edited, so
+ * `normalizeProject` in src/lib/compose/model.ts re-shapes `model` on every
+ * read.
+ *
+ * **A compose file can contain secrets.** Environment variables, database
+ * passwords and inline config content all live in this row, and this store
+ * rides the plain-JSON backup like every other. The page says so where
+ * someone can act on it rather than burying it here.
+ */
+export interface ComposeProject extends SyncFields {
+  name: string;
+  /** The project model. Shape enforced on read, never on trust. */
+  model: unknown;
+}
+
 export const STORES: Record<string, StoreDef> = {
   // singleton: one logical row under repo.SINGLETON_ID, so every device
   // converges on the same row if sync ever lands. fieldMerge: two devices
@@ -424,6 +450,7 @@ export const STORES: Record<string, StoreDef> = {
   napkin_calculations: { indexes: [{ name: 'template_id' }] },
   sql_playgrounds: { indexes: [] },
   config_schemas: { indexes: [] },
+  compose_projects: { indexes: [] },
   // parent_id: the tree is read by parent; tags: a multiEntry index so a tag
   // lookup does not scan every note. fieldMerge: a title edited on one device
   // and a body on another must both survive a future merge.

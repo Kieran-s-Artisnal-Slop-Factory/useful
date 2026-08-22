@@ -169,6 +169,15 @@ const MIGRATIONS: Migration[] = [
       store.createIndex('note_id', 'note_id');
     }
   },
+
+  // v13 — 0.3.0 Phase 12 (Docker Compose): named projects, the whole model in
+  // one JSON column. No indexes: the library is listed whole and searched in
+  // memory, the same as the other document stores.
+  (db) => {
+    if (!db.objectStoreNames.contains('compose_projects')) {
+      db.createObjectStore('compose_projects', { keyPath: 'id' });
+    }
+  },
 ];
 
 export const DB_VERSION = MIGRATIONS.length;

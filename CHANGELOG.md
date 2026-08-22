@@ -2,6 +2,53 @@
 
 ## Features
 
+- **Docker Compose** (`/tools/docker-compose/`, **schema v13**): build a
+  `compose.yaml` through controls that know what each field does, start from
+  one of nine stack templates, add one of ten service snippets, or read an
+  existing file back in. The largest piece of this release.
+  - **The model is the source of truth and the YAML is a projection of it.**
+    Nothing stores text: a builder that keeps YAML has to re-parse on every
+    keystroke, and the first time either side changes independently the two
+    disagree. There is no code path that reads the output back.
+  - **Keys come out in Compose-spec order, not insertion order**, so
+    re-emitting an unchanged project is byte-identical and a file kept in
+    version control does not produce a diff every time the editor is
+    rearranged. Only what was set is written — an empty field is absent, not
+    `""`, because Compose reads an empty `command` as "run nothing".
+  - **The warnings sit beside the field that causes them**, and each is
+    something Compose itself will not tell you: `network_mode: host` makes
+    published ports do nothing (the ports editor disables itself and says
+    why); a bare word as a bind source is a NAMED VOLUME, not a folder, so
+    your edits appear to vanish; `service_healthy` on a service with no
+    healthcheck waits forever; two services with one name silently replace
+    each other; ipvlan and macvlan need a real parent interface and do not
+    work inside Docker Desktop's VM. Duplicate host ports are caught with
+    ranges **expanded** — `8000-8010` and `8005` collide, and no string
+    comparison notices.
+  - **Nine stacks and ten snippets, every one of them table-tested.** A
+    template must build a project that validates, emit a document that
+    parses, pin a tag on every image it uses, and survive a store round trip
+    — a template is content, content is where typos live, and a broken one is
+    a compose file someone pastes into a terminal and watches fail. Each
+    stack also downloads as a runnable `.zip` with a README that states its
+    pins and says that tags move.
+  - **Injecting a snippet is not a splice.** It renames on a name collision,
+    declares any volume it mounts, and moves the host port when something
+    already publishes it — only the host side, since the container port is
+    the image's contract. Each of the three is a stack that would not start
+    otherwise, and the receipt says what happened.
+  - **Import lists what it cannot represent rather than dropping it.**
+    `build:`, `labels:`, Swarm settings and the rest come back as a report
+    with their paths, before anything is replaced. One bug the round-trip
+    test found and reading would not have: an argv list has to be re-quoted
+    on the way in, or `["sh", "-c", "a && b"]` returns as five arguments and
+    the container runs something else.
+  - **New store `compose_projects` (migration v13)**, one JSON column holding
+    the whole model. **A compose file can contain secrets** — environment
+    variables, database passwords, inline config content — and this store
+    rides the plain-JSON backup like every other, which the page says where
+    someone can act on it rather than burying in a doc.
+
 - **ASCII art now ships thirty-seven FIGlet fonts**, up from fourteen — the
   Big Money set, ANSI Regular/Compact/Shadow, Bloody, Blocks, Broadway,
   Caligraphy, Classy, Coder Mini, Cyberlarge, Cybermedium, Delta Corps Priest

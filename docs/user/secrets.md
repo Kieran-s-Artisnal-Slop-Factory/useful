@@ -4,7 +4,7 @@ Passwords, API keys, signing secrets, identifiers and Wi-Fi passphrases, generat
 
 The five categories are **fold-out sections**. **Passwords** is open when the page loads and the rest are folded shut, so the page opens as a short contents list rather than twenty-seven cards; click a category's name (or press Enter on it) to open it, and open as many as you like — opening one does not close another. Folded categories are generating all the same, so one you open is showing a value as fresh as the rest, and **Regenerate all** reaches every card whether or not you can see it.
 
-_Describes the code as of v0.3.0 (unreleased; schema v12) — verify against source when in doubt._
+_Describes the code as of v0.3.0 (unreleased; schema v13) — verify against source when in doubt._
 
 ## What is on offer
 

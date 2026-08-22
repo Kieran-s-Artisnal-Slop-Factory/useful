@@ -4,7 +4,7 @@ The 0.3.0 text tools: **Diff** (`/tools/diff/`), **Similarity** (`/tools/similar
 
 They share one thing that is worth stating before anything else: **every count and every split comes from [tokenize.ts](../../../src/lib/text/tokenize.ts)**. A tool that counted words its own way would eventually disagree with the tool next to it about what a word is, and the disagreement would be invisible until someone compared two numbers that should have matched.
 
-_Describes the code as of v0.3.0 (unreleased; schema v12) — verify against source when in doubt._
+_Describes the code as of v0.3.0 (unreleased; schema v13) — verify against source when in doubt._
 
 ## File map
 

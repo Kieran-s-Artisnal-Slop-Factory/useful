@@ -2,7 +2,7 @@
 
 Linked markdown notes at `/tools/notebook/` (category **Notes**). One note is one markdown string; the page is a tree of them in a sidebar, an editor with three views over the open note (**Edit** — Milkdown Crepe, WYSIWYG; **Source** — CodeMirror over the same string; **Preview** — the app's own renderer), a footnote workbench behind **Alt+0**, a mermaid workbench behind **◇ Diagram**, `$…$` maths through KaTeX, `[[Title]]` wiki links that resolve by title and create the note when it does not exist, pasted images in a child store, and three exports: Markdown, a self-contained HTML file, and Print / Save as PDF. The editor, the footnote system, the diagram dialog, the `AssetStore` contract and the mermaid helpers are ported from retoken; the renderer, the wiki links, the exports and the print stylesheet are this app's own.
 
-_Describes the code as of v0.3.0 (unreleased; schema v12) — verify against source when in doubt._
+_Describes the code as of v0.3.0 (unreleased; schema v13) — verify against source when in doubt._
 
 ## File map
 

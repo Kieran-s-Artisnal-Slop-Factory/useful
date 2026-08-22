@@ -2,7 +2,7 @@
 
 Events and TODOs in one island at `/tools/scheduler/`, shown as a list, a three-column kanban board, or a month calendar. Everything lives in three IndexedDB stores (`events`, `todos`, `todo_comments`); every write goes through `repo.ts`; ordering is a fractional `rank` string shared by the list and the board; recurrence is a rule stored on the todo whose successor is created exactly once inside the complete action; drag-and-drop is pointer-event based so it works with mouse, touch and pen; due-time notifications ride the always-mounted timer engine.
 
-_Describes the code as of v0.3.0 (unreleased; schema v12) — verify against source when in doubt._
+_Describes the code as of v0.3.0 (unreleased; schema v13) — verify against source when in doubt._
 
 ## File map
 

@@ -2,7 +2,7 @@
 
 `preferences` is the app's one settings-style table: a single IndexedDB row holding per-tool defaults and last-used values. It is a `singleton` store (fixed id) and a `fieldMerge` store (per-column timestamps), every field is optional, and the row grows as tools are used. Twelve components write it; none of them writes on render. The store, its flags and the backup rules that apply to it are described in [data-layer.md](data-layer.md) — this page covers the row itself.
 
-_Describes the code as of v0.3.0 (unreleased; schema v12) — verify against source when in doubt._
+_Describes the code as of v0.3.0 (unreleased; schema v13) — verify against source when in doubt._
 
 ## File map
 

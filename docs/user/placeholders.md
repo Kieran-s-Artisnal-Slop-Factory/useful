@@ -2,7 +2,7 @@
 
 **Placeholders** (under Generators, or Ctrl/Cmd+K) makes filler text and filler images. Everything is drawn on your device — no image is ever downloaded — and nothing is saved.
 
-_Describes the code as of v0.3.0 (unreleased; schema v12) — verify against source when in doubt._
+_Describes the code as of v0.3.0 (unreleased; schema v13) — verify against source when in doubt._
 
 ## Filler text
 

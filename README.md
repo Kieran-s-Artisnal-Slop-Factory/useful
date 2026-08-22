@@ -31,7 +31,11 @@ An offline-only, local-first app there is no server, no account, and no network 
   read back in English with its next runs, a builder, a systemd timer, and
   where the line actually goes) and placeholders (filler text from two
   corpora, and eight seeded image generators including nine hand-drawn
-  scenes — all drawn on the device, nothing fetched).
+  scenes — all drawn on the device, nothing fetched) and a Docker Compose
+  builder (services, networks, volumes, secrets and configs through controls
+  that explain each field, nine stack templates and ten service snippets, a
+  best-effort importer that lists what it cannot represent, and the warnings
+  that stop a file which will not do what it looks like it does).
 - **Notes** — a notebook of linked markdown notes: WYSIWYG or raw source
   over one string, `[[wiki links]]` with computed backlinks and aliases that
   survive renames, footnotes, mermaid diagrams, KaTeX maths, pasted images,
@@ -84,6 +88,13 @@ Everything runs locally: no account, no server, no telemetry.
 - `config_schemas` — a config-playground schema: its name, format (`json` /
   `yaml`), the Field/Type table as a JSON tree, and the parse-mode document
   text it was extracted from. Text only, so it rides backups byte-identically
+- `compose_projects` — a named Docker Compose project: the whole model
+  (services, networks, volumes, secrets, configs) as one JSON column. The
+  model is the source of truth and the YAML is a projection of it, so nothing
+  stored is text that could drift from the editor. **A compose file can carry
+  secrets** — environment variables, database passwords, inline config content
+  — and this store rides the plain-JSON backup like every other, which the
+  page says out loud
 - `notes` — field-merged; a notebook note: title, markdown body, aliases (old
   titles kept so `[[links]]` keep resolving), tags, and a `parent_id` pointing
   at another note — folders are notes, so the sidebar is one tree. Backlinks

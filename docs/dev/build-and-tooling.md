@@ -2,7 +2,7 @@
 
 Eight npm scripts, eight `.mjs` scripts under `tools/`, and one CI workflow. `astro build` emits a static `dist/` with no runtime; everything third-party is either bundled by Vite or vendored into `public/` and committed, so a fresh clone builds a working app with no network access. This page covers what each command really does, what each generator script produces and when to re-run it, the dependency and payload rules, how the site deploys under a sub-path, and the release procedure.
 
-_Describes the code as of v0.3.0 (unreleased; schema v12) — verify against source when in doubt._
+_Describes the code as of v0.3.0 (unreleased; schema v13) — verify against source when in doubt._
 
 ## File map
 
@@ -244,7 +244,7 @@ So switching hosts is a one-line change, and there are two places to make it: un
 
 ## Release checklist
 
-[VERSION](../../VERSION) is the single source of truth for the app version: the entire file content is the semver string, no trailing newline, so `cat VERSION` works in scripts. Nothing in `src/` reads it and no UI displays it — backups carry `DB_VERSION` (the IndexedDB schema version, currently 12), not the app semver, so a version bump alone never affects stored data.
+[VERSION](../../VERSION) is the single source of truth for the app version: the entire file content is the semver string, no trailing newline, so `cat VERSION` works in scripts. Nothing in `src/` reads it and no UI displays it — backups carry `DB_VERSION` (the IndexedDB schema version, currently 13), not the app semver, so a version bump alone never affects stored data.
 
 To cut a release:
 

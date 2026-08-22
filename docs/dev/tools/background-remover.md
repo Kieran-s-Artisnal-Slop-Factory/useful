@@ -2,7 +2,7 @@
 
 Cuts the subject out of a photo with a salient-object segmentation model (U²-Net small) run by ONNX Runtime Web, entirely in the browser tab. The model and runtime are self-hosted, downloaded once on an explicit click into their own Cache Storage bucket, and reused by the image editor's per-layer "Remove background". The tool performs zero database writes.
 
-_Describes the code as of v0.3.0 (unreleased; schema v12) — verify against source when in doubt._
+_Describes the code as of v0.3.0 (unreleased; schema v13) — verify against source when in doubt._
 
 ## File map
 

@@ -186,6 +186,15 @@ export const TABLES: TableMeta[] = [
     ],
   },
   {
+    name: 'compose_projects',
+    fieldMerge: false,
+    singleton: false,
+    columns: [
+      { name: 'name', type: 'text', nullable: false, references: null },
+      { name: 'model', type: 'json', nullable: false, references: null },
+    ],
+  },
+  {
     name: 'notes',
     fieldMerge: true,
     singleton: false,

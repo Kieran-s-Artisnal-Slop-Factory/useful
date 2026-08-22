@@ -2,7 +2,7 @@
 
 `/tools/placeholders/` — filler text and filler images, both seeded, both drawn here. A stateless Svelte island over four pure modules; nothing is written to IndexedDB and nothing is fetched.
 
-_Describes the code as of v0.3.0 (unreleased; schema v12) — verify against source when in doubt._
+_Describes the code as of v0.3.0 (unreleased; schema v13) — verify against source when in doubt._
 
 ## File map
 
