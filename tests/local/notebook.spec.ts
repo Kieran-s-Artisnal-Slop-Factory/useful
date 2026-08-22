@@ -39,7 +39,22 @@ async function appendInSource(page: P, text: string) {
 
 async function newNote(page: P) {
   await page.getByTestId('notebook-new').click();
-  await expect(page.getByTestId('notebook-title')).toBeVisible({ timeout: 30_000 });
+  // Wait for the NEW note to be the open one, not merely for a title field to
+  // exist: the field is one element that every note is bound into, so a fill
+  // that lands while the previous note is still open silently RENAMES it, and
+  // the failure surfaces later as a missing row.
+  await expect(page.getByTestId('notebook-title')).toHaveValue('Untitled', { timeout: 30_000 });
+}
+
+/** Tick a note's checkbox in the library — what bulk operations read. */
+async function check(page: P, title: string) {
+  await page.locator(`[data-testid="notebook-bulk-check"][data-title="${title}"]`).check();
+}
+
+/** Open a note from the library by its title. */
+async function openNote(page: P, title: string) {
+  await page.locator(`[data-testid="notebook-note"][data-title="${title}"]`).click();
+  await expect(page.getByTestId('notebook-title')).toHaveValue(title);
 }
 
 test.describe('notebook', () => {
@@ -259,7 +274,7 @@ test.describe('notebook', () => {
     await expect.poll(() => page.title()).toBe('Printed');
   });
 
-  test('the Bulk tab tags, exports, moves and deletes many notes at once', async ({ app }) => {
+  test('the sidebar tags, exports, moves and deletes many notes at once', async ({ app }) => {
     const { page } = app;
     await app.goto('/tools/notebook/');
 
@@ -280,17 +295,21 @@ test.describe('notebook', () => {
     const childId = await idOf('Child');
     const otherId = await idOf('Other');
 
-    // The tab swaps panels without unmounting the editor.
-    await page.getByTestId('notebook-tab-bulk').click();
-    await expect(page.getByTestId('notebook-tab-bulk')).toHaveAttribute('aria-selected', 'true');
-    await expect(page.getByTestId('notebook-panel-bulk')).toBeVisible();
-    await expect(page.getByTestId('notebook-panel-note')).toBeHidden();
-    await expect(page.getByTestId('notebook-editor-host')).toHaveCount(1);
+    // Nothing is selected, so the sidebar is a library and nothing else.
+    await expect(page.getByTestId('notebook-bulk')).toHaveCount(0);
 
-    // "all nested" on Parent selects Parent and Child, not Other.
-    await page.getByTestId(`notebook-bulk-subtree-${parentId}`).click();
-    await expect(page.getByTestId('notebook-bulk-selected')).toHaveText('2 of 3 selected');
-    await expect(page.getByTestId('notebook-bulk-count')).toHaveText('2');
+    // Ticking a note in the tree reveals the operations, without disturbing
+    // the open note: the editor is not remounted and stays on screen.
+    await check(page, 'Parent');
+    await expect(page.getByTestId('notebook-bulk')).toBeVisible();
+    await expect(page.getByTestId('notebook-bulk-selected')).toHaveText('1 selected');
+    await expect(page.getByTestId('notebook-editor-host')).toHaveCount(1);
+    await expect(page.getByTestId('notebook-title')).toHaveValue('Other');
+
+    // "+ Nested" grows the selection to Parent's branch — Child, not Other.
+    await page.getByTestId('notebook-bulk-select-nested').click();
+    await expect(page.getByTestId('notebook-bulk-selected')).toHaveText('2 selected');
+    await expect(page.getByTestId('notebook-bulk-select-nested')).toBeDisabled();
 
     // Tags: add to both, then remove one regardless of case.
     const before = await app.dumpAll();
@@ -334,40 +353,69 @@ test.describe('notebook', () => {
     }
     await expect(page.getByTestId('notebook-bulk-note')).toContainText('Exported 2 notes as HTML.');
 
-    // Move: Other (the open note) under Parent; the Note tab's field follows.
+    // Clearing the selection puts the operations away again.
     await page.getByTestId('notebook-bulk-select-none').click();
-    await expect(page.getByTestId('notebook-bulk-selected')).toHaveText('Nothing selected');
-    await page.locator(`[data-testid="notebook-bulk-check"][data-title="Other"]`).check();
+    await expect(page.getByTestId('notebook-bulk')).toHaveCount(0);
+
+    // Move: Other (the open note) under Parent; the open note's field follows.
+    await check(page, 'Other');
     const targets = await page.getByTestId('notebook-bulk-parent').locator('option').allTextContents();
     expect(targets).toEqual(['— top level —', 'Child', 'Parent']);
     await page.getByTestId('notebook-bulk-parent').selectOption(parentId);
     await page.getByTestId('notebook-bulk-move').click();
     await expect(page.getByTestId('notebook-bulk-note')).toHaveText('Moved 1 note under “Parent”.');
     expect((await app.get('notes', otherId))!.parent_id).toBe(parentId);
-    await page.getByTestId('notebook-tab-note').click();
     await expect(page.getByTestId('notebook-parent')).toHaveValue(parentId);
     // A selection of Parent may not move under itself or its descendants.
-    await page.getByTestId('notebook-tab-bulk').click();
     await page.getByTestId('notebook-bulk-select-none').click();
-    await page.locator(`[data-testid="notebook-bulk-check"][data-title="Parent"]`).check();
+    await check(page, 'Parent');
     expect(await page.getByTestId('notebook-bulk-parent').locator('option').allTextContents()).toEqual([
       '— top level —',
     ]);
 
     // Delete Parent alone: Child and Other move up to the top level, and the
-    // open note (Other) stays open.
+    // open note (Other) stays open. The receipt outlives the selection that
+    // produced it — the operations panel goes, the result line stays.
     page.once('dialog', (d) => void d.accept());
     await page.getByTestId('notebook-bulk-delete').click();
     await expect(page.getByTestId('notebook-bulk-note')).toHaveText('Deleted 1 note.');
-    await expect(page.getByTestId('notebook-bulk-selected')).toHaveText('Nothing selected');
+    await expect(page.getByTestId('notebook-bulk')).toHaveCount(0);
     rows = await app.dump('notes');
     expect(rows.find((r) => r.id === parentId)!.deleted_at).toBeTruthy();
     expect(rows.find((r) => r.id === childId)!.parent_id).toBeNull();
     expect(rows.find((r) => r.id === otherId)!.parent_id).toBeNull();
-    await page.getByTestId('notebook-tab-note').click();
     await expect(page.getByTestId('notebook-title')).toHaveValue('Other');
     await expect(page.getByTestId('notebook-parent')).toHaveValue('');
     assertInvariants(await app.dumpAll(), 'after bulk operations');
+  });
+
+  test('the sidebar deletes one note, and folding the library drops the selection', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/notebook/');
+    await newNote(page);
+    await page.getByTestId('notebook-title').fill('Keeper');
+    await expect(page.getByTestId('notebook-save-state')).toHaveText('Saved');
+    await newNote(page);
+    await page.getByTestId('notebook-title').fill('Doomed');
+    await expect(page.getByTestId('notebook-save-state')).toHaveText('Saved');
+    const doomedId = String((await app.dump('notes')).find((r) => r.title === 'Doomed')!.id);
+
+    // The row's × deletes that note — the one the row names, not the open one.
+    await openNote(page, 'Keeper');
+    page.once('dialog', (d) => void d.accept());
+    await page.getByTestId(`notebook-delete-${doomedId}`).click();
+    await expect(page.getByTestId('notebook-feedback')).toHaveText('Note deleted.');
+    expect((await app.get('notes', doomedId))!.deleted_at).toBeTruthy();
+    await expect(page.getByTestId('notebook-title')).toHaveValue('Keeper');
+
+    // A selection cannot outlive the column that shows it.
+    await check(page, 'Keeper');
+    await expect(page.getByTestId('notebook-bulk')).toBeVisible();
+    await page.getByTestId('notebook-toggle-library').click();
+    await expect(page.getByTestId('notebook-bulk')).toHaveCount(0);
+    await page.getByTestId('notebook-toggle-library').click();
+    await expect(page.getByTestId('notebook-bulk')).toHaveCount(0);
+    await expect(page.getByTestId('notebook-bulk-check')).not.toBeChecked();
   });
 
   test('the editor stays off every other route', async ({ app }) => {

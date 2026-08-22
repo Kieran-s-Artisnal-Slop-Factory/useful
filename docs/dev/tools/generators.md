@@ -2,7 +2,7 @@
 
 Five stateless tools under the Generators category — Themes (color conversion, harmonies, CSS theme builder), Gradients, Glassmorphism, Regex snippets (plus live tester and symbol reference) and QR code (create and read). Each is a Svelte island over a pure TypeScript module in `src/lib/gen/`; the UI only binds inputs and renders what the module returns. None of them touch IndexedDB — each tool's main Playwright scenario wraps the whole interaction in a zero-write window.
 
-_Describes the code as of v0.2.0 (2026-08-21; schema v12) — verify against source when in doubt._
+_Describes the code as of v0.2.1 (unreleased; schema v12) — verify against source when in doubt._
 
 ## File map
 

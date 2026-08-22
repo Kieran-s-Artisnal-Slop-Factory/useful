@@ -1,3 +1,89 @@
+# 0.2.1 (unreleased)
+
+## Features
+
+- **The notebook's bulk operations moved into the library.** The **Note** /
+  **Bulk** tab strip is gone and the page is always the note: every row of the
+  sidebar tree now carries a **checkbox**, and ticking one raises the bulk
+  panel at the top of that column, above the search box. It reports how many
+  are ticked and offers **Clear**, **All** (every note — or, while a search
+  narrows the tree, every note it found) and **+ Nested**, which grows the
+  selection through the branches under it. Ticking a note never takes its
+  children on its own: a folder here is a note, and "delete this" must not
+  quietly mean "delete the twelve under it".
+  - The four actions are unchanged in behaviour — export the selection as one
+    `.zip` of Markdown or self-contained HTML, add or remove tags, move under
+    one parent, delete with unselected children climbing to the nearest
+    survivor — but they now act **without leaving the note**. The editor is
+    never unmounted, the open note stays open and editable, and if an action
+    retags or moves that note its **Tags** and **Inside** fields follow at
+    once.
+  - The result line is mounted outside the panel it reports on, because
+    deleting the selection empties it and unmounts the panel: a receipt that
+    vanished in the same tick it was written was no receipt at all, after the
+    one action that most needs one.
+  - Folding the library away now clears the selection. The checkboxes, the
+    count and the actions all live in that column; a tick that outlived it was
+    invisible state waiting for whoever opened the column back up.
+  - The sidebar is `position: sticky`, so anything past the fold could not be
+    scrolled to. With the bulk panel above the tree it now has a height cap and
+    scrolls inside itself — and stops being sticky at all in the single-column
+    layout under 52rem.
+
+- **A delete button on every row of the notebook's library.** Beside the
+  existing **+** (new note inside), an **×** deletes that row's note — the note
+  the row names, not whichever one is open — through the same confirm and the
+  same reparent-the-children rule as the Note card's Delete.
+
+- **The notebook's note title is the card's header.** The separate **Title**
+  field is gone; the header of the Note card is the field, typed in place. It
+  is still one `<input>` (`bind:value`, the same 400 ms autosave, the same
+  rename-and-alias path) inside an `<h2>`, so the page keeps its heading
+  outline and a screen reader announces the note's actual name. The
+  breadcrumb dropped its last crumb with it — it was repeating the title
+  three inches below itself.
+
+- **The secrets page is five fold-out categories**, with **Passwords** open and
+  the rest folded, so twenty-seven generators open as a short contents list.
+  Categories are independent — opening one does not close another — and a
+  folded category is still generating, so one you open shows a value as fresh
+  as the rest and **Regenerate all** reaches every card whether or not it is on
+  screen. Nothing about which categories are open is remembered: this page
+  writes nothing, and a disclosure is not the exception worth breaking that
+  for.
+
+## Other
+
+- **`Card` gained two opt-in modes** rather than being forked twice. `heading`
+  replaces the `<h2>` with a snippet, for a header that is a control rather
+  than a word — the title-block voice is scoped to Card's own `<h2>`, so a
+  snippet cannot inherit the uppercase-and-tiny lettering by accident and must
+  bring its own type. `collapsible` renders the card as a native `<details>`
+  with the header as its `<summary>`, `open` seeding the initial state, the
+  marker drawn as the same ▸ / ▾ the notebook's tree turns, and the header's
+  rule dropped while it is closed. Both are additive: every one of the app's
+  other cards passes `title` and renders byte-identically.
+- **`summary` joined the app's focus ring.** `global.css` stamped
+  `input`/`select`/`textarea`/`button`/`a` with `--color-stamp` on
+  `:focus-visible` and left `summary` out, so every disclosure in the app — the
+  explainers on twenty pages, and now the secrets categories — focused with
+  whatever ring the browser happened to draw. One selector; it is the same
+  stamp everywhere now.
+- **A collapsed `<details>` is not the same as absent.** The secrets accordion
+  keeps its content in the DOM on purpose — the values stay generated and text
+  assertions keep reading them — but a control inside one keeps a layout box
+  while being unclickable, so `secrets.spec.ts` opens a category before
+  touching `sec-opt-jwt-secret` or `sec-copy-wifi`. The a11y sweep is
+  unaffected: its visibility test is `offsetParent !== null`, which stays true
+  inside a closed `<details>`, so all 27 generators are still audited.
+- Notebook testids: `notebook-tab-*`, `notebook-panel-*`, `notebook-bulk-count`,
+  `notebook-bulk-filter`, `notebook-bulk-list` and `notebook-bulk-subtree-<id>`
+  are gone; `notebook-bulk` (the panel), `notebook-bulk-select-nested` and
+  `notebook-delete-<id>` (a row's ×) are new. `notebook-bulk-check`,
+  `notebook-bulk-selected`, `notebook-title` and `notebook-note` are unchanged,
+  and `notebook-note` still names the button that OPENS a note, never the
+  checkbox beside it.
+
 # 0.2.0 (2026-08-21)
 
 ## Features

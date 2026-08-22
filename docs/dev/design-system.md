@@ -2,7 +2,7 @@
 
 Every colour, size, line weight and radius in the app comes from one file: [theme.css](../../src/styles/theme.css) declares the tokens, [global.css](../../src/styles/global.css) spends them on base elements and a small set of utility classes, and components spend them again in scoped `<style>` blocks. There is no second palette, no per-tool colour, and no theme-switching CSS: both schemes are written into every token with `light-dark()`, so the whole switch is one `color-scheme` value on `<html>`. The shell that consumes all of this is documented separately in [app-shell-navigation.md](app-shell-navigation.md).
 
-_Describes the code as of v0.2.0 (2026-08-21; schema v12) — verify against source when in doubt._
+_Describes the code as of v0.2.1 (unreleased; schema v12) — verify against source when in doubt._
 
 ## File map
 
@@ -11,7 +11,7 @@ _Describes the code as of v0.2.0 (2026-08-21; schema v12) — verify against sou
 | [theme.css](../../src/styles/theme.css) | Every token. `:root` only — 103 lines, no other selectors, no media queries. |
 | [global.css](../../src/styles/global.css) | Reset, base element styles, the drafting grid on `body`, Prism token colours, the sheet frame (`main.page`), utility classes, drag-ghost styling, the two breakpoints. |
 | [Layout.astro](../../src/layouts/Layout.astro) | Imports both stylesheets; the pre-paint script that pins the theme and replays it after every client-side swap. |
-| [Card.svelte](../../src/components/Card.svelte) | The one grouping block: registration marks, optional ruled header, actions slot. |
+| [Card.svelte](../../src/components/Card.svelte) | The one grouping block: registration marks, optional ruled header, actions slot, an optional `heading` snippet for a header that is a control, and a `collapsible` mode that makes the whole card a `<details>`. |
 | [Explainer.svelte](../../src/components/Explainer.svelte) | Dashed-border `<details>` disclosure. |
 | [ColorField.svelte](../../src/components/ColorField.svelte) | Text + native picker colour input. |
 | [Icon.svelte](../../src/components/Icon.svelte), [icons.ts](../../src/lib/icons.ts) | 24×24 stroke-icon renderer and the glyph registry. |
@@ -129,7 +129,7 @@ Prism token colours ([global.css](../../src/styles/global.css)) are the blueprin
 
 | Component | Notes that matter to the design system |
 | --- | --- |
-| [Card.svelte](../../src/components/Card.svelte) | Corner registration marks are eight positioned `linear-gradient` background layers — a 10px × 1.5px and a 1.5px × 10px arm per corner, in `--border-strong-color` via a local `--tick` variable — over a `--surface-color` fill with a hairline border. Header is optional (`title` and/or `actions`) and its `<h2>` is in title-block voice. Because the title is an `h2`, page structure must be `h1` → Card → `h3`; the a11y sweep fails on a skipped level. |
+| [Card.svelte](../../src/components/Card.svelte) | Corner registration marks are eight positioned `linear-gradient` background layers — a 10px × 1.5px and a 1.5px × 10px arm per corner, in `--border-strong-color` via a local `--tick` variable — over a `--surface-color` fill with a hairline border. Header is optional (`title` and/or `actions`) and its `<h2>` is in title-block voice. Because the title is an `h2`, page structure must be `h1` → Card → `h3`; the a11y sweep fails on a skipped level. Two opt-ins: `heading` replaces the `<h2>` with a snippet, for a header that is a control rather than a word (the notebook types the note's title into it) — the title-block voice is scoped to Card's own `<h2>`, so a snippet cannot inherit it and must bring its own type; and `collapsible` renders the card as a `<details>` with the header as its `<summary>`, `open` seeding the initial state, the marker drawn as a ▸ / ▾ in `--text-muted-color` and the header's rule dropped while closed. |
 | [Explainer.svelte](../../src/components/Explainer.svelte) | Native `<details>`, so keyboard toggling and the accessibility tree come free. Dashed `--border-strong-color` border, 88%-opacity surface, summary in eyebrow voice that goes from muted to full ink on hover and while open. |
 | [ColorField.svelte](../../src/components/ColorField.svelte) | Text input plus a 2.9rem native `<input type="color">`. Sets `aria-invalid` when the text does not parse, and the invalid state is drawn as a `--color-danger` **border** — a colour change alone would not be enough, so the field also carries the ARIA state. Opt into `alpha` for a slider (a native picker cannot express alpha) and `showSwatch` for a `.checkerboard` preview; both are off by default, so the callers that predate them are untouched. |
 | [Icon.svelte](../../src/components/Icon.svelte) | See below. |

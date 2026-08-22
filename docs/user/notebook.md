@@ -2,15 +2,15 @@
 
 Keep your notes here, in markdown, linked to each other. Write in a rich editor or in the raw text, whichever you prefer at the moment; drop footnotes in with one key; draw a diagram from a template and see it as you type; paste a screenshot; write `$x^2$` and get real maths. Link one note to another by writing its title in double brackets, and the notebook tells you who links back. When a note has to leave the browser it goes as Markdown, as one HTML file that needs nothing else, or as a PDF through the print dialog.
 
-_Describes the code as of v0.2.0 (2026-08-21; schema v12) — verify against source when in doubt._
+_Describes the code as of v0.2.1 (unreleased; schema v12) — verify against source when in doubt._
 
 ## Your notes
 
-The left-hand column is the tree. **New note** makes one at the top level; the **+** beside any note makes one *inside* it, so a note is also a folder — there is no separate folder thing to create. The ▾ / ▸ arrow collapses a branch. Click a note to open it; the one you have open is remembered and reopened next time, and the **‹ Notes** button folds the column away when you want the width.
+The left-hand column is the tree. **New note** makes one at the top level; the **+** beside any note makes one *inside* it, so a note is also a folder — there is no separate folder thing to create, and the **×** beside it deletes that note. The ▾ / ▸ arrow collapses a branch, and the tick-box takes the note into a [bulk operation](#many-notes-at-once). Click a note to open it; the one you have open is remembered and reopened next time, and the **‹ Notes** button folds the column away when you want the width.
 
 Type in the search box and the tree becomes a flat list of every note whose title, tags or old titles contain what you typed.
 
-Above the editor the **Note** card shows the note's place — a breadcrumb of the notes it sits inside, each a link — and three fields: **Title**, **Inside** (a dropdown to move the note under another one, or `— top level —`), and **Tags**, comma-separated. Everything you type is saved on its own a moment after you stop; `Saving…` and `Saved` sit in the card's corner. **Close** puts the note away without deleting it; **Delete** asks first.
+Above the editor, the note's **title is the card's header** — click it and type; it is the same field the tree and every `[[link]]` read. Under it sits the note's place — a breadcrumb of the notes it sits inside, each a link — and two fields: **Inside** (a dropdown to move the note under another one, or `— top level —`) and **Tags**, comma-separated. Everything you type is saved on its own a moment after you stop; `Saving…` and `Saved` sit in the card's corner. **Close** puts the note away without deleting it; **Delete** asks first.
 
 ## Writing
 
@@ -48,22 +48,26 @@ The **Export** card, under the links:
 - **Download HTML** gives you one `.html` file, named the same way, with everything inside it: a stylesheet, your images, the maths typeset with only the maths fonts that note actually uses, and diagrams already drawn as SVG. It never fetches anything and never points at this app or any server; if the note itself links to an outside web page, a line under the buttons counts those links so you know they are there.
 - **Print / Save as PDF** opens the browser's print dialog with the note alone on the page — the app around it is hidden, light colours are forced, code keeps its background, and tables and figures are kept whole across pages. The note's title is offered as the filename; choose *Save as PDF* in the dialog.
 
-## Many notes at once — the Bulk tab
+## Many notes at once
 
-Above the note are two tabs, **Note** and **Bulk**. Bulk lists every note as a tree of tick-boxes (with a filter box over titles and tags, **Select all** and **Select none**); a note with notes inside it also has **all nested**, which ticks it and everything under it. The tab shows how many are ticked. Then four actions, each on the ticked notes only and none of them until you press it:
+Every note in the left-hand column has a tick-box. Tick one and a **bulk operations** panel appears at the top of that column, above the search box, saying how many are ticked, with **Clear** beside it and two ways to take more: **All** (every note — or, while you are searching, every note the search found) and **+ Nested**, which adds everything nested inside what you have already ticked. Ticking a note never takes the notes inside it on its own; that is one deliberate press, because a folder here is a note like any other.
 
-- **Export** — one `.zip` with a file per note, named after its title (`Parent.md`, `Child.md`, and `-2` when two titles clash), as **Markdown** (source with images inlined) or **HTML** (the same self-contained file the single export makes). If any note links to an outside web page, the line under the buttons counts those links.
-- **Tags** — type tags, comma-separated, then **Add to** or **Remove from**. Adding keeps each note's own tags and skips ones it already has; removing does not care about case.
-- **Move** — pick a destination from **Under** (or `— top level —`) and **Move**. Ticked notes and the notes inside them are not offered as destinations, because a note cannot go inside itself.
+The note you have open stays open and editable the whole time — there is no separate mode to leave. Then four actions, each on the ticked notes only and none of them until you press it:
+
+- **Export** — pick **Markdown** (source with images inlined) or **HTML** (the same self-contained file the single export makes) and press **.zip**: one archive with a file per note, named after its title (`Parent.md`, `Child.md`, and `-2` when two titles clash). If any note links to an outside web page, the line underneath counts those links.
+- **Tags** — type tags, comma-separated, then **Add** or **Remove**. Adding keeps each note's own tags and skips ones it already has; removing does not care about case.
+- **Move under** — pick a destination (or `— top level —`) and press **Move**. Ticked notes and the notes inside them are not offered as destinations, because a note cannot go inside itself.
 - **Delete** — asks first. Nested notes that are not themselves ticked move up to the nearest note that stays; the deleted notes' images go with them.
 
-Switching to Bulk does not close the note you have open — the Note tab is exactly as you left it, and if a bulk action moved or retagged that note its **Inside** and **Tags** fields show the new values when you come back.
+What happened is reported under the panel — `Added 2 tags on 2 notes.` — and stays there after the panel itself goes, so a delete still leaves a receipt. If a bulk action moved or retagged the note you have open, its **Inside** and **Tags** fields show the new values straight away.
+
+Each row also carries its own two buttons: **+** starts a new note inside that one, and **×** deletes that one note (it asks first).
 
 ## Gotchas
 
 - **Notes live in this browser only.** They ride along in Settings → Backup, and nowhere else until you download something. Clearing site data deletes them.
 - **Images count against the backup.** A backup is one JSON file with everything in it, pictures included, which is why each image is capped at 2 MB. Settings → Storage shows what the browser says you are using.
-- **Deleting a note moves its nested notes up a level** — to wherever the deleted note was — and deletes the images pasted into it. It does not delete the notes inside it. The Bulk tab's delete follows the same rule for every note it deletes at once: a nested note that is not ticked climbs to the nearest note that survives.
+- **Deleting a note moves its nested notes up a level** — to wherever the deleted note was — and deletes the images pasted into it. It does not delete the notes inside it. A bulk delete follows the same rule for every note it deletes at once: a nested note that is not ticked climbs to the nearest note that survives.
 - **A bulk export is one `.zip`, uncompressed.** The files inside already carry their images as base64, so there is little to squeeze; what matters is that every unzip, including the browser's own, opens it. Titles are made filename-safe the same way the single export does it, so `My note: draft?` becomes `My-note-draft.md`.
 - **Switching faces loses undo history.** Edit, Source and Preview each start fresh; the text carries over, the undo stack does not.
 - **The rich view hides footnote definitions on purpose.** They are in the markdown (see Source) and in the **⁋ Footnotes** dialog; if you type a `[^label]: …` line into the rich view by hand it is filed away into the dialog when you move off it.

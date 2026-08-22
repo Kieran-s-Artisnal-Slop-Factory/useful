@@ -2,7 +2,7 @@
 
 Three small calculators under **Calculators** in the sidebar (or search for them with Ctrl/Cmd+K): **Programming** converts numbers between binary, octal, decimal and hex and shows bit operations; **Photography** turns one camera's settings into their equivalents on other sensor sizes and compares two sets of settings in stops; **File transfer** estimates how long a file takes to move at a given network speed. Each page has "by hand" drop-downs that explain the maths. Nothing you type is saved, with one exception: the Photography page remembers which sensor format you picked.
 
-_Describes the code as of v0.2.0 (2026-08-21; schema v12) — verify against source when in doubt._
+_Describes the code as of v0.2.1 (unreleased; schema v12) — verify against source when in doubt._
 
 ## Programming (number conversion)
 

@@ -24,9 +24,10 @@ their own browser.
 - **Notes** — a notebook of linked markdown notes: WYSIWYG or raw source
   over one string, `[[wiki links]]` with computed backlinks and aliases that
   survive renames, footnotes, mermaid diagrams, KaTeX maths, pasted images,
-  nested notes (folders are notes), a Bulk tab that exports, tags, moves or
-  deletes many notes at once, and export to Markdown, one self-contained
-  HTML file, or PDF through the print dialog.
+  nested notes (folders are notes), tick-boxes in the library that export,
+  tag, move or delete many notes at once without leaving the note you are
+  writing, and export to Markdown, one self-contained HTML file, or PDF
+  through the print dialog.
 - **Playgrounds** — a SQL playground running real SQLite or Postgres in the
   tab, and a configuration playground that validates, prettifies and extracts
   schemas from JSON/YAML, generates sample documents, and emits parsers and

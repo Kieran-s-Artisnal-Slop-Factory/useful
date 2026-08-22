@@ -104,11 +104,15 @@ input[type='checkbox'] {
   accent-color: var(--color-primary);
 }
 
-/* Focus is the surveyor's stamp: unmistakable, same hue on both sheets. */
+/* Focus is the surveyor's stamp: unmistakable, same hue on both sheets.
+   `summary` is in the list because a disclosure is a control that takes focus
+   like any other — the explainers and the collapsible cards focused with the
+   browser's own ring until it was added. */
 input:focus-visible,
 select:focus-visible,
 textarea:focus-visible,
 button:focus-visible,
+summary:focus-visible,
 a:focus-visible {
   outline: 2px solid var(--color-stamp);
   outline-offset: 2px;

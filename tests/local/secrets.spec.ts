@@ -10,8 +10,22 @@
 import { test, expect } from './helpers/app';
 import { assertIsolatedDelta } from './helpers/oracle';
 
-const value = (page: import('@playwright/test').Page, id: string) =>
-  page.getByTestId('sec-value-' + id);
+type P = import('@playwright/test').Page;
+
+const value = (page: P, id: string) => page.getByTestId('sec-value-' + id);
+
+/**
+ * Open a collapsed category. Every group but Passwords starts closed, and a
+ * control inside a closed <details> keeps a layout box while being unclickable
+ * — so a test that forgets this fails on an actionability timeout rather than
+ * on anything to do with what it was checking.
+ */
+async function openGroup(page: P, slug: string) {
+  const group = page.getByTestId('sec-group-' + slug);
+  if (await group.evaluate((el) => (el as HTMLDetailsElement).open)) return;
+  await group.locator('summary').click();
+  await expect(group).toHaveAttribute('open', '');
+}
 
 test.describe('secrets', () => {
   test('every card fills itself on load, and nothing is written', async ({ app }) => {
@@ -29,6 +43,44 @@ test.describe('secrets', () => {
     expect(await app.dumpAll()).toEqual(before);
     expect(page.url()).not.toContain('?');
     expect(page.url()).not.toContain('#');
+  });
+
+  test('categories are disclosures: the first open, the rest a contents list', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/secrets/');
+    const before = await app.dumpAll();
+
+    // Passwords is open; the other four are closed but still named, so the top
+    // of the page reads as a list of what is here.
+    await expect(page.getByTestId('sec-group-passwords')).toHaveAttribute('open', '');
+    for (const slug of ['keys-secrets', 'framework', 'identifiers', 'network-2fa']) {
+      await expect(page.getByTestId('sec-group-' + slug)).not.toHaveAttribute('open', '');
+      await expect(page.getByTestId('sec-group-' + slug).locator('summary')).toBeVisible();
+    }
+    // A closed group still generated its values — opening one shows a secret,
+    // not an empty box.
+    await expect(value(page, 'totp')).toHaveText(/^[A-Z2-7]{32}$/);
+    await expect(page.getByTestId('sec-copy-totp')).toBeHidden();
+
+    // Opening is a click on the summary, and closes nothing else: these are
+    // independent disclosures, not a one-at-a-time accordion.
+    await openGroup(page, 'network-2fa');
+    await expect(page.getByTestId('sec-copy-totp')).toBeVisible();
+    await expect(page.getByTestId('sec-group-passwords')).toHaveAttribute('open', '');
+
+    // Enter on the focused summary toggles it — the keyboard path a <details>
+    // brings with it.
+    const summary = page.getByTestId('sec-group-framework').locator('summary');
+    await summary.focus();
+    await page.keyboard.press('Enter');
+    await expect(page.getByTestId('sec-group-framework')).toHaveAttribute('open', '');
+
+    // None of it is remembered, because none of it is written.
+    expect(await app.dumpAll()).toEqual(before);
+    await page.reload();
+    await expect(page.getByTestId('sec-group-framework')).not.toHaveAttribute('open', '', {
+      timeout: 30_000,
+    });
   });
 
   test('each generator produces its documented shape', async ({ app }) => {
@@ -95,6 +147,7 @@ test.describe('secrets', () => {
     await expect(value(page, 'strong')).toHaveText(/^.{64}$/);
 
     // A JWT secret's size follows the algorithm, per RFC 7518.
+    await openGroup(page, 'keys-secrets');
     await page.getByTestId('sec-opt-jwt-secret').selectOption('HS512');
     await expect(value(page, 'jwt-secret')).toHaveText(/^.{88}$/);
     await expect(page.getByTestId('sec-bits-jwt-secret')).toHaveText(/512 bits/);
@@ -116,6 +169,7 @@ test.describe('secrets', () => {
     await app.goto('/tools/secrets/');
     const before = await app.dumpAll();
 
+    await openGroup(page, 'network-2fa');
     const shown = await value(page, 'wifi').textContent();
     await page.getByTestId('sec-copy-wifi').click();
     await expect(page.getByTestId('sec-copy-wifi')).toHaveText('Copied');

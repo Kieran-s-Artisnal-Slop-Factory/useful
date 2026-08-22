@@ -1,7 +1,7 @@
 /**
  * The notebook's bulk operations, as pure functions over Note rows: what the
- * Bulk tab lists, which parents a selection may move under, where the
- * children of deleted notes go, and what each exported file is called.
+ * library lists, which parents a selection may move under, where the children
+ * of deleted notes go, and what each exported file is called.
  *
  * The component writes one patch per changed row; everything it needs to
  * decide is computed here so it can be tested without a page.
@@ -9,22 +9,20 @@
 import type { Note } from '../db/types';
 import { buildTree, descendantsOf, displayTitle, type NoteTree } from './model';
 
-/** One checklist row: a note and how deep it sits in the tree. */
-export interface BulkRow {
-  note: Note;
-  depth: number;
-}
-
-/** The tree flattened depth-first, in sidebar order, with depths. */
-export function flattenTree(tree: NoteTree): BulkRow[] {
-  const out: BulkRow[] = [];
-  const walk = (items: readonly Note[], depth: number) => {
+/**
+ * The tree flattened depth-first — every note in the order the sidebar draws
+ * them, which is the order a selection is acted on and exported in. The
+ * sidebar itself draws the nesting by recursing, so no depth is carried here.
+ */
+export function flattenTree(tree: NoteTree): Note[] {
+  const out: Note[] = [];
+  const walk = (items: readonly Note[]) => {
     for (const note of items) {
-      out.push({ note, depth });
-      walk(tree.children.get(note.id) ?? [], depth + 1);
+      out.push(note);
+      walk(tree.children.get(note.id) ?? []);
     }
   };
-  walk(tree.roots, 0);
+  walk(tree.roots);
   return out;
 }
 

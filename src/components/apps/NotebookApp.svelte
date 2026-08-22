@@ -69,7 +69,6 @@
   import { collectMathFonts } from '../../lib/notebook/mathFonts';
 
   type Mode = 'wysiwyg' | 'source' | 'preview';
-  type Tab = 'note' | 'bulk';
   type BulkFormat = 'md' | 'html';
 
   const SAVE_DEBOUNCE_MS = 400;
@@ -106,12 +105,14 @@
   let destroyed = false;
 
   // ---- bulk ----------------------------------------------------------------
-  /** Note (the editor) or Bulk (select many, act once). The editor stays
-   * mounted behind the Bulk panel so switching costs nothing and autosave
-   * is undisturbed. */
-  let tab = $state<Tab>('note');
+  /**
+   * Bulk operations live in the sidebar, over the same tree the reader
+   * navigates with: a checkbox on every row, and the actions appearing above
+   * the search box once something is ticked. There is no separate mode — the
+   * open note stays open and editable while a selection is acted on, which is
+   * why every action below also updates the open note's snapshot.
+   */
   let selected = $state<ReadonlySet<string>>(new Set());
-  let bulkFilter = $state('');
   let bulkTagsText = $state('');
   let bulkParent = $state('');
   let bulkFormat = $state<BulkFormat>('md');
@@ -160,21 +161,16 @@
   });
   const fileStem = $derived((title.trim() || 'note').replace(/[^a-z0-9._-]+/gi, '-'));
 
-  /** The Bulk checklist: the tree in sidebar order, narrowed by the filter. */
-  const bulkRows = $derived.by(() => {
-    const rows = flattenTree(tree);
-    const q = bulkFilter.trim().toLowerCase();
-    if (!q) return rows;
-    return rows.filter(
-      (r) =>
-        displayTitle(r.note).toLowerCase().includes(q) ||
-        r.note.tags.some((t) => t.toLowerCase().includes(q))
-    );
-  });
-  /** Selected notes that still exist, in tree order. */
-  const selectedNotes = $derived(flattenTree(tree).map((r) => r.note).filter((n) => selected.has(n.id)));
+  /** Selected notes that still exist, in tree order — the order they export in. */
+  const selectedNotes = $derived(flattenTree(tree).filter((n) => selected.has(n.id)));
   const selectedCount = $derived(selectedNotes.length);
   const bulkTargets = $derived(moveTargets(notes, selected));
+  /** What "Select all" takes: the search results when searching, else every note. */
+  const selectableNotes = $derived(filtered ?? notes);
+  /** Whether expanding the selection to nested notes would add anything. */
+  const hasUnselectedNested = $derived(
+    [...selected].some((id) => subtreeIds(tree, id).some((sub) => !selected.has(sub)))
+  );
 
   function flash(text: string) {
     feedback = text;
@@ -267,6 +263,13 @@
    * caller about to patch the same row can wait for it (the bulk actions do);
    * everyone else may ignore the promise. */
   function flushSave(): Promise<void> {
+    // The editor debounces too (150 ms, and Milkdown holds a keystroke for
+    // 200 ms more), so asking only our own timer for "everything outstanding"
+    // misses the last thing typed. `flush()` is synchronous and reports
+    // through `onChange`, which sets `body` and arms the timer this then
+    // writes — so the order here is what makes an export or a bulk patch see
+    // the current text rather than the text from half a second ago.
+    editor?.flush();
     if (saveTimer === undefined) return Promise.resolve();
     clearTimeout(saveTimer);
     saveTimer = undefined;
@@ -346,13 +349,29 @@
       saveTimer = undefined;
       currentId = null;
       assetStore = null;
+    } else {
+      // Deleting one note while another is open — which the library's per-row
+      // × made possible — means that other note's row may be about to be
+      // patched below. Write what it owes first, so this does not race it.
+      await flushSave();
     }
     // Children are reparented, never cascaded: a folder going away is no
     // reason for its pages to. Its images go with it — they are unreachable.
-    for (const kid of kids) await patch<Note>('notes', kid.id, { parent_id: row.parent_id });
+    for (const kid of kids) {
+      await patch<Note>('notes', kid.id, { parent_id: row.parent_id });
+      // The open note's snapshot must follow it up a level, or its next
+      // autosave writes the tombstoned parent back over the reparent — and a
+      // parent that is not a live row reads as root, so the note would quietly
+      // leave the branch it was just moved into. Same rule as `bulkDelete`.
+      if (kid.id === currentId) parentId = row.parent_id;
+    }
     const assets = await byIndex<NoteAsset>('note_assets', 'note_id', row.id);
     if (assets.length > 0) await softDeleteMany('note_assets', assets.map((a) => a.id));
     await softDelete('notes', row.id);
+    // A tombstoned id must leave the selection: `selectedNotes` re-derives from
+    // the tree and would drop it, but `moveTargets` and `hasUnselectedNested`
+    // read the raw set.
+    if (selected.has(row.id)) selected = new Set([...selected].filter((id) => id !== row.id));
     await refresh();
     flash('Note deleted.');
   }
@@ -502,29 +521,47 @@
   // selection, updates the editable fields too — otherwise the next autosave
   // would write the old tags or parent straight back.
 
-  function setTab(next: Tab) {
-    tab = next;
-    bulkNote = null;
-  }
-
   function toggleSelected(id: string) {
     const next = new Set(selected);
     if (next.has(id)) next.delete(id);
     else next.add(id);
     selected = next;
+    bulkNote = null;
   }
 
-  /** Select a note and everything nested inside it. */
-  function selectSubtree(id: string) {
-    selected = new Set([...selected, ...subtreeIds(tree, id)]);
+  /**
+   * Pull everything nested inside the selection into it. Ticking a note does
+   * NOT take its children — a folder is a note, and "delete this note" must
+   * not quietly mean "delete the twelve under it" — so taking a branch is one
+   * deliberate press.
+   */
+  function selectNested() {
+    const next = new Set(selected);
+    for (const id of selected) for (const sub of subtreeIds(tree, id)) next.add(sub);
+    selected = next;
+    bulkNote = null;
   }
 
-  function selectAllVisible() {
-    selected = new Set([...selected, ...bulkRows.map((r) => r.note.id)]);
+  /** Every note, or — while a search narrows the tree — every note it found. */
+  function selectAll() {
+    selected = new Set([...selected, ...selectableNotes.map((n) => n.id)]);
+    bulkNote = null;
   }
 
   function selectNone() {
     selected = new Set();
+    bulkNote = null;
+  }
+
+  /**
+   * Folding the library away takes the checkboxes, the count and the actions
+   * with it — so it takes the selection too. A tick nobody can see, on a note
+   * nobody can see, is state waiting to surprise whoever opens the column back
+   * up and presses Delete.
+   */
+  function toggleSidebar() {
+    sidebarOpen = !sidebarOpen;
+    if (!sidebarOpen) selectNone();
   }
 
   const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
@@ -683,15 +720,6 @@
     }
   }
 
-  /** Arrow keys move between the two tabs, as a tablist is expected to. */
-  function onTabKey(event: KeyboardEvent) {
-    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight' && event.key !== 'Home' && event.key !== 'End') return;
-    event.preventDefault();
-    const next: Tab = event.key === 'Home' ? 'note' : event.key === 'End' ? 'bulk' : tab === 'note' ? 'bulk' : 'note';
-    setTab(next);
-    (document.getElementById(`notebook-tab-${next}`) as HTMLElement | null)?.focus();
-  }
-
   // ---- lifecycle -----------------------------------------------------------
 
   function onPageHide() {
@@ -730,42 +758,71 @@
   });
 </script>
 
+<!--
+  One row of the library: the collapse arrow (or its spacer, so titles line up),
+  the selection checkbox bulk operations read, the note itself, and the two
+  per-note actions. `kids` is empty for a search result — the flat list has no
+  branches to open, but keeps the spacer so both lists rule to the same margin.
+-->
+{#snippet noteRow(note: Note, depth: number, kids: Note[], withTags: boolean)}
+  <div class="tree-row" style={`--depth:${depth}`}>
+    {#if kids.length > 0}
+      <button
+        class="collapse-btn"
+        data-testid={'notebook-collapse-' + note.id}
+        aria-expanded={!collapsed.has(note.id)}
+        aria-label={`${collapsed.has(note.id) ? 'Expand' : 'Collapse'} ${displayTitle(note)}`}
+        onclick={() => toggleCollapse(note.id)}
+      >
+        {collapsed.has(note.id) ? '▸' : '▾'}
+      </button>
+    {:else}
+      <span class="collapse-spacer" aria-hidden="true"></span>
+    {/if}
+    <input
+      class="pick"
+      type="checkbox"
+      data-testid="notebook-bulk-check"
+      data-title={displayTitle(note)}
+      aria-label={`Select ${displayTitle(note)}`}
+      checked={selected.has(note.id)}
+      onchange={() => toggleSelected(note.id)}
+    />
+    <button
+      class="tree-item"
+      class:on={note.id === currentId}
+      data-testid="notebook-note"
+      data-title={displayTitle(note)}
+      aria-pressed={note.id === currentId}
+      onclick={() => openNote(note)}
+    >
+      {displayTitle(note)}
+      {#if withTags && note.tags.length > 0}
+        <span class="muted small">{note.tags.join(', ')}</span>
+      {/if}
+    </button>
+    <button
+      class="icon-btn"
+      data-testid={'notebook-new-child-' + note.id}
+      aria-label={`New note inside ${displayTitle(note)}`}
+      title="New note inside"
+      onclick={() => createNote('Untitled', note.id)}>+</button
+    >
+    <button
+      class="icon-btn danger"
+      data-testid={'notebook-delete-' + note.id}
+      aria-label={`Delete ${displayTitle(note)}`}
+      title="Delete this note"
+      onclick={() => deleteNote(note)}>×</button
+    >
+  </div>
+{/snippet}
+
 {#snippet branch(items: Note[], depth: number)}
   {#each items as note (note.id)}
     {@const kids = tree.children.get(note.id) ?? []}
     <li>
-      <div class="tree-row" style={`--depth:${depth}`}>
-        {#if kids.length > 0}
-          <button
-            class="collapse-btn"
-            data-testid={'notebook-collapse-' + note.id}
-            aria-expanded={!collapsed.has(note.id)}
-            aria-label={`${collapsed.has(note.id) ? 'Expand' : 'Collapse'} ${displayTitle(note)}`}
-            onclick={() => toggleCollapse(note.id)}
-          >
-            {collapsed.has(note.id) ? '▸' : '▾'}
-          </button>
-        {:else}
-          <span class="collapse-spacer" aria-hidden="true"></span>
-        {/if}
-        <button
-          class="tree-item"
-          class:on={note.id === currentId}
-          data-testid="notebook-note"
-          data-title={displayTitle(note)}
-          aria-pressed={note.id === currentId}
-          onclick={() => openNote(note)}
-        >
-          {displayTitle(note)}
-        </button>
-        <button
-          class="icon-btn"
-          data-testid={'notebook-new-child-' + note.id}
-          aria-label={`New note inside ${displayTitle(note)}`}
-          title="New note inside"
-          onclick={() => createNote('Untitled', note.id)}>+</button
-        >
-      </div>
+      {@render noteRow(note, depth, kids, false)}
       {#if kids.length > 0 && !collapsed.has(note.id)}
         <ul class="tree">
           {@render branch(kids, depth + 1)}
@@ -786,7 +843,7 @@
         class="btn btn-sm"
         data-testid="notebook-toggle-library"
         aria-expanded={sidebarOpen}
-        onclick={() => (sidebarOpen = !sidebarOpen)}
+        onclick={toggleSidebar}
       >
         {sidebarOpen ? '‹ Notes' : '›'}
       </button>
@@ -801,6 +858,128 @@
       {/if}
     </div>
     {#if sidebarOpen}
+      <!--
+        Bulk operations belong beside the checkboxes that feed them, not behind
+        a mode: they appear the moment something is ticked and go away when the
+        selection is cleared, so the column reads as a library the rest of the
+        time. The open note stays open throughout.
+      -->
+      {#if selectedCount > 0}
+        <section class="bulk" aria-label="Bulk operations" data-testid="notebook-bulk">
+          <div class="bulk-head">
+            <span class="label-text" data-testid="notebook-bulk-selected" aria-live="polite">
+              {selectedCount} selected
+            </span>
+            <button class="link-btn" data-testid="notebook-bulk-select-none" onclick={selectNone}>
+              Clear
+            </button>
+          </div>
+          <div class="row">
+            <button class="btn btn-sm" data-testid="notebook-bulk-select-all" onclick={selectAll}>
+              {search.trim() ? `All ${selectableNotes.length} shown` : `All ${notes.length}`}
+            </button>
+            <button
+              class="btn btn-sm"
+              data-testid="notebook-bulk-select-nested"
+              disabled={!hasUnselectedNested}
+              title="Add every note nested inside the selection"
+              onclick={selectNested}
+            >
+              + Nested
+            </button>
+          </div>
+
+          <div class="bulk-action">
+            <label class="label-text" for="notebook-bulk-format">Export</label>
+            <div class="row">
+              <select id="notebook-bulk-format" data-testid="notebook-bulk-format" bind:value={bulkFormat}>
+                <option value="md">Markdown</option>
+                <option value="html">HTML</option>
+              </select>
+              <button
+                class="btn btn-sm"
+                data-testid="notebook-bulk-export"
+                disabled={bulkBusy}
+                title="One file per note, in a .zip"
+                onclick={bulkExport}
+              >
+                .zip
+              </button>
+            </div>
+          </div>
+
+          <div class="bulk-action">
+            <label class="label-text" for="notebook-bulk-tags">Tags</label>
+            <input
+              id="notebook-bulk-tags"
+              data-testid="notebook-bulk-tags"
+              bind:value={bulkTagsText}
+              placeholder="comma, separated"
+            />
+            <div class="row">
+              <button
+                class="btn btn-sm"
+                data-testid="notebook-bulk-tags-add"
+                disabled={bulkBusy || parseTags(bulkTagsText).length === 0}
+                onclick={() => bulkTags('add')}
+              >
+                Add
+              </button>
+              <button
+                class="btn btn-sm"
+                data-testid="notebook-bulk-tags-remove"
+                disabled={bulkBusy || parseTags(bulkTagsText).length === 0}
+                onclick={() => bulkTags('remove')}
+              >
+                Remove
+              </button>
+            </div>
+          </div>
+
+          <div class="bulk-action">
+            <label class="label-text" for="notebook-bulk-parent">Move under</label>
+            <select id="notebook-bulk-parent" data-testid="notebook-bulk-parent" bind:value={bulkParent}>
+              <option value="">— top level —</option>
+              {#each bulkTargets as option (option.id)}
+                <option value={option.id}>{displayTitle(option)}</option>
+              {/each}
+            </select>
+            <button
+              class="btn btn-sm"
+              data-testid="notebook-bulk-move"
+              disabled={bulkBusy}
+              onclick={bulkMove}
+            >
+              Move {selectedCount}
+            </button>
+          </div>
+
+          <div class="bulk-action">
+            <button
+              class="btn btn-sm btn-danger"
+              data-testid="notebook-bulk-delete"
+              disabled={bulkBusy}
+              title="Nested notes that are not selected move up a level"
+              onclick={bulkDelete}
+            >
+              Delete {selectedCount}
+            </button>
+          </div>
+
+        </section>
+      {/if}
+      <!--
+        The result line lives OUTSIDE the block it reports on: deleting the
+        selection empties it, which unmounts the block — and a receipt that
+        vanishes in the same tick it is written is no receipt at all. Kept
+        mounted (hidden only while empty) so it reads as one status region
+        rather than a new one each time.
+      -->
+      <p
+        class="bulk-note muted small"
+        data-testid="notebook-bulk-note"
+        role="status"
+      >{bulkNote ?? ''}</p>
       <input
         class="search"
         data-testid="notebook-search"
@@ -816,19 +995,7 @@
           <ul class="tree flat" data-testid="notebook-search-results">
             {#each filtered as note (note.id)}
               <li>
-                <button
-                  class="tree-item"
-                  class:on={note.id === currentId}
-                  data-testid="notebook-note"
-                  data-title={displayTitle(note)}
-                  aria-pressed={note.id === currentId}
-                  onclick={() => openNote(note)}
-                >
-                  {displayTitle(note)}
-                  {#if note.tags.length > 0}
-                    <span class="muted small">{note.tags.join(', ')}</span>
-                  {/if}
-                </button>
+                {@render noteRow(note, 0, [], true)}
               </li>
             {/each}
           </ul>
@@ -844,50 +1011,6 @@
   </aside>
 
   <div class="stack main">
-    <div class="tabs" role="tablist" aria-label="Notebook views" data-testid="notebook-tabs">
-      <button
-        type="button"
-        role="tab"
-        id="notebook-tab-note"
-        class="tab"
-        class:on={tab === 'note'}
-        aria-selected={tab === 'note'}
-        aria-controls="notebook-panel-note"
-        tabindex={tab === 'note' ? 0 : -1}
-        data-testid="notebook-tab-note"
-        onclick={() => setTab('note')}
-        onkeydown={onTabKey}
-      >
-        Note
-      </button>
-      <button
-        type="button"
-        role="tab"
-        id="notebook-tab-bulk"
-        class="tab"
-        class:on={tab === 'bulk'}
-        aria-selected={tab === 'bulk'}
-        aria-controls="notebook-panel-bulk"
-        tabindex={tab === 'bulk' ? 0 : -1}
-        data-testid="notebook-tab-bulk"
-        onclick={() => setTab('bulk')}
-        onkeydown={onTabKey}
-      >
-        Bulk
-        {#if selectedCount > 0}<span class="tab-count" data-testid="notebook-bulk-count">{selectedCount}</span>{/if}
-      </button>
-    </div>
-
-    <!-- The Note panel stays mounted behind Bulk: remounting the editor is
-         the expensive thing on this page, and autosave must not notice a tab. -->
-    <div
-      class="stack"
-      class:panel-hidden={tab !== 'note'}
-      role="tabpanel"
-      id="notebook-panel-note"
-      aria-labelledby="notebook-tab-note"
-      data-testid="notebook-panel-note"
-    >
     {#if missingLink}
       <div class="banner warn" data-testid="notebook-missing-link">
         <span>No note called “{missingLink}”.</span>
@@ -910,7 +1033,26 @@
         </p>
       </Card>
     {:else}
-      <Card title="Note">
+      <Card>
+        <!-- The card's header IS the note's title: one field, where the name
+             of the thing belongs, rather than a card labelled "Note" with the
+             title filed underneath it. -->
+        {#snippet heading()}
+          <!-- Still an <h2>: the card keeps one heading, and a textbox inside a
+               heading contributes its VALUE to the accessible name, so heading
+               navigation announces the note's actual title. -->
+          <h2 class="note-heading">
+            <input
+              id="notebook-title"
+              class="note-title"
+              data-testid="notebook-title"
+              aria-label="Note title"
+              bind:value={title}
+              oninput={onTitleInput}
+              placeholder="Untitled"
+            />
+          </h2>
+        {/snippet}
         {#snippet actions()}
           <span class="muted small" data-testid="notebook-save-state" aria-live="polite">
             {saveState === 'saving' ? 'Saving…' : saveState === 'saved' ? 'Saved' : saveState === 'error' ? 'Could not save' : ''}
@@ -929,25 +1071,17 @@
         {/snippet}
         <div class="stack">
           {#if breadcrumb.length > 0}
+            <!-- Ancestors only: the note's own name is the card's header now,
+                 so repeating it here would say it twice. The separator leads
+                 each crumb rather than trailing it, which is also what stops a
+                 dangling "›" where the self-crumb used to be. -->
             <nav class="crumbs muted small" aria-label="Location" data-testid="notebook-breadcrumb">
-              {#each breadcrumb as crumb (crumb.id)}
+              {#each breadcrumb as crumb, i (crumb.id)}
+                {#if i > 0}<span aria-hidden="true">›</span>{/if}
                 <button class="crumb" onclick={() => openNote(crumb)}>{displayTitle(crumb)}</button>
-                <span aria-hidden="true">›</span>
               {/each}
-              <span>{displayTitle({ title })}</span>
             </nav>
           {/if}
-          <div class="row wrap">
-            <label class="inline" for="notebook-title">Title</label>
-            <input
-              id="notebook-title"
-              class="title-input"
-              data-testid="notebook-title"
-              bind:value={title}
-              oninput={onTitleInput}
-              placeholder="Untitled"
-            />
-          </div>
           <div class="row wrap">
             <label class="inline" for="notebook-parent">Inside</label>
             <select
@@ -1122,205 +1256,6 @@
         title, which is the only thing a page can suggest to that dialog.
       </p>
     </Explainer>
-    </div>
-
-    {#if tab === 'bulk'}
-      <div
-        class="stack"
-        role="tabpanel"
-        id="notebook-panel-bulk"
-        aria-labelledby="notebook-tab-bulk"
-        data-testid="notebook-panel-bulk"
-      >
-        <Card title="Bulk">
-          {#snippet actions()}
-            <span class="muted small" data-testid="notebook-bulk-selected" aria-live="polite">
-              {selectedCount === 0 ? 'Nothing selected' : `${selectedCount} of ${notes.length} selected`}
-            </span>
-          {/snippet}
-          <div class="stack">
-            <p class="muted small">
-              Tick the notes to act on — <em>all nested</em> on a note ticks everything inside it too —
-              then export, tag, move or delete them in one go. Nothing is written until you press an
-              action.
-            </p>
-            <div class="row wrap">
-              <input
-                class="bulk-filter"
-                type="search"
-                data-testid="notebook-bulk-filter"
-                placeholder="Filter by title or tag…"
-                aria-label="Filter the note list"
-                bind:value={bulkFilter}
-              />
-              <button
-                class="btn btn-sm"
-                data-testid="notebook-bulk-select-all"
-                disabled={bulkRows.length === 0}
-                onclick={selectAllVisible}
-              >
-                Select {bulkFilter.trim() ? 'shown' : 'all'} ({bulkRows.length})
-              </button>
-              <button
-                class="btn btn-sm"
-                data-testid="notebook-bulk-select-none"
-                disabled={selectedCount === 0}
-                onclick={selectNone}
-              >
-                Select none
-              </button>
-            </div>
-            {#if notes.length === 0}
-              <p class="muted small" data-testid="notebook-bulk-empty">No notes yet.</p>
-            {:else if bulkRows.length === 0}
-              <p class="muted small" data-testid="notebook-bulk-no-matches">Nothing matches that.</p>
-            {:else}
-              <ul class="bulk-list" data-testid="notebook-bulk-list">
-                {#each bulkRows as row (row.note.id)}
-                  {@const kids = tree.children.get(row.note.id) ?? []}
-                  <li class="bulk-row" style={`--depth:${row.depth}`}>
-                    <label class="bulk-item" class:on={selected.has(row.note.id)}>
-                      <input
-                        type="checkbox"
-                        data-testid="notebook-bulk-check"
-                        data-title={displayTitle(row.note)}
-                        aria-label={`Select ${displayTitle(row.note)}`}
-                        checked={selected.has(row.note.id)}
-                        onchange={() => toggleSelected(row.note.id)}
-                      />
-                      <span class="bulk-title">{displayTitle(row.note)}</span>
-                      {#if row.note.tags.length > 0}
-                        <span class="muted small bulk-tags">{row.note.tags.join(', ')}</span>
-                      {/if}
-                    </label>
-                    {#if kids.length > 0}
-                      <button
-                        class="subtree-btn"
-                        type="button"
-                        data-testid={'notebook-bulk-subtree-' + row.note.id}
-                        title={`Select ${displayTitle(row.note)} and everything inside it`}
-                        aria-label={`Select ${displayTitle(row.note)} and everything inside it`}
-                        onclick={() => selectSubtree(row.note.id)}
-                      >
-                        all nested
-                      </button>
-                    {/if}
-                  </li>
-                {/each}
-              </ul>
-            {/if}
-          </div>
-        </Card>
-
-        <Card title="Actions">
-          <div class="stack">
-            <fieldset class="bulk-action">
-              <legend>Export</legend>
-              <div class="row wrap">
-                <label class="inline" for="notebook-bulk-format">Format</label>
-                <select id="notebook-bulk-format" data-testid="notebook-bulk-format" bind:value={bulkFormat}>
-                  <option value="md">Markdown (.md)</option>
-                  <option value="html">HTML (.html, self-contained)</option>
-                </select>
-                <button
-                  class="btn btn-sm"
-                  data-testid="notebook-bulk-export"
-                  disabled={selectedCount === 0 || bulkBusy}
-                  onclick={bulkExport}
-                >
-                  Export {selectedCount === 0 ? '' : selectedCount} as .zip
-                </button>
-              </div>
-              <p class="muted small">
-                One file per note inside a single .zip, named after its title. Markdown keeps the
-                source with images inlined; HTML is the same self-contained document the single
-                export makes.
-              </p>
-            </fieldset>
-
-            <fieldset class="bulk-action">
-              <legend>Tags</legend>
-              <div class="row wrap">
-                <label class="inline" for="notebook-bulk-tags">Tags</label>
-                <input
-                  id="notebook-bulk-tags"
-                  data-testid="notebook-bulk-tags"
-                  bind:value={bulkTagsText}
-                  placeholder="comma, separated"
-                />
-                <button
-                  class="btn btn-sm"
-                  data-testid="notebook-bulk-tags-add"
-                  disabled={selectedCount === 0 || bulkBusy || parseTags(bulkTagsText).length === 0}
-                  onclick={() => bulkTags('add')}
-                >
-                  Add to {selectedCount === 0 ? 'selected' : selectedCount}
-                </button>
-                <button
-                  class="btn btn-sm"
-                  data-testid="notebook-bulk-tags-remove"
-                  disabled={selectedCount === 0 || bulkBusy || parseTags(bulkTagsText).length === 0}
-                  onclick={() => bulkTags('remove')}
-                >
-                  Remove from {selectedCount === 0 ? 'selected' : selectedCount}
-                </button>
-              </div>
-              <p class="muted small">
-                Adding keeps each note's existing tags and skips ones it already has; removing
-                matches regardless of case.
-              </p>
-            </fieldset>
-
-            <fieldset class="bulk-action">
-              <legend>Move</legend>
-              <div class="row wrap">
-                <label class="inline" for="notebook-bulk-parent">Under</label>
-                <select id="notebook-bulk-parent" data-testid="notebook-bulk-parent" bind:value={bulkParent}>
-                  <option value="">— top level —</option>
-                  {#each bulkTargets as option (option.id)}
-                    <option value={option.id}>{displayTitle(option)}</option>
-                  {/each}
-                </select>
-                <button
-                  class="btn btn-sm"
-                  data-testid="notebook-bulk-move"
-                  disabled={selectedCount === 0 || bulkBusy}
-                  onclick={bulkMove}
-                >
-                  Move {selectedCount === 0 ? 'selected' : selectedCount}
-                </button>
-              </div>
-              <p class="muted small">
-                Selected notes and notes nested inside them are not offered as destinations — a
-                note cannot be moved inside itself.
-              </p>
-            </fieldset>
-
-            <fieldset class="bulk-action">
-              <legend>Delete</legend>
-              <div class="row wrap">
-                <button
-                  class="btn btn-sm btn-danger"
-                  data-testid="notebook-bulk-delete"
-                  disabled={selectedCount === 0 || bulkBusy}
-                  onclick={bulkDelete}
-                >
-                  Delete {selectedCount === 0 ? 'selected' : selectedCount}
-                </button>
-                <span class="muted small">
-                  Nested notes that are not selected move up a level; images stored with the
-                  deleted notes go with them. You will be asked to confirm.
-                </span>
-              </div>
-            </fieldset>
-
-            {#if bulkNote}
-              <p class="muted small" data-testid="notebook-bulk-note" role="status">{bulkNote}</p>
-            {/if}
-          </div>
-        </Card>
-      </div>
-    {/if}
   </div>
 </div>
 
@@ -1344,13 +1279,6 @@
     grid-template-columns: auto 1fr;
   }
 
-  @media (max-width: 52rem) {
-    .layout,
-    .layout.closed {
-      grid-template-columns: 1fr;
-    }
-  }
-
   .sidebar {
     display: flex;
     flex-direction: column;
@@ -1358,6 +1286,28 @@
     position: sticky;
     top: var(--space-3);
     min-width: 0;
+    /* A sticky column cannot be scrolled to: whatever falls past the fold is
+       unreachable. With the bulk block taking the top of it, the library has
+       to scroll inside itself. */
+    /* dvh, not vh: on a phone the URL bar is part of 100vh but not of the
+       screen you can see. */
+    max-height: calc(100dvh - var(--navbar-height) - var(--space-5));
+    overflow-y: auto;
+  }
+
+  @media (max-width: 52rem) {
+    .layout,
+    .layout.closed {
+      grid-template-columns: 1fr;
+    }
+
+    /* Stacked, the library is a band across the top of the page rather than a
+       column beside it — the page's own scrollbar reaches all of it. */
+    .sidebar {
+      position: static;
+      max-height: none;
+      overflow-y: visible;
+    }
   }
 
   .main {
@@ -1441,10 +1391,36 @@
     color: var(--color-primary);
   }
 
-  .title-input {
-    flex: 1;
-    min-width: 12rem;
+  /* The card header IS the title: a field that reads as a heading, ruled
+     underneath rather than boxed, so the header still reads as a header. */
+  .note-heading {
+    flex: 1 1 12rem;
+    min-width: 0;
+    font-weight: 600;
+  }
+
+  .note-title {
+    width: 100%;
+    min-width: 0;
+    border: none;
+    border-bottom: 1.5px solid transparent;
+    background: none;
+    padding: 0;
+    font: inherit;
     font-size: var(--font-size-lg);
+    letter-spacing: var(--tracking-wide);
+    color: var(--text-color);
+  }
+
+  .note-title:hover {
+    border-bottom-color: var(--border-color);
+  }
+
+  /* No `outline: none` here: the stamp ring is how every other field in the
+     app says it has focus, and a title that opted out of it would be the one
+     control that goes quiet. The rule underneath is an extra, not a swap. */
+  .note-title:focus {
+    border-bottom-color: var(--color-primary);
   }
 
   .crumbs {
@@ -1516,138 +1492,78 @@
     white-space: nowrap;
   }
 
-  /* ---- tabs ---- */
-  .tabs {
-    display: flex;
-    gap: var(--space-1);
-    border-bottom: 1.5px solid var(--border-strong-color);
-  }
-
-  .tab {
-    border: 1.5px solid transparent;
-    border-bottom: none;
-    margin-bottom: -1.5px;
-    background: none;
-    color: var(--text-muted-color);
-    font: inherit;
-    font-size: var(--font-size-sm);
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: var(--tracking-wide);
-    padding: var(--space-2) var(--space-4);
-    cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-2);
-  }
-
-  .tab:hover {
-    color: var(--text-color);
-  }
-
-  .tab.on {
-    color: var(--text-color);
-    background: var(--surface-color);
-    border-color: var(--border-strong-color);
-    /* The tab is drawn onto the sheet below: its own edge covers the rule. */
-    border-bottom: 1.5px solid var(--surface-color);
-  }
-
-  .tab-count {
-    font-size: var(--font-size-eyebrow);
-    padding: 0 var(--space-2);
-    border: 1px solid currentColor;
-    line-height: 1.4;
-  }
-
-  .panel-hidden {
-    display: none;
-  }
-
-  /* ---- bulk ---- */
-  .bulk-filter {
-    flex: 1;
-    min-width: 12rem;
-  }
-
-  .bulk-list {
-    list-style: none;
+  /* ---- the library's rows ---- */
+  .pick {
+    flex: none;
+    align-self: center;
     margin: 0;
-    padding: 0;
+  }
+
+  .icon-btn.danger:hover {
+    border-color: var(--color-danger);
+    color: var(--color-danger);
+  }
+
+  /* ---- bulk operations, in the sidebar ---- */
+  .bulk {
     display: flex;
     flex-direction: column;
-    gap: 2px;
-    max-height: 24rem;
-    overflow-y: auto;
-  }
-
-  .bulk-row {
-    display: flex;
-    align-items: stretch;
-    gap: 2px;
-    padding-left: calc(var(--depth, 0) * var(--space-4));
-  }
-
-  .bulk-item {
-    flex: 1;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-3) var(--space-3);
+    border: 1.5px solid var(--color-primary);
+    background: var(--surface-color);
+    /* A <select> is as wide as its longest option unless it is told it may
+       shrink, and one long note title would push the whole block out of the
+       column. Every level down to the control gets min-width: 0. */
     min-width: 0;
+  }
+
+  .bulk-head {
     display: flex;
     align-items: baseline;
+    justify-content: space-between;
     gap: var(--space-2);
-    padding: var(--space-1) var(--space-2);
-    border: 1px solid var(--border-color);
-    background: var(--surface-color);
-    cursor: pointer;
-    overflow-wrap: anywhere;
-  }
-
-  .bulk-item.on {
-    border-color: var(--color-primary);
-    background: var(--color-primary-soft);
-  }
-
-  .bulk-item input {
-    margin: 0;
-    align-self: center;
-  }
-
-  .bulk-tags::before {
-    content: '— ';
-  }
-
-  .subtree-btn {
-    border: 1px solid transparent;
-    background: none;
-    color: var(--text-muted-color);
-    cursor: pointer;
-    padding: 0 var(--space-2);
-    font: inherit;
-    font-size: var(--font-size-eyebrow);
-    text-transform: uppercase;
-    letter-spacing: var(--tracking-wide);
-    white-space: nowrap;
-  }
-
-  .subtree-btn:hover {
-    border-color: var(--color-primary);
-    color: var(--color-primary);
   }
 
   .bulk-action {
-    border: 1px solid var(--border-color);
-    padding: var(--space-2) var(--space-3) var(--space-3);
-    margin: 0;
     display: flex;
     flex-direction: column;
-    gap: var(--space-2);
+    gap: var(--space-1);
+    padding-top: var(--space-2);
+    border-top: 1px dashed var(--border-color);
+    min-width: 0;
   }
 
-  .bulk-action legend {
-    font-size: var(--font-size-eyebrow);
-    letter-spacing: var(--tracking-label);
-    text-transform: uppercase;
-    color: var(--text-muted-color);
-    padding: 0 var(--space-1);
+  .bulk .row {
+    min-width: 0;
+  }
+
+  /* Every control in the column is full width: at 17rem there is no room for
+     a label and its field on one line. */
+  .bulk-action select,
+  .bulk-action input {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .bulk .btn {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .bulk-note:empty {
+    display: none;
+  }
+
+  .link-btn {
+    border: none;
+    background: none;
+    padding: 0;
+    font: inherit;
+    font-size: var(--font-size-sm);
+    color: var(--color-primary);
+    cursor: pointer;
+    text-decoration: underline;
   }
 
   .print-only {

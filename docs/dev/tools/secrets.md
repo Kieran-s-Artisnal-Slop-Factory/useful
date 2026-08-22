@@ -2,7 +2,7 @@
 
 A generator for passwords, keys, tokens and identifiers at `/tools/secrets/`. Twenty-seven cards, each producing one kind of value from the browser's cryptographic random source. The page writes nothing — to IndexedDB, to the URL, or to the console — so a value exists only until it is replaced or the tab is closed.
 
-_Describes the code as of v0.2.0 (2026-08-21; schema v12) — verify against source when in doubt._
+_Describes the code as of v0.2.1 (unreleased; schema v12) — verify against source when in doubt._
 
 ## File map
 
@@ -11,7 +11,7 @@ _Describes the code as of v0.2.0 (2026-08-21; schema v12) — verify against sou
 | [secrets.ts](../../../src/lib/gen/secrets.ts) | Alphabets, the random source, encodings, the identifier builders, and `SECRETS` — the catalogue as data. |
 | [wordlist.json](../../../src/lib/gen/wordlist.json) | The vendored EFF Long Wordlist (7,776 words) with its provenance. Lazily imported. |
 | [build-wordlist.mjs](../../../tools/build-wordlist.mjs) | Regenerates that file from eff.org, with size and duplicate checks. |
-| [SecretsApp.svelte](../../../src/components/apps/SecretsApp.svelte) | The page: one card per catalogue entry, plus four explainers. |
+| [SecretsApp.svelte](../../../src/components/apps/SecretsApp.svelte) | The page: one collapsible `Card` per group (the first open), one sub-card per catalogue entry, plus four explainers. |
 | [secrets.test.ts](../../../src/lib/gen/secrets.test.ts) | 34 unit tests — alphabets, uniformity, encodings, UUID bit layouts, shapes. |
 | [secrets.spec.ts](../../../tests/local/secrets.spec.ts) | The page's promises: shapes, regeneration, options, copy, zero writes. |
 
@@ -70,9 +70,20 @@ The passphrase card needs a list whose size is known, or the entropy it reports 
 
 At 78 KB it is bigger than everything else on the page combined, and only one card uses it, so `SecretsApp` imports it with a dynamic `import()` on mount and hands it to `setWordList()`. Until then the passphrase card says it is loading rather than quietly producing something weaker. Because the list lives in a plain module variable rather than reactive state, the component passes its own `wordsReady` flag into `bitsLabel()` — that argument is what makes the entropy figure appear when the list lands.
 
+## The groups are disclosures
+
+Twenty-seven generators is a long page to read past, so each `GROUPS` entry is a `Card` in its `collapsible` mode — a native `<details>` whose `<summary>` is the card header — and only the first (**Passwords**) is `open`. Four decisions are worth keeping:
+
+- **`<details>`, not `{#if open}`.** A collapsed group keeps its content in the DOM, so every card is still filled on mount and by **Regenerate all**, and opening one shows a value as fresh as the rest. It also keeps the keyboard and the accessibility tree free, and leaves the page's find-in-page working.
+- **The `<h2>` lives inside the `<summary>`**, not instead of it. The page's outline stays `h1` → `h2` (group) → `h3` (generator); a bare summary would make it `h1` → `h3` and the a11y sweep fails on the skipped level.
+- **Independent, not one-at-a-time.** Opening a second group does not close the first: the ask was "start collapsed", which is about the page's first impression, not about enforcing one open section.
+- **Nothing is remembered.** Which groups are open is component `$state` and nothing else — the page's whole promise is that it writes nothing, and a disclosure is not worth a preference row and a migration.
+
+The Playwright consequence is real: a control inside a closed `<details>` keeps a layout box while being unclickable, so `secrets.spec.ts` has an `openGroup(page, slug)` helper and calls it before touching `sec-opt-jwt-secret` (Keys & secrets) and `sec-copy-wifi` (Network & 2FA). Text assertions need no such help — `toHaveText` reads `textContent`, which a closed group still has. The a11y sweep is unaffected in the other direction: its `visible()` test is `offsetParent !== null`, which stays true inside a closed `<details>`, so all 27 generators are still audited for names, labels and contrast.
+
 ## Invariants
 
-- **Nothing is persisted.** No store, no preference, no URL parameter. Both Playwright tests that touch the page compare `dumpAll()` before and after.
+- **Nothing is persisted.** No store, no preference, no URL parameter — including which categories are open. Four cases in `secrets.spec.ts` compare `dumpAll()` before and after, including the one that opens and closes the categories.
 - **No `Math.random`, anywhere.** Every value traces back to `crypto.getRandomValues`.
 - **Alphabets contain no duplicate characters** — a repeat would silently bias the draw. Tested for every set.
 - **An option is clamped, not obeyed**: typing `999` into a length field gives the field's maximum.

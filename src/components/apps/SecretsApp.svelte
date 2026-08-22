@@ -86,6 +86,10 @@
 
   const inGroup = (group: string): SecretDef[] => SECRETS.filter((s) => s.group === group);
 
+  /** A group name as a testid suffix: "Keys & secrets" -> "keys-secrets". */
+  const slug = (group: string): string =>
+    group.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+
   onMount(() => {
     // Fill every card at once so the page is useful the moment it opens.
     regenerateAll();
@@ -111,8 +115,17 @@
     Copy what you need before you go.
   </p>
 
-  {#each GROUPS as group (group)}
-    <Card title={group}>
+  <!--
+    Twenty-seven generators is a long page to read past. Each category is a
+    disclosure so the page opens as a contents list, with only the first
+    category — passwords, what most visitors came for — already open.
+
+    Collapsed groups keep generating: every card is filled on mount and by
+    Regenerate all, whether or not anyone can see it, so opening one shows a
+    value that is as fresh as the rest rather than an empty box.
+  -->
+  {#each GROUPS as group, i (group)}
+    <Card title={group} collapsible open={i === 0} testid={'sec-group-' + slug(group)}>
       <div class="stack">
         {#each inGroup(group) as def (def.id)}
           <div class="secret" data-testid={'sec-card-' + def.id}>

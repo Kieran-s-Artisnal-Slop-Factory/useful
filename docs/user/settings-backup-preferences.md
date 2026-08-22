@@ -2,7 +2,7 @@
 
 Two pages in the sidebar look after the app itself. **Settings** holds appearance, storage, the offline download, backup export/import, and a locked developer section. **Preferences** holds the defaults the tools fill in for you, and shows every value the app has remembered. Everything the app knows lives in this browser on this device — the backup file is the only way to copy it anywhere else.
 
-_Describes the code as of v0.2.0 (2026-08-21; schema v12) — verify against source when in doubt._
+_Describes the code as of v0.2.1 (unreleased; schema v12) — verify against source when in doubt._
 
 ## Settings
 

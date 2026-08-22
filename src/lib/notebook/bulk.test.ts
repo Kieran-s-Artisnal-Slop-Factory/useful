@@ -39,15 +39,13 @@ const NOTES = [
 ];
 
 describe('flattenTree', () => {
-  it('lists the tree depth-first with depths, in sidebar order', () => {
-    const rows = flattenTree(buildTree(NOTES));
-    expect(rows.map((r) => `${r.depth}:${r.note.id}`)).toEqual([
-      '0:a',
-      '1:a1',
-      '2:a1x',
-      '1:a2',
-      '0:b',
-    ]);
+  it('lists the tree depth-first, in sidebar order', () => {
+    expect(flattenTree(buildTree(NOTES)).map((n) => n.id)).toEqual(['a', 'a1', 'a1x', 'a2', 'b']);
+  });
+
+  it('drops nothing: a cyclic parent surfaces at the root rather than vanishing', () => {
+    const cyclic = [note('p', 'P', 'q'), note('q', 'Q', 'p'), note('lone', 'Lone')];
+    expect(flattenTree(buildTree(cyclic)).map((n) => n.id).sort()).toEqual(['lone', 'p', 'q']);
   });
 });
 

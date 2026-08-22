@@ -2,7 +2,7 @@
 
 Three tools under **Time**: countdown **Timers** that ring, buzz and notify when they finish; a **Stopwatch** with laps; and a **Timezones** converter with city search. Timers and the stopwatch remember the moment they were started or due rather than counting ticks, so reloading the page, switching to another tool or leaving the tab in the background never makes them drift.
 
-_Describes the code as of v0.2.0 (2026-08-21; schema v12) — verify against source when in doubt._
+_Describes the code as of v0.2.1 (unreleased; schema v12) — verify against source when in doubt._
 
 ## Timers
 
