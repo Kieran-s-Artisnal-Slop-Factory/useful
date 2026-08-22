@@ -104,6 +104,12 @@ export const ICONS: Record<string, string> = {
   scissors:
     '<circle cx="6" cy="6" r="3"/><path d="M8.12 8.12 12 12"/><path d="M20 4 8.12 15.88"/>' +
     '<circle cx="6" cy="18" r="3"/><path d="M14.8 14.8 20 20"/>',
+  // Lucide "type" — a serif A on its baseline, the text tools.
+  type: '<polyline points="4 7 4 4 20 4 20 7"/><line x1="9" x2="15" y1="20" y2="20"/><line x1="12" x2="12" y1="4" y2="20"/>',
+  // Lucide "ruler" — measuring the distance between two words.
+  ruler:
+    '<path d="M21.3 8.7 8.7 21.3a1 1 0 0 1-1.4 0l-4.6-4.6a1 1 0 0 1 0-1.4L15.3 2.7a1 1 0 0 1 1.4 0l4.6 4.6a1 1 0 0 1 0 1.4z"/>' +
+    '<path d="m7.5 10.5 2 2"/><path d="m10.5 7.5 2 2"/><path d="m13.5 4.5 2 2"/><path d="m4.5 13.5 2 2"/>',
   // Lucide "diff" — a plus over a minus over a rule, the compare tools.
   diff: '<path d="M12 3v14"/><path d="M5 10h14"/><path d="M5 21h14"/>',
   brush:

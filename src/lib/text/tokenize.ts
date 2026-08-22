@@ -150,6 +150,22 @@ const USUALLY_MEDIAL = new Set([
   'mon', 'tue', 'tues', 'wed', 'thu', 'thurs', 'fri', 'sat', 'sun',
 ]);
 
+/**
+ * Is this word — written without its full stop — one that never ends a
+ * sentence? Titles, initials and dotted acronyms.
+ *
+ * Exported for [transform.ts](transform.ts): sentence case has to decide the
+ * same question, and deciding it differently in two places is how `Dr. Smith`
+ * ends up capitalised in one tool and not the other.
+ */
+export function neverEndsSentence(word: string): boolean {
+  const token = word.toLowerCase().replace(/\.$/, '');
+  if (token === '') return false;
+  if (token.length === 1) return true;
+  if (/^(?:\p{L}\.)+\p{L}$/u.test(token)) return true;
+  return NEVER_FINAL.has(token);
+}
+
 /** The dotted token a chunk ends on, lowercased, or null. */
 function trailingAbbreviation(chunk: string): string | null {
   const trimmed = chunk.trimEnd();

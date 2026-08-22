@@ -56,7 +56,7 @@ the app.
 | [time.md](user/time.md) | Timers, stopwatch, timezone conversion |
 | [scheduler.md](user/scheduler.md) | Events and TODOs across list, board and calendar |
 | [calculators.md](user/calculators.md) | Number bases, photography equivalence, file-transfer times |
-| [text-tools.md](user/text-tools.md) | Diff — compare two texts and see exactly what changed |
+| [text-tools.md](user/text-tools.md) | Diff, Similarity and Text analysis — compare, score and count text |
 | [generators.md](user/generators.md) | Themes and colours, gradients, glassmorphism, regex, QR |
 | [secrets.md](user/secrets.md) | Passwords, keys, tokens and identifiers |
 | [logo-generator.md](user/logo-generator.md) | Seeded avatars, identicons, and icon or emoji badges |

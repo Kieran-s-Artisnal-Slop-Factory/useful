@@ -1,0 +1,8 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import TextAnalysisApp from '../../components/apps/TextAnalysisApp.svelte';
+---
+
+<Layout title="Text analysis">
+  <TextAnalysisApp client:only="svelte" />
+</Layout>

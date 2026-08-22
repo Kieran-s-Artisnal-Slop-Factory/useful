@@ -2,6 +2,62 @@
 
 ## Features
 
+- **Text analysis** (`/tools/text-analysis/`): paste text and get its counts,
+  how hard it is to read, what it repeats, and seven ways to change its case.
+  Nothing is saved and the page writes nothing.
+  - **Four lengths, because they disagree.** Characters (what a reader would
+    count), code points, UTF-16 units (what most languages call `.length`) and
+    UTF-8 bytes — for a family emoji, 1, 7, 11 and 25 respectively. Plus words,
+    unique words, sentences, paragraphs, lines, and how long the text takes to
+    read silently or aloud.
+  - **Four readability scores** — Flesch reading ease with its band,
+    Flesch-Kincaid, the Automated Readability Index and SMOG — ported from
+    [readn](https://github.com/Descent098/readn) **with its caveats attached**.
+    An explainer prints each formula with this text's own numbers substituted
+    into it, and the card says plainly that syllable counting is a heuristic,
+    that sentence boundaries are guessed, and that a score is a smell rather
+    than a measurement.
+  - **SMOG stays blank until thirty sentences**, and says how many more it
+    needs. That is the sample size the formula was fitted on; below it the
+    number would be noise, and printing noise next to three real scores is how
+    a page teaches something false.
+  - **What it repeats**: the commonest words, pairs or triples, with a
+    stop-word toggle. N-grams are built inside a sentence — a phrase that
+    straddles a full stop is not a phrase.
+  - **Seven transformations** — sentence case, Capitalize Each Word, lower,
+    UPPER, s̶t̶r̶i̶k̶e̶t̶h̶r̶o̶u̶g̶h̶, W I D E and sPoNgEbOb — each working on whole
+    characters, so an emoji or an accent survives being spaced out or
+    alternated. The result appears in its own box: your text is never changed.
+    - **Sentence case deliberately disagrees with the sentence counter**, and
+      the reason is written down in both places. The Unicode rules refuse to
+      break before a lower-case word, which is right for counting and exactly
+      wrong for a transformation whose input is normally all lower case — so it
+      walks the text itself, while still asking the shared tokenizer whether
+      the word before the stop was a title. `dr. smith` becomes `Dr. smith`.
+
+- **Similarity** (`/tools/similarity/`): score one word against as many others
+  as you like, five ways at once, and see how each score was reached. A port of
+  [speyl](https://github.com/Descent098/speyl) (MIT).
+  - **Jaro, Jaro-Winkler, Levenshtein, Damerau-Levenshtein and Indel** in one
+    sortable table, each with a percentage and its raw reading. They disagree
+    on purpose: Indel forbids substitution, so it measures how much of two
+    words is SHARED; Damerau charges one edit for a swap, because that is what
+    a typo usually is.
+  - **The working is shown, not just the answer.** For the three distance
+    metrics the page draws the whole cost table with the cheapest route
+    highlighted, and **Back**/**Next** walk that route one move at a time in
+    words. For Jaro it draws both words with their matched characters marked,
+    then the window, the matches, the transpositions and the prefix — and the
+    formula with those numbers filled in.
+  - **One table serves all three distance metrics**, because they differ only
+    in which moves are legal. Writing them as three functions would have hidden
+    the only interesting thing about them.
+  - **"Damerau" here is optimal string alignment**, the variant nearly every
+    library means, and its test pins the case that distinguishes it: `CA` to
+    `ABC` is three edits here and two under the unrestricted definition.
+  - **Two limits, both stated on screen**: 200 characters per word (these are
+    words, not documents — the table is n×m) and 200 candidates.
+
 - **Diff** (`/tools/diff/`): paste two texts and see exactly what changed.
   Compare by **line** (side by side or inline), by **word**, or by
   **character**; the summary counts insertions, deletions and changed lines and

@@ -17,7 +17,9 @@ their own browser.
 - **Calculators** — number bases and bit operations, photography equivalence
   and light stops, file-transfer times, napkin math (a formula becomes a
   little calculator, and then a function in Python, JavaScript, Go or Rust),
-  and a text diff by line, word or character that also writes the patch.
+  and three text tools — a diff by line, word or character that also writes
+  the patch, word similarity scored five ways with the working shown, and text
+  analysis with counts, readability scores and case transformations.
 - **Generators** — theme builder and colour conversion, gradients,
   glassmorphism, regex snippets for four languages, QR create and read,
   secrets (passwords, keys, tokens, identifiers), logos (seeded avatars and

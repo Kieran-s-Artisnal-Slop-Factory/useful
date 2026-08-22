@@ -155,8 +155,8 @@ nobody answers.
 |-------|------|----------|----|-------|
 | 0 ✅ | Groundwork: version drift, shared text + base64 modules | — | — | **DONE 2026-08-22.** Unblocks 1–4, 7 |
 | 1 ✅ | Diff | — | — | **DONE 2026-08-22.** |
-| 2 | Similarity | — | — | Shares Phase 0's tokenizer |
-| 3 | Text analysis | — | — | |
+| 2 ✅ | Similarity | — | — | **DONE 2026-08-22.** Shares Phase 0's tokenizer |
+| 3 ✅ | Text analysis | — | — | **DONE 2026-08-22.** |
 | 4 | Base64 | — | — | |
 | 5 | Hashing (+ HMAC, salt & pepper) | — | — | Unblocks 6, 7 |
 | 6 | Encryption & key exchange | `bcryptjs` | — | |
@@ -292,7 +292,7 @@ through `setInputFiles`, and both doc pages say so.
 
 ---
 
-## Phase 2 — Similarity
+## Phase 2 — Similarity — DONE (2026-08-22)
 
 **Goal:** one word against many, scored by several algorithms, with the working
 shown.
@@ -334,12 +334,18 @@ shown.
 
 **Data model:** none.
 
-**Tests:** unit — published pairs for each metric (`kitten`/`sitting` = 3,
-`MARTHA`/`MARHTA` Jaro ≈ 0.944 and Jaro-Winkler ≈ 0.961, `CA`/`ABC` Damerau = 2
-vs Levenshtein 3, Indel on `ABCD`/`ACBD` = 2), symmetry, identity, empty-string
-edges, and normalization staying inside 0–1. Playwright — enter a word plus five
-comparisons, assert ranking order; open the matrix and step the traceback; zero
-DB writes.
+**Tests:** unit — 20 cases: the published pairs (`kitten`/`sitting` = 3,
+`MARTHA`/`MARHTA` Jaro 0.944444 and Jaro-Winkler 0.961111, `DIXON`/`DICKSONX`
+0.766667 / 0.813333, Indel on `ABCD`/`ACBD` = 2), symmetry, identity,
+empty-string edges, grapheme counting, and the traceback's op sequence for
+`kitten`→`sitting`. Playwright — 8 cases including stepping the matrix, the
+Damerau swap, the Jaro formula, sorting, and the two limits. Zero DB writes on
+every one.
+
+**Corrected while building:** the plan said `CA`/`ABC` is 2 under Damerau. That
+is the UNRESTRICTED distance; this ships optimal string alignment (the variant
+almost every library means), where it is 3 — pinned in the tests, because
+"which Damerau" is exactly the kind of thing that gets changed silently.
 
 **Docs:** the shared text-tools pages; the dev page carries a mermaid diagram of
 the DP traceback.
@@ -348,7 +354,7 @@ the DP traceback.
 
 ---
 
-## Phase 3 — Text analysis
+## Phase 3 — Text analysis — DONE (2026-08-22)
 
 **Goal:** paste text, learn about it, and transform it.
 
@@ -388,11 +394,20 @@ the DP traceback.
 **Data model:** none. (`preferences` may remember the last words-per-minute
 setting; one field, mirrored per the standing checklist.)
 
-**Tests:** unit — each metric against hand-computed samples and against a fixed
-paragraph whose numbers are pinned in the test; SMOG refusing under 30
-sentences; each transformation over an emoji/combining-mark/CJK string; sentence
-case not capitalizing after `Dr.`. Playwright — paste text, assert counts;
-run each transformation and copy the result; zero DB writes.
+**Tests:** unit — 28 cases. Each formula is checked against arithmetic done by
+hand on one fixed sentence (Flesch 117.6675, Flesch-Kincaid −2.035, ARI
+−4.0033), SMOG is `null` under thirty sentences and 13.0238 at exactly thirty,
+n-grams do not cross a full stop, and every transformation is run over an emoji
+and an accented letter. Playwright — 5 cases including the SMOG note counting
+down, the stop-word toggle, and the transformations leaving the source text
+untouched. Zero DB writes.
+
+**One thing the plan did not anticipate:** sentence case cannot use
+`sentences()`. The Unicode rules refuse to break before a lower-case word, which
+is right for counting and exactly wrong for a transformation whose input is
+usually all lower case — so it walks the text itself while still asking the
+shared tokenizer whether the word before the stop was a title. Both doc pages
+say so.
 
 **Docs:** the text-tools pages; the user page leads with "these scores are
 heuristics".
