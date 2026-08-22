@@ -1,3 +1,41 @@
+# 0.3.0 (unreleased)
+
+## Other
+
+- **The 0.3.0 wish list is now a plan.** `docs/dev/plans/version-3.md` stays as
+  the raw list of what the release should contain;
+  `docs/dev/plans/version-3-phased.md` is that list reviewed — fifteen phases
+  that can each cut a release on their own, in the shape 0.2.0 used: the
+  standing checklist, the decisions taken up front with their reasons, fourteen
+  open questions each carrying a default the phase can proceed on, a phase
+  overview table, and then a phase per tool with its scope, data model, tests,
+  docs and changelog entries spelled out.
+  - **Twelve new tool pages, one migration, two dependencies.** Only the Docker
+    Compose builder owns documents (`compose_projects`, schema v13); everything
+    else is stateless. `bcryptjs` and `figlet` are the only imports proposed,
+    and each is argued at the phase that wants it — the diff, edit-distance,
+    readability, MD5/SHA-2/SHA-3, cron and placeholder engines are all
+    hand-rolled pure logic with published test vectors, which is the same call
+    0.2.0 made about schema inference and validation.
+  - **The parts that cannot be built as written are named rather than
+    quietly dropped.** WebCrypto has no MD5, SHA-224 or SHA-3 and no
+    finite-field Diffie-Hellman; `crypto.subtle` is missing entirely outside a
+    secure context; SMOG needs thirty sentences before it means anything; and a
+    salted SHA-256 is not password storage. Each has a phase item saying what
+    ships instead and what the page must tell the user.
+  - **A seventh standing-checklist item for this release:** nothing secret is
+    persisted. The hashing, encryption and JWT pages write nothing to IndexedDB
+    — not keys, not plaintext, not tokens — and their specs assert the database
+    is byte-identical across the whole session, because a backup is one plain
+    JSON file and a private key that reached it would stay there.
+
+- **`README.md` and the documentation map caught up with 0.2.1.** The
+  Playgrounds line now says the configuration playground tabulates a document
+  into the searchable data grid and converts between JSON, YAML, TOML and CSV —
+  both shipped, neither mentioned. `docs/README.md` gained the same sentence in
+  its user-docs table, and its Plans section now lists `version-3.md`,
+  `version-3-phased.md` and `far-fetched.md` alongside the older plans.
+
 # 0.2.1 (2026-08-21)
 
 ## Features

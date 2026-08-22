@@ -64,7 +64,7 @@ the app.
 | [image-editor.md](user/image-editor.md) | The layered raster editor (session-only — read the gotchas) |
 | [sprite-editor.md](user/sprite-editor.md) | Pixel art on a character grid |
 | [sql-playground.md](user/sql-playground.md) | Real SQLite and Postgres in the tab |
-| [config-playground.md](user/config-playground.md) | JSON and YAML: validate, prettify, extract a schema, generate samples and code |
+| [config-playground.md](user/config-playground.md) | JSON and YAML: validate, prettify, extract a schema, convert between formats, generate samples and code |
 | [notebook.md](user/notebook.md) | Linked markdown notes — WYSIWYG or source, footnotes, diagrams, export to Markdown, HTML and PDF |
 
 ## Plans
@@ -72,9 +72,13 @@ the app.
 [`dev/plans/`](dev/plans/) holds the planning documents rather than descriptions
 of the code: [plan.md](dev/plans/plan.md) and
 [plan-phases.md](dev/plans/plan-phases.md) are the 0.1.0 product plan and its
-phase list, [version-2.md](dev/plans/version-2.md) is the 0.2.0 plan, and
-[TODO](dev/plans/TODO) is the raw wish list they came from. They record intent at
-a point in time and are not maintained against the code.
+phase list, [version-2.md](dev/plans/version-2.md) is the 0.2.0 plan,
+[version-3.md](dev/plans/version-3.md) is the raw 0.3.0 wish list and
+[version-3-phased.md](dev/plans/version-3-phased.md) the reviewed, phased
+version of it, [far-fetched.md](dev/plans/far-fetched.md) parks what is not
+being built yet, and [TODO](dev/plans/TODO) is the running work list they all
+came from. They record intent at a point in time and are not maintained against
+the code.
 
 ## Keeping these honest
 
