@@ -1,12 +1,40 @@
 
-
-## Features
-
-
+- [ ] Calculators
+    - [ ] Diff
+        - [ ] Look at difference between two sets of text with visualizations for where it differs
+    - [ ] Similarity
+        - [ ] Take in an input word and do similarity analysis on an arbitrary number of comparisson words
+        - [ ] Use the various algorithms from https://github.com/Descent098/speyl
+            - [ ] Jado
+            - [ ] Indel
+            - [ ] Levenshtein
+        - [ ] Create a visualizer to understand how each was calculated per word
+    - [ ] Analysis
+        - [ ] Take in a set of text and do a bunch of analysis
+        - [ ] Difficulty
+            - [ ] Paste in text and do difficulty analysis using the same metrics posed in https://github.com/Descent098/readn
+        - [ ] Character count
+        - [ ] Word count
+        - [ ] Line count
+        - [ ] Byte size
+        - [ ] Sentences
+        - [ ] Paragraphs
+        - [ ] Allow transformations
+            - [ ] Capitalize start of all sentences (sentence case)
+            - [ ] Capitalize start of all words (capitalize case)
+            - [ ] Lowercase all text
+            - [ ] Uppercase all text
+            - [ ] strikethrough all text
+            - [ ] wide-text (e.g. `Aesthetic` becomes `A E S T H E T I C`)
+            - [ ] spongebob case (e.g. `Aesthetic` becomes `aEsThETiC`)
 - [ ] Images
     - [ ] Base64 
+        - [ ] Text encode
+        - [ ] Text decode
         - [ ] Image encode
+            - [ ] Also support base64 data url
         - [ ] Image Decode
+            - [ ] Also support base64 data url
 - [ ] Playgrounds
     - [ ] HTTP playground
         - [ ] httpie/postman clone
@@ -46,7 +74,210 @@
             - [ ] Lookup order: Multi-step --> Environment --> Global
         - [ ] Warning on CORs error, and push someone towards downloading the app version
 - [ ] Generators
+    - [ ] Hash & Encrypt
+        - [ ] for text input
+            - [ ] Hash
+                - [ ] All Sha Variants
+                    - [ ] 1
+                    - [ ] 224
+                    - [ ] 256
+                    - [ ] 384
+                    - [ ] 512
+                    - [ ] 3
+                - [ ] MD5
+                - [ ] 
+            - [ ] Encrypt
+                - [ ] Bcrypt
+                - [ ] RSA
+                - [ ] One time Pad
+                - [ ] AES
+                - [ ] Diffie Hellman
+        - [ ] For features that make sense
+            - [ ] Allow salt + peppering
     - [ ] JWT
         - [ ] Encode and decode
         - [ ] Same featureset as https://www.jwt.io/
-    - [ ] 
+    - [ ] ASCII Art
+        - [ ] Image mode
+            - [ ] like https://generator-ascii.art/
+        - [ ] Text mode
+            - [ ] Add a dozen options, make sure you can source the licenses and attributions for them
+                - [ ] Make sure to have at least
+                    - [ ] 1 blocky 3d one
+                    - [ ] 1 stroke-based one
+                    - [ ] 1 with flames
+                    - [ ] 1 made of squares (`█`)
+    - [ ] File tree
+        - [ ] Use https://trees.software/ to allow users to build up their file tree
+            - [ ] Can also copy result of `dir` or `ls` to have it build out for them
+        - [ ] Generates either an ASCII filetree or an image-based one
+            - [ ] ASCII one should be similar to this site https://asciitools.com/tree
+                - [ ] Should allow for showing emojiis to represent files
+                    - [ ] Specify by a folder/file split (e.g. 📂 for folder and 📄 for files would give you something like `📂folder` and `📄filename.extension`)
+                    - [ ] Be able to specify by file extension (e.g. 📄 default with 🖼️ for anything that ends in `.png` or `.jpg`)
+            - [ ] Image one should generate a copy-able or downloadable image
+            - [ ] Shared options
+                - [ ] Specify trailing `/` for folders
+                - [ ] root
+                    - [ ] Show root (checkbox)
+                    - [ ] Show root as `.`
+                    - [ ] Name root
+                - [ ] Show full paths (e.g. `file.md` would be `/full/path/to/file.md`)
+    - [ ] Docker Compose
+        - [ ] Used to build compose files
+        - [ ] Create services
+            - [ ] Specify image
+            - [ ] Container configuration
+                - [ ] Container name
+                - [ ] User / UID:GID
+                - [ ] Advanced
+                    - [ ] Working directory
+                    - [ ] Entrypoint
+                    - [ ] Command
+                    - [ ] TTY
+                    - [ ] Hostname
+                    - [ ] stdin_open
+                    - [ ] Privileged
+                    - [ ] Depends_on 
+                        - [ ] Select dropdown that allows other existing services
+                        - [ ] condition
+                            - [ ] service_started
+                            - [ ] service_healthy
+                            - [ ] service_completed_successfully
+                        - [ ] required
+                        - [ ] restart
+                    - [ ] Lifecycle
+                        - [ ] healthcheck config
+                            - [ ] Test
+                            - [ ] Interval
+                            - [ ] Timeout
+                            - [ ] Retries
+                            - [ ] Start period
+                            - [ ] Start interval
+                            - [ ] Disable
+                        - [ ] Restart policy
+                        - [ ] Post-start hooks
+                        - [ ] Pre-stop hooks
+                        - [ ] Post-stop hooks
+                    - [ ] Resources
+                        - [ ] CPU limit
+                        - [ ] Memory limit
+                        - [ ] Advanced
+                            - [ ] CPU reservation
+                            - [ ] Memory reservation
+                            - [ ] PIDs limit
+                            - [ ] GPU/device reservations
+                            - [ ] Shared memory size
+            - [ ] Networking
+                - [ ] ports
+                    - [ ] TCP/UDP
+                    - [ ] Host IP
+                    - [ ] Port ranges
+                - [ ] Choose/create Networks
+                    - [ ] Bridge (default)
+                    - [ ] Host 
+                        - [ ] Include warning and disable ports for services that specify a host network
+                    - [ ] ipvlan
+                        - [ ] include warnings and prerequisites https://docs.docker.com/engine/network/drivers/ipvlan/
+                    - [ ] macvlan
+                        - [ ] Include warning and prerequisites https://docs.docker.com/engine/network/drivers/macvlan/
+                - [ ] Advanced
+                    - [ ] DNS
+                    - [ ] Extra hosts
+                    - [ ] IPv4 address
+                    - [ ] IPv6 address
+            - [ ] environment variables
+                - [ ] env_file
+                - [ ] Environment variable interpolation
+                - [ ] Secrets
+            - [ ] storage
+                - [ ] Volume(s)
+                    - [ ] Named or not
+                    - [ ] Read-only
+                - [ ] Bind mount(s)
+                    - [ ] Read-only 
+                - [ ] tmpfs
+                    - [ ] Warn that it requires linux and other warnings https://docs.docker.com/engine/storage/tmpfs/
+        - [ ] Include templates
+            - [ ] Overall templates for tech stacks as a place to start, or download a ready-to-go project to experiment with. Some include source code, others include steps in readme of how to setup project source (for systems that the default source code changes often)
+                - [ ] wordpress + db
+                - [ ] flask
+                    - [ ] Include hello world source code
+                - [ ] nodejs
+                    - [ ] Include hello world source code
+                - [ ] astro
+                - [ ] django + postgresql
+                - [ ] nextjs
+                - [ ] fastapi
+                    - [ ] Include hello world source code
+                - [ ] MERN stack
+                    - [ ] Include hello world source code
+                - [ ] go HTTP server
+                    - [ ] Include hello world source code
+            - [ ] Individual service templates you can inject into your current config
+                - [ ] dbs
+                    - [ ] redis
+                    - [ ] postgres
+                    - [ ] valkey
+                - [ ] Frameworks
+                    - [ ] flask
+                    - [ ] fastapi
+                    - [ ] nextjs
+                    - [ ] go http standard lib
+                    - [ ] go fiber
+                    - [ ] sveltekit
+                    - [ ] tanstack
+        - [ ] References
+            - [ ] https://compose.new/
+            - [ ] https://usetoolsuite.com/tools/docker-compose-builder/
+    - [ ] Crontab
+        - [ ] Visualize and create crontabs easily
+        - [ ] Explain where to put the crontab
+        - [ ] reference https://crontab.guru/
+    - [ ] Placeholders
+        - [ ] Text
+            - [ ] Lorem Ipsum
+            - [ ] http://officeipsum.com/
+            - [ ] Look into using a tiny LLM to drive generating text based on users prompt
+        - [ ] Images
+            - [ ] Formats
+                - [ ] SVG
+                - [ ] PNG
+                - [ ] JPG
+            - [ ] Types
+                - [ ] Random noise
+                    - [ ] Set blur
+                    - [ ] frequency
+                    - [ ] Background color
+                    - [ ] Noise color
+                - [ ] Flow-field pattern
+                    - [ ] Flow stroke color
+                    - [ ] Background color
+                - [ ] Old material design geometry
+                    - [ ] Examples
+                        - [ ] https://images.hdqwalls.com/wallpapers/material-design-colors-8k-2q.jpg
+                        - [ ] https://wallpapercave.com/wp/wp1813073.jpg
+                - [ ] Gradients
+                - [ ] Plain color placeholder
+                    - [ ] default to gray color
+                - [ ] Plain color with configurable heading and sub-heading
+                - [ ] A lucide icon with a configurable background and icon color
+                    - [ ] User
+                    - [ ] Mountian
+                    - [ ] Camera
+                    - [ ] Smiley
+                - [ ] premade vector drawings
+                    - [ ] A handful of sketchbook style nature scenes
+                    - [ ] A handful of sports scenes
+                    - [ ] A handful of city scenes
+            - [ ] settings
+                - [ ] Width
+                - [ ] Heigh
+                - [ ] Aspect ratio
+                - [ ] number of images to export
+            - [ ] Provide a links section to other providers for good placeholders
+                - [ ] https://unsplash.com
+                - [ ] https://www.pexels.com/
+                - [ ] https://placehold.co/
+                - [ ] https://pixabay.com/
+
