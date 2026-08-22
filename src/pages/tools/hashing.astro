@@ -1,0 +1,8 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import HashApp from '../../components/apps/HashApp.svelte';
+---
+
+<Layout title="Hashing">
+  <HashApp client:only="svelte" />
+</Layout>
