@@ -25,8 +25,9 @@ An offline-only, local-first app there is no server, no account, and no network 
   identicons, or an icon/emoji badge), hashing (MD5 through SHA-3 and SHAKE,
   with HMAC, salt and pepper), encryption (AES with a password, RSA key pairs,
   ECDH key agreement, bcrypt and a one-time pad), JWTs (decode, verify,
-  sign) and ASCII art (a picture as characters, or words as a banner in one
-  of fourteen vendored FIGlet fonts).
+  sign), ASCII art (a picture as characters, or words as a banner in one of
+  fourteen vendored FIGlet fonts) and file trees (built by hand or read back
+  from a pasted `ls`, `dir` or `tree` listing).
 - **Notes** — a notebook of linked markdown notes: WYSIWYG or raw source
   over one string, `[[wiki links]]` with computed backlinks and aliases that
   survive renames, footnotes, mermaid diagrams, KaTeX maths, pasted images,

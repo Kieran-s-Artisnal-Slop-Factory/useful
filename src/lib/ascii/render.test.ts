@@ -65,6 +65,15 @@ describe('asciiSvg', () => {
     expect(svg).toContain(`textLength="${Math.round(4 * 20 * ADVANCE_EM)}"`);
   });
 
+  it('lets a caller turn that off, for rows that can hold a double-width glyph', () => {
+    // The file tree does: fitting a row with an emoji in it to the
+    // single-width grid squeezes the line and the branch columns stop lining
+    // up with the rows above.
+    const svg = asciiSvg(art(['├── 📂 src']), { fitRows: false });
+    expect(svg).not.toContain('textLength');
+    expect(svg).toContain('<text x="0"');
+  });
+
   it('places coloured runs at explicit columns and paints each one', () => {
     const svg = asciiSvg(art(['ab'], [['#ff0000', '#00ff00']]), { fontSize: 10 });
     expect(svg).toContain('<tspan x="0" fill="#ff0000">a</tspan>');

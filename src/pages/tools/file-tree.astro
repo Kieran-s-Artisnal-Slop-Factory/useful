@@ -1,0 +1,8 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import FileTreeApp from '../../components/apps/FileTreeApp.svelte';
+---
+
+<Layout title="File tree">
+  <FileTreeApp client:only="svelte" />
+</Layout>

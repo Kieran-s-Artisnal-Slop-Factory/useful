@@ -35,6 +35,16 @@ export interface RenderOptions {
   background?: string | null;
   /** Ink colour for art with no per-character colours. */
   foreground?: string;
+  /**
+   * Stretch each uncoloured row to the full grid width with `textLength`.
+   *
+   * Right for a picture, where every cell is one ordinary character and the
+   * grid must hold exactly. Wrong wherever a row can contain a double-width
+   * glyph — an emoji in a file tree — because fitting that row to the
+   * single-width grid squeezes the whole line and the branch columns stop
+   * lining up with the rows above. Default on.
+   */
+  fitRows?: boolean;
 }
 
 interface Geometry {
@@ -133,10 +143,8 @@ export function asciiSvg(art: AsciiArt, options: RenderOptions = {}): string {
       parts.push(`<text y="${y}">${spans}</text>`);
     } else {
       if (line.trim() === '') return;
-      parts.push(
-        `<text x="0" y="${y}" fill="${escapeXml(fg)}" textLength="${g.width}" ` +
-          `lengthAdjust="spacing">${escapeXml(line)}</text>`
-      );
+      const fit = options.fitRows === false ? '' : ` textLength="${g.width}" lengthAdjust="spacing"`;
+      parts.push(`<text x="0" y="${y}" fill="${escapeXml(fg)}"${fit}>${escapeXml(line)}</text>`);
     }
   });
 

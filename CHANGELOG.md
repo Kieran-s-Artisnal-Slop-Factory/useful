@@ -2,6 +2,43 @@
 
 ## Features
 
+- **File tree** (`/tools/file-tree/`): the `├── └──` tree every README has,
+  built by clicking or read back from a real directory listing. Nothing is
+  written anywhere; a tree worth keeping leaves as a JSON file that re-imports
+  exactly.
+  - **Six listing formats go in, and the page works out which one it is.**
+    `ls`, `ls -1`, `ls -R`, `dir`, `dir /b /s` and `tree`'s own output (both
+    the Unix shape and Windows `tree /f`, where files are indented with no
+    connector at all), plus a tree typed by hand with indentation. Depth comes
+    from the COLUMN a name starts at rather than from counting connectors,
+    which is what lets one parser read all the drawn formats — including this
+    app's own pure-ASCII output.
+  - **A line that could not be read is listed, not dropped.** Every parser
+    reports the line number, the text and the reason, and the page shows them
+    under the result — a listing that half-worked says which half. The noise
+    every listing carries (`total 24`, the volume banner, `2 directories, 3
+    files`, `.` and `..`) is recognised and skipped silently, so the warnings
+    mean something.
+  - **The listing's own root name survives.** `Directory of C:\myapp` gives a
+    tree called `myapp`, and `dir /b /s` output is rooted at the common prefix
+    of its paths — stopping one segment short, so the project directory is the
+    root rather than five empty levels under `C:`. A first line that only says
+    "here" (`.`, `C:.`) falls back to the default, and a first line is only
+    treated as the root when it is the *only* line at the outer level:
+    otherwise those are siblings, and eating the first would silently reparent
+    the rest.
+  - **A folder cannot be dropped inside itself.** Every edit is a pure
+    function returning a new tree, and `move()` refuses a move into itself,
+    into one of its own descendants, or onto its current parent — the
+    alternative is a subtree that quietly leaves the tree with no way back.
+    The drag is pointer-based, so it works with a finger as well as a mouse.
+  - **Text, SVG, PNG or JSON out**, with a pure-ASCII drawing for terminals
+    that mangle box characters, emoji by kind or by an editable extension
+    table, and the root shown, hidden, dotted or renamed. The SVG turns OFF
+    the grid-fitting the ASCII-art tool needs: an emoji is two cells wide, and
+    stretching a row that holds one to a single-width grid bends the branch
+    columns out of line with the rows above.
+
 - **ASCII art** (`/tools/ascii-art/`): a picture rendered as characters, or
   your words as a banner in one of fourteen FIGlet fonts. Both halves run on
   this device, and nothing — not the image, not your words, not the font you

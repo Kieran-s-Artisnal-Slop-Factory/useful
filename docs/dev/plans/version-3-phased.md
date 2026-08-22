@@ -162,7 +162,7 @@ nobody answers.
 | 6 ✅ | Encryption & key exchange | `bcryptjs` | — | **DONE 2026-08-22.** |
 | 7 ✅ | JWT | — | — | **DONE 2026-08-22.** Built on Phase 5's key plumbing |
 | 8 ✅ | ASCII art (image + text) | `figlet` | — | **DONE 2026-08-22.** Vendors 14 fonts; the build refuses unlicensed ones |
-| 9 | File tree | — | — | |
+| 9 ✅ | File tree | — | — | **DONE 2026-08-22.** Six listing formats in, four ways out |
 | 10 | Crontab | — | — | |
 | 11 | Placeholders (text + images) | — | — | |
 | 12 | Docker Compose builder | — | **v13** | `compose_projects` |
@@ -714,7 +714,7 @@ the first release whose install precache carries fonts.
 
 ---
 
-## Phase 9 — File tree
+## Phase 9 — File tree — DONE (2026-08-22)
 
 **Goal:** build a file tree by hand or from a directory listing, and get it back
 as text or as a picture.
@@ -745,12 +745,40 @@ as text or as a picture.
 **Data model:** none — a tree is typed in one sitting and exported as JSON if it
 is worth keeping. (Revisit only if a library turns out to be wanted.)
 
-**Tests:** unit — each listing parser against captured real output (Linux `ls
--R`, Windows `dir`, `dir /b /s`, `tree /f`), the ASCII renderer against expected
-strings (including the last-child corner and deep nesting), extension→emoji
-rules, root options, full-path mode. Playwright — paste a listing, assert the
-rendered tree; toggle emoji and trailing slashes; download the SVG; zero DB
-writes.
+**Tests:** unit — 57 cases across
+[model.test.ts](../../../src/lib/tree/model.test.ts) (every edit proved not to
+mutate its input, the three cycle refusals in `move`, sorting, `fromEntries`
+inferring folders and promoting a file that turned out to have children, and
+the import validator naming the node it refused),
+[parse.test.ts](../../../src/lib/tree/parse.test.ts) (all six formats against
+output shaped exactly as the real commands print it — volume banners, `.` and
+`..`, `File(s)` summaries and all — plus the sniffer, the root-name rule and
+the warnings) and [render.test.ts](../../../src/lib/tree/render.test.ts) (both
+charsets to the character, the last-child corner, deep nesting, all four root
+modes, full paths, both emoji modes, an edited rule table, and a dotfile having
+no extension). Playwright — 14 zero-write cases in
+[file-tree.spec.ts](../../../tests/local/file-tree.spec.ts), including a real
+pointer drag that re-parents a file, a drag refused for putting a folder inside
+itself, and the `.json` export read back into the same tree.
+
+**Two things the plan did not anticipate, both now in the code:**
+
+1. **Depth is read from the column the name starts at**, not by counting
+   connectors. That is what makes ONE parser read Unix `tree`, Windows `tree
+   /f` (which indents files with no connector at all), this app's own ASCII
+   fallback, and a hand-typed indented tree.
+2. **The SVG renderer needed a way to stop fitting rows to the grid.**
+   `asciiSvg` pins each row with `textLength` so a picture holds its shape;
+   an emoji is two cells wide, so a tree row containing one gets squeezed and
+   the branch columns stop lining up. Phase 8's renderer grew a `fitRows`
+   option for exactly this, and the canvas is sized with a `displayWidth()`
+   that counts cells rather than UTF-16 units.
+
+**Deviation from the scope:** the image output goes through Phase 8's
+[ascii/render.ts](../../../src/lib/ascii/render.ts) rather than a second
+monospace renderer over [svg/build.ts](../../../src/lib/svg/build.ts) (which it
+uses for escaping). One renderer means an option added to the text output is in
+the SVG and the PNG for free.
 
 **Docs:** `docs/dev/tools/file-tree.md`, `docs/user/file-tree.md`.
 
