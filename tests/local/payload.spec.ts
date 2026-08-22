@@ -21,6 +21,10 @@ const HEAVY = [
   { label: 'city dataset', match: /cities/i },
   { label: 'CodeMirror', match: /codemirror|lezer/i },
   { label: 'YAML parser', match: /yaml/i },
+  // The config playground's convert dialog is the only thing that reads TOML,
+  // and it imports the parser inside the conversion — so not even that page
+  // pays for it until someone asks for TOML.
+  { label: 'TOML parser', match: /smol-toml|\btoml\b/i },
   // 78 KB for one card on the secrets page — it must arrive on its own.
   { label: 'EFF word list', match: /wordlist/i },
   // The three logo engines: 2.0 MB, 826 KB and 328 KB of chunk between them.

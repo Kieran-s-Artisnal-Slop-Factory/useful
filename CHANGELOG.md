@@ -2,6 +2,38 @@
 
 ## Features
 
+- **The configuration playground converts between formats.** A **Convert**
+  button beside Prettify opens a window that rewrites the document as
+  **JSON**, **YAML**, **TOML** or **CSV**, in any direction: pick From and To,
+  and the result appears syntax-highlighted with **Copy** and a **Download**
+  named for its format. It converts as either dropdown moves, writes nothing,
+  and never touches the document in the editor.
+  - **Everything pivots through a plain value**, so no formatting detail can
+    travel from the source into the target — and the window says plainly what
+    that costs, under the result rather than in a footnote: comments belong to
+    the text and do not survive, YAML anchors expand into copies, TOML dates
+    become ISO-8601 strings, and CSV is a table rather than a tree.
+  - **CSV has no types, so the reader does not invent any.** A cell becomes a
+    number or a boolean only when the text round-trips exactly, which is what
+    keeps `007`, `1.0` and `+1` as strings and a zip code intact. Writing CSV
+    goes through the Data card's own tabulation, so the columns a conversion
+    produces are the columns the page already showed you.
+  - **Two shapes are refused by name** rather than approximated: TOML cannot
+    spell a document whose root is an array or a scalar, and CSV needs rows to
+    make.
+  - New dependency **`smol-toml`** (MIT), imported inside the conversion so
+    the parser never reaches the page until someone picks TOML — with a
+    `TOML parser` matcher in `payload.spec.ts` standing over that. Prism's
+    `toml` and `csv` grammars joined the one Prism entry point.
+
+- **Pressing New note in the notebook now puts the caret in its title**, with
+  `Untitled` selected, so typing names the note. The three shared fields
+  (title, tags, Inside) are disabled for the few milliseconds between asking
+  for a note and its fields arriving: that snapshot belongs to whichever note
+  is open, so a keystroke landing in the gap renamed the note you were leaving
+  — which is never what pressing New note meant. The body needed no lock; the
+  editor already reports its changes against the note id it was mounted with.
+
 - **The notebook's bulk operations moved into the library.** The **Note** /
   **Bulk** tab strip is gone and the page is always the note: every row of the
   sidebar tree now carries a **checkbox**, and ticking one raises the bulk

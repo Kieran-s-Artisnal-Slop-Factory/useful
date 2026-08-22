@@ -389,6 +389,38 @@ test.describe('notebook', () => {
     assertInvariants(await app.dumpAll(), 'after bulk operations');
   });
 
+  test('a new note takes the caret, and its fields are locked until it is the open one', async ({
+    app,
+  }) => {
+    const { page } = app;
+    await app.goto('/tools/notebook/');
+    await newNote(page);
+    await page.getByTestId('notebook-title').fill('First');
+    await expect(page.getByTestId('notebook-save-state')).toHaveText('Saved');
+
+    // Pressing New note puts the caret in the new note's title with the
+    // placeholder selected, so typing names it rather than reaching for it.
+    await page.getByTestId('notebook-new').click();
+    await expect(page.getByTestId('notebook-title')).toBeFocused();
+    await expect(page.getByTestId('notebook-title')).toHaveValue('Untitled');
+    await page.keyboard.type('Second');
+    await expect(page.getByTestId('notebook-title')).toHaveValue('Second');
+    await expect(page.getByTestId('notebook-save-state')).toHaveText('Saved');
+
+    // Typing named the NEW note; the first one still has its own name, which
+    // is the whole point of the lock.
+    const rows = await app.dump('notes');
+    expect(rows.map((r) => r.title).sort()).toEqual(['First', 'Second']);
+    expect(rows).toHaveLength(2);
+
+    // The fields are enabled again once the note is open — the lock is for
+    // the switch, not a mode.
+    await expect(page.getByTestId('notebook-title')).toBeEnabled();
+    await expect(page.getByTestId('notebook-tags')).toBeEnabled();
+    await expect(page.getByTestId('notebook-parent')).toBeEnabled();
+    assertInvariants(await app.dumpAll(), 'after creating two notes in a row');
+  });
+
   test('the sidebar deletes one note, and folding the library drops the selection', async ({ app }) => {
     const { page } = app;
     await app.goto('/tools/notebook/');

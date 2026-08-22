@@ -102,7 +102,25 @@
   let exportNote = $state<string | null>(null);
   let printHtml = $state('');
   let editor: MarkdownEditor | undefined = $state();
+  let titleField: HTMLInputElement | undefined = $state();
   let destroyed = false;
+
+  /**
+   * True from the moment a note is asked for until its fields are on screen.
+   *
+   * Creating a note writes a row and re-reads the store before the snapshot
+   * can be swapped, and for those few milliseconds the title, tags and parent
+   * on screen still belong to the note that is on its way out — so a keystroke
+   * that lands in them renames THAT note, which is never what someone pressing
+   * "New note" meant. The three fields are disabled for the duration; the body
+   * needs no lock because the editor reports its changes against the note id
+   * it was mounted with, and they are written to that note.
+   *
+   * The alternative — swapping the snapshot optimistically and writing the row
+   * afterwards — closes the window without a lock, but puts a note on screen
+   * that does not exist yet. A lock that lasts a frame is the cheaper honesty.
+   */
+  let switching = $state(false);
 
   // ---- bulk ----------------------------------------------------------------
   /**
@@ -221,6 +239,8 @@
     exportNote = null;
     saveState = null;
     missingLink = null;
+    // The fields now describe the note on screen; typing in them is safe again.
+    switching = false;
     const store = noteAssetStore(note.id);
     await store.prime?.();
     if (destroyed || currentId !== note.id) return;
@@ -232,15 +252,32 @@
   }
 
   async function createNote(newTitle: string, parent: string | null) {
-    const row = await put<Note>(
-      'notes',
-      withSyncFields({ title: newTitle, body_md: '', aliases: [], parent_id: parent, tags: [] })
-    );
-    await refresh();
-    const created = notes.find((n) => n.id === row.id);
-    if (created) {
-      if (parent) collapsed = new Set([...collapsed].filter((id) => id !== parent));
-      await openNote(created);
+    switching = true;
+    let created: Note | undefined;
+    try {
+      const row = await put<Note>(
+        'notes',
+        withSyncFields({ title: newTitle, body_md: '', aliases: [], parent_id: parent, tags: [] })
+      );
+      await refresh();
+      created = notes.find((n) => n.id === row.id);
+      if (created) {
+        if (parent) collapsed = new Set([...collapsed].filter((id) => id !== parent));
+        await openNote(created);
+      }
+    } finally {
+      // `openNote` clears it as soon as the snapshot lands; this covers the
+      // path where the row cannot be found and it never runs.
+      switching = false;
+    }
+    // A note born as "Untitled" is waiting to be named, so the caret goes
+    // there with the placeholder selected — type and it is named, which is
+    // what pressing "New note" and typing was always trying to do. A note
+    // created from a `[[link]]` already has the name the link gave it, so its
+    // title is left alone.
+    if (created && newTitle === 'Untitled') {
+      await tick();
+      titleField?.select();
     }
     flash('Note created.');
   }
@@ -1047,8 +1084,10 @@
               class="note-title"
               data-testid="notebook-title"
               aria-label="Note title"
+              bind:this={titleField}
               bind:value={title}
               oninput={onTitleInput}
+              disabled={switching}
               placeholder="Untitled"
             />
           </h2>
@@ -1089,6 +1128,7 @@
               data-testid="notebook-parent"
               value={parentId ?? ''}
               onchange={(e) => onParentChange(e.currentTarget.value)}
+              disabled={switching}
             >
               <option value="">— top level —</option>
               {#each parentOptions as option (option.id)}
@@ -1101,6 +1141,7 @@
               data-testid="notebook-tags"
               bind:value={tagsText}
               onchange={onTagsChange}
+              disabled={switching}
               placeholder="comma, separated"
             />
           </div>

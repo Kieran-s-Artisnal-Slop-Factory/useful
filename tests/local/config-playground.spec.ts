@@ -318,6 +318,71 @@ test.describe('config playground', () => {
     expect(errors).toEqual([]);
   });
 
+  test('convert rewrites the document in another format, and leaves the original alone', async ({
+    app,
+  }) => {
+    const { page } = app;
+    await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+    await app.goto('/tools/config-playground/');
+    const before = await app.dumpAll();
+
+    // Nothing to convert until there is a document.
+    await expect(page.getByTestId('config-convert')).toBeDisabled();
+    await setDocument(page, JSON.stringify({ server: { host: 'localhost', port: 8080 }, debug: true }));
+    await page.getByTestId('config-convert').click();
+    await expect(page.getByTestId('config-convert-dialog')).toBeVisible();
+
+    // It opens on the format the page already sniffed, and offers all four.
+    await expect(page.getByTestId('config-convert-from')).toHaveValue('json');
+    expect(await page.getByTestId('config-convert-to').locator('option').allTextContents()).toEqual([
+      'JSON',
+      'YAML',
+      'TOML',
+      'CSV',
+    ]);
+
+    // JSON -> YAML, highlighted rather than dumped as plain text.
+    await expect(page.getByTestId('config-convert-output')).toContainText('host: localhost');
+    await expect(page.locator('[data-testid="config-convert-output"] .token').first()).toBeVisible();
+
+    // JSON -> TOML: a table per object, and the parser arrives only now.
+    await page.getByTestId('config-convert-to').selectOption('toml');
+    await expect(page.getByTestId('config-convert-output')).toContainText('[server]');
+    await expect(page.getByTestId('config-convert-output')).toContainText('port = 8080');
+
+    // JSON -> CSV: an object is the path/type/value view, and says it flattened.
+    await page.getByTestId('config-convert-to').selectOption('csv');
+    await expect(page.getByTestId('config-convert-output')).toContainText('path,type,value');
+    await expect(page.getByTestId('config-convert-output')).toContainText('server.host,string,localhost');
+    await expect(page.getByTestId('config-convert-warnings')).toContainText('dotted columns');
+
+    // Reading it as the wrong format fails by name rather than half-converting.
+    await page.getByTestId('config-convert-from').selectOption('toml');
+    await expect(page.getByTestId('config-convert-error')).toContainText('as TOML');
+    await expect(page.getByTestId('config-convert-output')).toHaveCount(0);
+    await page.getByTestId('config-convert-from').selectOption('json');
+
+    // The result goes to the clipboard, and the file is named for its format.
+    await page.getByTestId('config-convert-to').selectOption('yaml');
+    await expect(page.getByTestId('config-convert-download')).toContainText('converted.yaml');
+    await page.getByTestId('config-convert-copy').click();
+    await expect(page.getByTestId('config-convert-copy')).toHaveText('Copied');
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toContain('host: localhost');
+
+    const download = page.waitForEvent('download');
+    await page.getByTestId('config-convert-download').click();
+    expect((await download).suggestedFilename()).toBe('converted.yaml');
+
+    // Escape closes it, and the document in the editor is exactly as it was.
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('config-convert-dialog')).toHaveCount(0);
+    await expect(page.locator('.cm-content')).toContainText('"server"');
+    await expect(page.getByTestId('config-valid-badge')).toBeVisible();
+
+    // A converter converts; it never writes.
+    expect(await app.dumpAll()).toEqual(before);
+  });
+
   test('data is tabulated only on demand, and goes stale honestly', async ({ app }) => {
     const { page } = app;
     await app.goto('/tools/config-playground/');

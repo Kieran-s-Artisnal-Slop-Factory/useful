@@ -6,7 +6,7 @@ _Describes the code as of v0.2.1 (unreleased; schema v12) — verify against sou
 
 ## Your notes
 
-The left-hand column is the tree. **New note** makes one at the top level; the **+** beside any note makes one *inside* it, so a note is also a folder — there is no separate folder thing to create, and the **×** beside it deletes that note. The ▾ / ▸ arrow collapses a branch, and the tick-box takes the note into a [bulk operation](#many-notes-at-once). Click a note to open it; the one you have open is remembered and reopened next time, and the **‹ Notes** button folds the column away when you want the width.
+The left-hand column is the tree. **New note** makes one at the top level and puts the caret straight in its title with `Untitled` selected, so you can name it by typing; the **+** beside any note makes one *inside* it, so a note is also a folder — there is no separate folder thing to create, and the **×** beside it deletes that note. The ▾ / ▸ arrow collapses a branch, and the tick-box takes the note into a [bulk operation](#many-notes-at-once). Click a note to open it; the one you have open is remembered and reopened next time, and the **‹ Notes** button folds the column away when you want the width.
 
 Type in the search box and the tree becomes a flat list of every note whose title, tags or old titles contain what you typed.
 

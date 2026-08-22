@@ -46,7 +46,7 @@ test.describe('colors', () => {
     await app.goto('/tools/colors/');
     const before = await app.dumpAll();
 
-    await page.getByTestId('col-input').fill('#1e3a5f');
+    await page.getByTestId('col-input').fill('#803900');
     await page.getByTestId('col-copy-oklch').click();
     await expect(page.getByTestId('col-copy-oklch')).toHaveText('Copied');
     expect(await readClipboard(page)).toMatch(/^oklch\(/);
@@ -83,7 +83,7 @@ test.describe('themes', () => {
     const before = await app.dumpAll();
 
     // One color is enough — the rest derive (and say so).
-    await expect(page.getByTestId('th-css')).toContainText('--primary: light-dark(#1e3a5f,');
+    await expect(page.getByTestId('th-css')).toContainText('--primary: light-dark(#803900,');
     await expect(page.getByTestId('th-css')).toContainText('color-scheme: light dark;');
     await expect(page.getByTestId('th-derived-secondary')).toBeVisible();
 
@@ -122,7 +122,7 @@ test.describe('themes', () => {
     await expect(page.getByTestId('th-derived-dark-primary')).toBeVisible();
     await page.getByTestId('th-dark-primary').fill('#a5c8ff');
     await expect(page.getByTestId('th-derived-dark-primary')).toHaveCount(0);
-    await expect(page.getByTestId('th-css')).toContainText('--primary: light-dark(#1e3a5f, #a5c8ff);');
+    await expect(page.getByTestId('th-css')).toContainText('--primary: light-dark(#803900, #a5c8ff);');
 
     // Every role slot has a synced native picker beside the text input.
     await page.getByTestId('th-color-secondary-pick').fill('#e8a13a');

@@ -18,6 +18,17 @@ Valid documents can still carry **warnings**, listed separately. These are the t
 
 **Prettify** reformats in place: two-space JSON, or YAML tidied by a parser that keeps your comments, anchors and key order. Broken input is refused with the error rather than half-formatted.
 
+**Convert** opens a window that rewrites the document in another format: pick what it is (**From**) and what you want (**To**) — **JSON**, **YAML**, **TOML** or **CSV**, in any direction — and the result appears below, syntax-highlighted, with **Copy** and a **Download** button that names the file after the format. It converts as you change either dropdown; nothing is written and the document in the editor is never touched, so an experiment costs you Escape.
+
+Four things do not survive a conversion, and the window says so under the result rather than letting you find out later:
+
+- **Comments belong to the text, not the data.** Converting a commented YAML or TOML file loses every comment. Prettify is the tool that keeps them.
+- **YAML anchors and aliases expand.** Shared structure becomes a copy in each place it was used.
+- **TOML dates become ISO-8601 strings**, because no other format here has a date type.
+- **CSV is a table, not a tree.** A list of records converts cleanly (one row each, nested keys as dotted columns like `address.city`, arrays kept as JSON text in one cell); a settings-style object converts to the `path` / `type` / `value` view instead, the same one the Data card draws. Going the other way, CSV has no types at all: a cell becomes a number or a boolean only when the text round-trips exactly, so `007`, `1.0` and `+1` stay strings and a zip code survives.
+
+Two shapes are refused outright rather than approximated: TOML cannot spell a document whose top level is an array or a single value (wrap it in a key first), and CSV needs rows to make.
+
 ## Reading the schema it found
 
 The **Schema** card fills itself from the document. Every key gets a row: its **Field** path (`address.city`, `workplaces[].name` — nested objects and arrays of objects are indented under their parent, with a ▾ to collapse a branch), its **Type**, **Required** (`yes`, or `optional` if the key was missing from some records), and **Nullable** (`yes` if it was ever null).
@@ -70,6 +81,7 @@ Change the schema, its name or its format and the generated code disappears — 
 - **`NO` is a string here and `false` somewhere else.** This page reads YAML 1.2. Older readers — including some still in wide use — read `NO`, `on`, `12:30` and `0123` as a boolean, a boolean, the number 750 and octal 83. The warnings exist for exactly this, and quoting the value cures every one.
 - **Big integers lose precision.** Past about 9 quadrillion (2⁵³), JavaScript — and any JSON step in a pipeline — rounds them. The page warns at the literal; it cannot fix it.
 - **Prettify keeps comments** because the YAML parser was chosen for that. JSON has none to keep.
+- **Convert does not keep comments** — and cannot. Prettify edits the text you have; Convert reads the document into values and writes those values out again, which is exactly the step a comment does not survive. If you need the comments, convert a copy.
 - **The web component reads JSON only.** Decode YAML first, or use the generated Python or Go.
 - **The Rust parser needs `serde_json`**, and a YAML-schema parser in any language wants the decoded data, not the text — see above.
 - **The sample data is fake on purpose.** Reserved domains, `555-01xx` numbers, common names from a short list. It will never match a real person or reach a real server.

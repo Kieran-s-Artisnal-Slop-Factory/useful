@@ -183,6 +183,16 @@ Every action follows four rules, all in [bulk.ts](../../../src/lib/notebook/bulk
 - **Move** patches `parent_id` to one target; the `<select>` is `moveTargets(notes, selected)` — every note that is neither selected nor under a selected note, so a cycle cannot be chosen — and a stale choice is refused rather than obeyed.
 - **Delete** `confirm`s, then `reparentForDelete` computes where surviving children go (nearest surviving ancestor, else top level — the single delete's "children move up a level", applied once for the set; a cycle among the deleted notes resolves to top level), patches those, tombstones each note's assets and `softDeleteMany`s the notes. If the open note is among them the editor is closed first, exactly as `deleteNote` does.
 
+### The switch lock
+
+`title`, `tagsText` and `parentId` are one snapshot shared by whichever note is open, and `doSave` writes it to `currentId`. Creating a note has to write a row and re-read the store before that snapshot can be swapped, and for those few milliseconds the fields on screen still describe the note on its way out — so a keystroke landing in them renames THAT note. `switching` is true across the gap and disables the three fields; `openNote` clears it the moment the new snapshot is assigned, and a `finally` covers the path where the row cannot be found and `openNote` never runs.
+
+The body needs no lock: `MarkdownEditor` reports its changes against the note id it was mounted with (`onChange={(md) => void onBodyChange(md, editingId)}` inside the `{#key currentId}` block), and `onBodyChange` patches that note directly when it is no longer the open one. The fields have no such id, which is exactly why they need the gap closed instead.
+
+Swapping the snapshot optimistically and writing the row afterwards would close the window without a lock, at the cost of putting a note on screen that does not exist yet; a lock that lasts a frame is the cheaper honesty. The same gap is why `newNote()` in the spec waits for the new note's `Untitled` value rather than for the title field to exist — a fill that lands early renames the previous note and the failure surfaces two assertions later.
+
+After creating a note that is born `Untitled`, the caret goes to the title with the placeholder selected: pressing **New note** and typing is what someone was trying to do, and it removes the reason to type into the gap at all. A note created from a `[[link]]` already carries the name the link gave it, so its title is left alone.
+
 ### Images: the AssetStore
 
 The editor never talks to IndexedDB; it talks to an `AssetStore` — `save(blob, filename) → src`, optional `replace`, `load`, `resolve`. The markdown keeps the ref the store hands back: `asset:<row id>` for `noteAssetStore`, which is what the Markdown export writes out. `resolve()` is **synchronous** in the contract (Crepe calls it while rendering an image node) but the bytes live in IndexedDB, so a note's store is `prime()`d once — every asset of the note loaded into a Map — before the editor mounts (`openNote` awaits it), and `resolve` answers from that cache only. The default store, `memoryAssets()`, is a page-lifetime Map handing out object URLs; the notebook passes the real one.

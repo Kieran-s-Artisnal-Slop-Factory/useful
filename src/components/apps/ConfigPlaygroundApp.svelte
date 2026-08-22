@@ -21,6 +21,7 @@
   import Card from '../Card.svelte';
   import CodeBlock from '../CodeBlock.svelte';
   import ConfigEditor from '../ConfigEditor.svelte';
+  import ConvertDialog from '../config/ConvertDialog.svelte';
   import DataTable from '../DataTable.svelte';
   import Explainer from '../Explainer.svelte';
   import { inferSchema } from '../../lib/sql/infer-schema';
@@ -90,6 +91,13 @@
   let formatOverride = $state<'auto' | ConfigFormat>('auto');
   let createFormat = $state<ConfigFormat>('json');
   let prettifyError = $state<string | null>(null);
+  /**
+   * The convert dialog is mounted only while it is open, which is what keeps
+   * the TOML parser off this page for anyone who never asks to convert: the
+   * import lives inside the conversion, and the conversion cannot run until
+   * the dialog exists.
+   */
+  let convertOpen = $state(false);
 
   // ---- the data ------------------------------------------------------------
   /**
@@ -567,6 +575,13 @@
         {#snippet actions()}
           <button
             class="btn btn-sm"
+            data-testid="config-convert"
+            disabled={source.trim() === ''}
+            title="Rewrite this document as JSON, YAML, TOML or CSV"
+            onclick={() => (convertOpen = true)}>Convert</button
+          >
+          <button
+            class="btn btn-sm"
             data-testid="config-prettify"
             disabled={source.trim() === ''}
             onclick={prettify}>Prettify</button
@@ -1020,6 +1035,10 @@
     </Explainer>
   </div>
 </div>
+
+{#if convertOpen}
+  <ConvertDialog source={source} from={parseFormat} onClose={() => (convertOpen = false)} />
+{/if}
 
 <style>
   .layout {
