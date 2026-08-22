@@ -304,7 +304,7 @@
         <div class="row">
           <div>
             <label for="ph-bg">Background</label>
-            <input id="ph-bg" data-testid="ph-bg" type="color" bind:value={image.background} />
+            <input id="ph-bg" data-testid="ph-bg" type="color" style="height:3rem;" bind:value={image.background} />
           </div>
           <!-- Only where it paints something. The geometry generators draw
                from their own palette and the scenes carry their own colours,
