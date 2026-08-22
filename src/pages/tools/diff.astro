@@ -1,0 +1,8 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import DiffApp from '../../components/apps/DiffApp.svelte';
+---
+
+<Layout title="Diff">
+  <DiffApp client:only="svelte" />
+</Layout>

@@ -154,7 +154,7 @@ nobody answers.
 | Phase | Goal | New deps | DB | Notes |
 |-------|------|----------|----|-------|
 | 0 ✅ | Groundwork: version drift, shared text + base64 modules | — | — | **DONE 2026-08-22.** Unblocks 1–4, 7 |
-| 1 | Diff | — | — | |
+| 1 ✅ | Diff | — | — | **DONE 2026-08-22.** |
 | 2 | Similarity | — | — | Shares Phase 0's tokenizer |
 | 3 | Text analysis | — | — | |
 | 4 | Base64 | — | — | |
@@ -243,7 +243,7 @@ there is no performance argument for keeping them.)
 
 ---
 
-## Phase 1 — Diff
+## Phase 1 — Diff — DONE (2026-08-22)
 
 **Goal:** compare two texts and see exactly where they differ.
 
@@ -272,11 +272,18 @@ there is no performance argument for keeping them.)
 
 **Data model:** none.
 
-**Tests:** unit — Myers against hand-computed edit scripts, the classic
-`ABCABBA`/`CBABAC` case, empty vs non-empty, identical inputs producing zero
-hunks, unified-diff hunk headers and context counts, whitespace options.
-Playwright — paste two texts, assert the marked ranges; switch granularity;
-copy the unified diff; zero DB writes across the whole session.
+**Tests:** unit — 24 cases across `myers.test.ts` and `text.test.ts`: the
+paper's own `ABCABBA`/`CBABAC` example at cost 5, a hundred random pairs
+reconstructed in both directions, the head/tail trim, the `key` indirection,
+the truncation fallback still being applicable, and the unified diff compared
+against hand-written `diff -u` output including `\ No newline at end of file`.
+Playwright — 8 cases in `text-tools.spec.ts`, each asserting `dumpAll()` is
+unchanged.
+
+**One thing the plan did not know:** the line-ending note can only fire for a
+LOADED file. An HTML `<textarea>` normalises its value to LF, so no amount of
+typing or pasting can put a CRLF into the comparison — the spec drives it
+through `setInputFiles`, and both doc pages say so.
 
 **Docs:** `docs/dev/tools/text-tools.md` (new; grows through Phases 2–3),
 `docs/user/text-tools.md`. Registered under **Calculators** (Q1).

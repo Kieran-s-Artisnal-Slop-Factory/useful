@@ -19,5 +19,6 @@ import 'prismjs/components/prism-sql';
 import 'prismjs/components/prism-yaml';
 import 'prismjs/components/prism-toml';
 import 'prismjs/components/prism-csv';
+import 'prismjs/components/prism-diff';
 
 export default Prism;

@@ -16,7 +16,8 @@ their own browser.
   layered raster editor with EXIF viewing/editing, pixel-art sprite editor.
 - **Calculators** — number bases and bit operations, photography equivalence
   and light stops, file-transfer times, napkin math (a formula becomes a
-  little calculator, and then a function in Python, JavaScript, Go or Rust).
+  little calculator, and then a function in Python, JavaScript, Go or Rust),
+  and a text diff by line, word or character that also writes the patch.
 - **Generators** — theme builder and colour conversion, gradients,
   glassmorphism, regex snippets for four languages, QR create and read,
   secrets (passwords, keys, tokens, identifiers), logos (seeded avatars and

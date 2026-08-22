@@ -2,6 +2,37 @@
 
 ## Features
 
+- **Diff** (`/tools/diff/`): paste two texts and see exactly what changed.
+  Compare by **line** (side by side or inline), by **word**, or by
+  **character**; the summary counts insertions, deletions and changed lines and
+  scores how alike the two texts are. Nothing is saved and the page writes
+  nothing at any point.
+  - **A rewritten line shows the rewritten words.** A removal immediately
+    followed by an addition is a rewrite, not two unrelated events, so those
+    rows are paired and diffed again at word level inside the pair. Otherwise
+    changing one word reads as a red line and a green line, and finding the
+    difference is left to the reader.
+  - **"Ignore case" and the whitespace options change what counts as equal,
+    never what is shown.** The comparison sees a normalised key while the page
+    keeps your original characters — normalising the text itself would mean
+    displaying a document nobody wrote.
+  - **Two texts that differ only in their line endings are called out by
+    name.** CRLF against LF is invisible on screen and otherwise reads as every
+    line having been rewritten.
+  - **The Patch card is a real unified diff** — `---`/`+++`, `@@` hunks with
+    adjustable context, and `\ No newline at end of file` where git puts it —
+    so it can be copied into a review or applied with `git apply`. Prism's
+    `diff` grammar joined the one Prism entry point to highlight it.
+  - **Both limits are stated on screen when they bite**: character comparison
+    is capped at 40 000 characters across both boxes, and the table draws 2000
+    rows (the patch still holds everything). Past a few thousand edits the
+    algorithm stops looking for the shortest script and reports the middle as
+    one wholesale replacement — **and says so**, because a fallback that looks
+    like an answer is worse than no answer.
+  - The engine is Myers' 1986 algorithm, hand-rolled in
+    `src/lib/diff/myers.ts` over any token array, with the classic
+    `ABCABBA`/`CBABAC` case and a hundred random reconstructions in its tests.
+
 - **Two shared modules the 0.3.0 text and encoding tools are built on**, landed
   ahead of the tools themselves so every one of them counts and encodes the
   same way.

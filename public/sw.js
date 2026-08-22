@@ -23,7 +23,7 @@
 // Bump this on any meaningful change to this file: `activate` only purges
 // caches whose name differs, so a constant name makes that step dead code and
 // lets a previous deploy's (or a poisoned) entry survive forever.
-const CACHE_NAME = 'useful-cache-v18';
+const CACHE_NAME = 'useful-cache-v19';
 
 // Everything under this prefix belongs to this app. Cache Storage is keyed by
 // ORIGIN, not by service-worker scope, so if two of these apps are ever served
@@ -50,6 +50,7 @@ const SHELL = [
   'tools/number-conversion/',
   'tools/photography/',
   'tools/file-transfer/',
+  'tools/diff/',
   'tools/colors/',
   'tools/gradients/',
   'tools/glassmorphism/',
