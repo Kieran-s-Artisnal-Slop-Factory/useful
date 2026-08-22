@@ -17,7 +17,7 @@ The **seed** is what makes it repeatable: the same seed always produces the same
 
 ## Filler images
 
-Eight generators, all of them drawn from your settings:
+Nine generators, all of them drawn from your settings:
 
 | Generator | What it looks like |
 | --- | --- |
@@ -25,10 +25,11 @@ Eight generators, all of them drawn from your settings:
 | Colour with a caption | A heading and sub-heading, centred and sized to fit. |
 | Gradient | Linear or radial, your colours. |
 | Noise | Fine grain, tinted, optionally blurred. |
-| Flow field | Streamlines curving through the frame. |
-| Layered geometry | Overlapping translucent shapes. |
-| An icon | Any of about two thousand Lucide icons, on any background. |
-| A drawn scene | Nine hand-drawn pictures — nature, sport, city. |
+| Flow field | Streamlines curving through the frame. Set how many. |
+| Layered geometry | Many small overlapping translucent shapes. Set how solid they are. |
+| Cut planes | A few big diagonal slabs that fill the frame, in colours built from your background. |
+| An icon | Any of about two thousand Lucide icons, on any background, at any size. |
+| A drawn scene | Fifteen hand-drawn pictures — five each of nature, sport and city. |
 
 Set the **size** directly, or use a ratio button (16:9, 4:3, 3:2, 1:1, 9:16) or a size preset. With **Keep the aspect ratio** ticked, typing one side moves the other and leaves what you typed alone.
 

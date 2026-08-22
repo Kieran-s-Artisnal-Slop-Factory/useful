@@ -230,6 +230,16 @@
       <button class="btn btn-sm" data-testid="ft-reset" onclick={() => { tree = STARTER(); selected = null; }}>
         Reset
       </button>
+      <!-- Empty, not the example: "clear" that hands back three folders you
+           did not ask for is not clear. The root survives, because a tree
+           with no root is not a tree — rename it and start typing. -->
+      <button
+        class="btn btn-sm btn-danger"
+        data-testid="ft-clear"
+        onclick={() => { tree = node(tree.name, 'folder'); selected = null; }}
+      >
+        Clear
+      </button>
     {/snippet}
 
     <div class="stack">
@@ -412,8 +422,14 @@
               <input id="ft-rule-emoji" data-testid="ft-rule-emoji" class="num" bind:value={ruleEmoji} placeholder="🦀" />
             </div>
             <button class="btn" data-testid="ft-add-rule" onclick={addRule}>Add rule</button>
-            <button class="btn" onclick={() => (options.emojiRules = { ...DEFAULT_EMOJI_RULES })}>
+            <button class="btn" data-testid="ft-restore-rules" onclick={() => (options.emojiRules = { ...DEFAULT_EMOJI_RULES })}>
               Restore defaults
+            </button>
+            <!-- Every rule, including the dozen that shipped: with none left,
+                 every file falls back to 📄 and every folder to 📂, which is
+                 a real choice rather than an empty state. -->
+            <button class="btn btn-danger" data-testid="ft-clear-rules" onclick={() => (options.emojiRules = {})}>
+              Clear all
             </button>
           </div>
         </div>

@@ -17,12 +17,18 @@ export type SceneId =
   | 'mountains'
   | 'forest'
   | 'lake'
+  | 'desert'
+  | 'coast'
   | 'pitch'
   | 'hoop'
   | 'track'
+  | 'tennis'
+  | 'cycling'
   | 'skyline'
   | 'bridge'
-  | 'street';
+  | 'street'
+  | 'subway'
+  | 'rooftops';
 
 export interface Scene {
   id: SceneId;
@@ -94,6 +100,52 @@ export const SCENES: Scene[] = [
     ].join(''),
   },
   {
+    id: 'desert',
+    label: 'Desert at noon',
+    group: 'Nature',
+    background: '#f2c078',
+    viewBox: BOX,
+    markup: [
+      '<rect width="160" height="90" fill="#f6d9a0"/>',
+      '<circle cx="126" cy="20" r="9" fill="#f9f0d2"/>',
+      '<path d="M0 54 L26 40 L52 54 Z" fill="#d9a066"/>',
+      '<path d="M60 54 L92 36 L124 54 Z" fill="#c98f57"/>',
+      '<rect y="54" width="160" height="36" fill="#e8b877"/>',
+      '<path d="M0 68 Q40 62 80 68 T160 68" fill="none" stroke="#d9a066" stroke-width="1.4"/>',
+      '<g fill="#4f7a3f">',
+      '<rect x="30" y="56" width="5" height="26" rx="2.5"/>',
+      '<rect x="20" y="62" width="4" height="12" rx="2"/><rect x="20" y="62" width="12" height="4" rx="2"/>',
+      '<rect x="41" y="58" width="4" height="14" rx="2"/><rect x="33" y="58" width="12" height="4" rx="2"/>',
+      '<rect x="120" y="64" width="4" height="18" rx="2"/>',
+      '<rect x="113" y="68" width="3" height="9" rx="1.5"/><rect x="113" y="68" width="9" height="3" rx="1.5"/>',
+      '</g>',
+      '<ellipse cx="32" cy="84" rx="14" ry="3" fill="#d9a066" opacity="0.6"/>',
+    ].join(''),
+  },
+  {
+    id: 'coast',
+    label: 'Coast at dusk',
+    group: 'Nature',
+    background: '#f0a4a4',
+    viewBox: BOX,
+    markup: [
+      '<rect width="160" height="90" fill="#f7bfa8"/>',
+      '<rect width="160" height="46" fill="#e98d84"/>',
+      '<circle cx="80" cy="44" r="14" fill="#fbe3b0"/>',
+      '<path d="M0 46 L22 30 L44 46 Z" fill="#7a5a72"/>',
+      '<path d="M108 46 L134 26 L160 46 Z" fill="#6a4c66"/>',
+      '<rect y="46" width="160" height="44" fill="#4e6a8a"/>',
+      '<g fill="#fbe3b0" opacity="0.55">',
+      '<rect x="74" y="50" width="12" height="3"/><rect x="72" y="58" width="16" height="3"/>',
+      '<rect x="70" y="66" width="20" height="3"/><rect x="66" y="76" width="28" height="3"/>',
+      '</g>',
+      '<g stroke="#dbe8f2" stroke-width="1.2" fill="none" opacity="0.6">',
+      '<path d="M8 62 H40"/><path d="M112 70 H148"/><path d="M24 80 H62"/>',
+      '</g>',
+      '<path d="M0 86 Q40 82 80 86 T160 86 L160 90 L0 90 Z" fill="#e0c9a6"/>',
+    ].join(''),
+  },
+  {
     id: 'pitch',
     label: 'Football pitch',
     group: 'Sport',
@@ -148,6 +200,48 @@ export const SCENES: Scene[] = [
       '</g>',
       '<rect x="44" y="30" width="72" height="30" rx="2" fill="#5f9a4f"/>',
       '<g stroke="#f6efe6" stroke-width="1.2"><path d="M80 14 V22"/><path d="M80 68 V76"/></g>',
+    ].join(''),
+  },
+  {
+    id: 'tennis',
+    label: 'Tennis court',
+    group: 'Sport',
+    background: '#2f6f8f',
+    viewBox: BOX,
+    markup: [
+      '<rect width="160" height="90" fill="#2f6f8f"/>',
+      '<path d="M28 12 H132 L156 84 H4 Z" fill="#4b8f5f"/>',
+      '<g stroke="#f4f8f4" stroke-width="1.3" fill="none">',
+      '<path d="M36 18 H124 L146 78 H14 Z"/>',
+      '<path d="M46 40 H114"/><path d="M42 58 H118"/>',
+      '<path d="M80 40 V58"/>',
+      '<path d="M32 30 H128"/>',
+      '</g>',
+      '<rect x="20" y="46" width="120" height="2" fill="#e9eef2"/>',
+      '<g stroke="#c8d4dc" stroke-width="0.8"><path d="M22 46 V56"/><path d="M138 46 V56"/></g>',
+      '<circle cx="104" cy="66" r="3" fill="#d8e94a"/>',
+      '<g fill="#2f3a45"><ellipse cx="60" cy="70" rx="4" ry="7"/><rect x="59" y="60" width="2" height="8"/></g>',
+    ].join(''),
+  },
+  {
+    id: 'cycling',
+    label: 'Bicycle on a road',
+    group: 'Sport',
+    background: '#cfe0e8',
+    viewBox: BOX,
+    markup: [
+      '<rect width="160" height="90" fill="#cfe0e8"/>',
+      '<path d="M0 58 L34 44 L70 58 Z" fill="#9db9c4"/>',
+      '<path d="M56 58 L100 40 L146 58 Z" fill="#84a5b3"/>',
+      '<rect y="58" width="160" height="32" fill="#5a6b72"/>',
+      '<g stroke="#e8eef0" stroke-width="2" stroke-dasharray="10 8"><path d="M0 74 H160"/></g>',
+      '<g fill="none" stroke="#22303a" stroke-width="2">',
+      '<circle cx="52" cy="66" r="11"/><circle cx="104" cy="66" r="11"/>',
+      '<path d="M52 66 L70 66 L82 48 L92 66"/><path d="M70 66 L82 48"/><path d="M104 66 L92 66"/>',
+      '<path d="M82 48 L88 42"/><path d="M92 66 L96 50 L104 50"/>',
+      '</g>',
+      '<circle cx="88" cy="34" r="5" fill="#e0693a"/>',
+      '<path d="M86 39 L80 50 L92 50 Z" fill="#e0693a"/>',
     ].join(''),
   },
   {
@@ -220,6 +314,63 @@ export const SCENES: Scene[] = [
       '</g>',
       '<rect y="76" width="160" height="14" fill="#6f6a61"/>',
       '<g stroke="#efe3d0" stroke-width="1.4"><path d="M6 84 H22"/><path d="M34 84 H50"/><path d="M62 84 H78"/><path d="M90 84 H106"/><path d="M118 84 H134"/><path d="M146 84 H158"/></g>',
+    ].join(''),
+  },
+  {
+    id: 'subway',
+    label: 'Subway platform',
+    group: 'City',
+    background: '#e6e2d8',
+    viewBox: BOX,
+    markup: [
+      '<rect width="160" height="90" fill="#e6e2d8"/>',
+      '<rect width="160" height="18" fill="#c9c3b6"/>',
+      '<g fill="#f4f1e9" stroke="#d3cec2" stroke-width="0.6">',
+      '<rect x="6" y="22" width="14" height="14"/><rect x="24" y="22" width="14" height="14"/>',
+      '<rect x="42" y="22" width="14" height="14"/><rect x="6" y="40" width="14" height="14"/>',
+      '<rect x="24" y="40" width="14" height="14"/><rect x="42" y="40" width="14" height="14"/>',
+      '</g>',
+      '<rect x="66" y="20" width="88" height="52" rx="4" fill="#4a6b86"/>',
+      '<rect x="66" y="20" width="88" height="10" fill="#39566d"/>',
+      '<g fill="#cfe2ef">',
+      '<rect x="74" y="34" width="20" height="18" rx="2"/><rect x="100" y="34" width="20" height="18" rx="2"/>',
+      '<rect x="126" y="34" width="20" height="18" rx="2"/>',
+      '</g>',
+      '<rect x="98" y="24" width="24" height="4" rx="2" fill="#f2d16b"/>',
+      '<rect y="72" width="160" height="18" fill="#a49c8c"/>',
+      '<rect y="72" width="160" height="3" fill="#d8a13a"/>',
+      '<g fill="#3d4a52"><rect x="20" y="56" width="5" height="18"/><circle cx="22" cy="52" r="4"/>',
+      '<rect x="36" y="58" width="5" height="16"/><circle cx="38" cy="54" r="4"/></g>',
+    ].join(''),
+  },
+  {
+    id: 'rooftops',
+    label: 'Rooftops in the rain',
+    group: 'City',
+    background: '#7b8794',
+    viewBox: BOX,
+    markup: [
+      '<rect width="160" height="90" fill="#8d99a6"/>',
+      '<rect width="160" height="40" fill="#7b8794"/>',
+      '<g fill="#5c6774">',
+      '<path d="M0 44 L18 30 L36 44 V90 H0 Z"/><path d="M48 50 L66 34 L84 50 V90 H48 Z"/>',
+      '<path d="M100 46 L120 28 L140 46 V90 H100 Z"/>',
+      '</g>',
+      '<g fill="#48525e">',
+      '<rect x="36" y="52" width="12" height="38"/><rect x="84" y="58" width="16" height="32"/>',
+      '<rect x="140" y="54" width="20" height="36"/>',
+      '</g>',
+      '<g fill="#f2c14e">',
+      '<rect x="8" y="54" width="6" height="7"/><rect x="20" y="66" width="6" height="7"/>',
+      '<rect x="56" y="60" width="6" height="7"/><rect x="70" y="72" width="6" height="7"/>',
+      '<rect x="108" y="56" width="6" height="7"/><rect x="124" y="68" width="6" height="7"/>',
+      '<rect x="146" y="64" width="6" height="7"/>',
+      '</g>',
+      '<g stroke="#dbe3ea" stroke-width="1" opacity="0.55">',
+      '<path d="M10 0 L4 16"/><path d="M34 4 L28 22"/><path d="M58 0 L52 18"/><path d="M86 6 L80 24"/>',
+      '<path d="M112 0 L106 16"/><path d="M136 4 L130 22"/><path d="M154 0 L148 18"/>',
+      '<path d="M22 30 L16 48"/><path d="M96 34 L90 52"/><path d="M148 40 L142 58"/>',
+      '</g>',
     ].join(''),
   },
 ];

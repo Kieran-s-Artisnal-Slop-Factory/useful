@@ -27,7 +27,13 @@ export interface FigletFont {
   note: string;
   bytes: number;
   sha256: string;
-  /** The licence statement quoted out of the font's header. */
+  /**
+   * How this font is accounted for: 'header' when it states its own terms,
+   * 'package' when it states none and ships on the figlet package's MIT
+   * licence with its origin recorded. See public/figlet/PROVENANCE.txt.
+   */
+  basis: 'header' | 'package';
+  /** The terms, quoted from the header, or the recorded package basis. */
   licence: string;
 }
 

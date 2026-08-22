@@ -8,7 +8,9 @@ _Describes the code as of v0.3.0 (unreleased; schema v12) — verify against sou
 
 Type into **Words** and the banner appears below. Each line you type becomes its own banner.
 
-The **Font** card draws all fourteen fonts in *your* words, so you pick by looking rather than by name. They cover the usual wants: a blocky 3-D one, several stroke-drawn ones, one made of flames, and two built from block characters.
+The **Font** card draws all thirty-seven fonts in *your* words, so you pick by looking rather than by name, grouped by what they are made of: stroke-drawn, script, shadowed, 3-D, block characters and decorative.
+
+Every font records where it came from — **Where they came from** under the picker opens the provenance file, which names each font's author and the terms it ships under.
 
 - **Spacing** decides how tightly letters pack. "Default" is what `figlet` does on a terminal; "Smushed" overlaps neighbouring letters by a column; "Full" gives every letter its own full-width cell.
 - **Alignment** places the block left, centre or right — useful when a banner sits above other text.

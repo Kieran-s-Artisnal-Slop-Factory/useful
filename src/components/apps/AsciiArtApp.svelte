@@ -96,7 +96,7 @@
 
   /**
    * Render one row of the picker, the first time that row is scrolled into
-   * view. Fourteen fonts is 178 KB of `.flf`, and a picker that fetches all
+   * view. The catalogue is ~600 KB of `.flf`, and a picker that fetches all
    * of it to draw a list nobody has looked at yet is exactly the kind of
    * eager cost this app refuses everywhere else.
    */
@@ -299,9 +299,10 @@
     <Card title="Font" testid="aa-font-card">
       <div class="stack">
         <p class="muted small">
-          Fourteen fonts ship with the app, each one drawn here in your own words.
+          {FIGLET_FONTS.length} fonts ship with the app, each one drawn here in your own words.
           <a href={href('/figlet/PROVENANCE.txt')} target="_blank" rel="noreferrer">Where they came from</a>
-          — a font whose file does not state a licence is refused by the build.
+          — every font records its author and the terms it ships under, and one the build cannot
+          account for at all is refused.
         </p>
         <div class="fonts" data-testid="aa-fonts">
           {#each FIGLET_STYLES as style (style)}

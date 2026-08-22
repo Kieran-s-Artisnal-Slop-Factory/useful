@@ -6,6 +6,7 @@
     "note": "The FIGlet default since 1993.",
     "bytes": 30740,
     "sha256": "44573a1b2145dfdf0110b6a2d3d98bdc47a98cca50795bd7b78278ee5ca96f79",
+    "basis": "header",
     "licence": "Permission is hereby given to modify this font, as long as the modifier's name is placed on a comment line."
   },
   {
@@ -15,6 +16,7 @@
     "note": "Standard, leaning.",
     "bytes": 15517,
     "sha256": "0a1f6ebfa9b0a1658107765d5273f537e2a626c79a6fb431e1ca1e5330a74f2a",
+    "basis": "header",
     "licence": "Permission is hereby given to modify this font, as long as the modifier's name is placed on a comment line."
   },
   {
@@ -24,6 +26,7 @@
     "note": "Half the height of Standard.",
     "bytes": 12232,
     "sha256": "6326d8a718cb57689d5eaa98d301b9297ef6f6300279635b901532a2f3d6aadf",
+    "basis": "header",
     "licence": "Permission is hereby given to modify this font, as long as the modifier's name is placed on a comment line."
   },
   {
@@ -33,6 +36,7 @@
     "note": "Four rows — fits in a comment.",
     "bytes": 9099,
     "sha256": "45b79cc5974bd2254d6f09a35e23fb7977a1a742e1cf809807bc22585a7106d0",
+    "basis": "header",
     "licence": "Permission is hereby given to modify this font, as long as the modifier's name is placed on a comment line."
   },
   {
@@ -42,6 +46,7 @@
     "note": "Letters drawn with letters.",
     "bytes": 2938,
     "sha256": "ce44e1dbcb6700e9e0790be7a7a5e27d7482cf989d00ebcd147c36a2cb9415a5",
+    "basis": "header",
     "licence": "Permission is hereby given to modify this font, as long as the modifier's name is placed on a comment line."
   },
   {
@@ -51,6 +56,7 @@
     "note": "Heavy pipes and slashes.",
     "bytes": 7553,
     "sha256": "3d8fe9963526329ff9d5414a97b0f47e3a852d2f288a693f2938730f5a230e75",
+    "basis": "header",
     "licence": "Permission is hereby given to modify this font, as long as the modifier's name is placed on a comment line."
   },
   {
@@ -60,16 +66,78 @@
     "note": "Collegiate outline.",
     "bytes": 8810,
     "sha256": "5931543e380090283d2d9ea80a05c08d37ba7a1c0dd63bf9463bba23887a53ee",
+    "basis": "header",
     "licence": "Permission is hereby given to modify this font, as long as the modifier's name is placed on a comment line."
+  },
+  {
+    "id": "epic",
+    "name": "Epic",
+    "style": "Stroke",
+    "note": "Broad and heavy.",
+    "bytes": 9854,
+    "sha256": "7f38796cdcbc746b42ba68049a74b1359fbaee776bd90ff5b1a2a85b75bf9226",
+    "basis": "header",
+    "licence": "Permission is hereby given to modify this font, as long as the modifier's name is placed on a comment line."
+  },
+  {
+    "id": "broadway",
+    "name": "Broadway",
+    "style": "Stroke",
+    "note": "Theatre marquee.",
+    "bytes": 15010,
+    "sha256": "6b6501819d8e3e7ffc4646d3e9edee783203bcfc72145157bee293a39743019d",
+    "basis": "package",
+    "licence": "No terms in the font header. Redistributed here on the basis that the file ships inside the figlet npm package, whose LICENSE.txt is the MIT licence (Copyright (C) 2014-present Patrick Gillespie and other contributors). Weaker than a per-font grant — see the header lines below for what the font itself says about its origin."
+  },
+  {
+    "id": "cyberlarge",
+    "name": "Cyberlarge",
+    "style": "Stroke",
+    "note": "Wide, clean, spaced out.",
+    "bytes": 3837,
+    "sha256": "ba9b64f63caa5a7e49d3aca1e61267adb81d9dd0469c3da0eafbb4cc1476ba9c",
+    "basis": "package",
+    "licence": "No terms in the font header. Redistributed here on the basis that the file ships inside the figlet npm package, whose LICENSE.txt is the MIT licence (Copyright (C) 2014-present Patrick Gillespie and other contributors). Weaker than a per-font grant — see the header lines below for what the font itself says about its origin."
+  },
+  {
+    "id": "cybermedium",
+    "name": "Cybermedium",
+    "style": "Stroke",
+    "note": "Cyberlarge, tightened up.",
+    "bytes": 3181,
+    "sha256": "fcbb6ba53c8eaa4fd64407c02df04240b5c4822dae7bb27357fdc7446d7a88f7",
+    "basis": "package",
+    "licence": "No terms in the font header. Redistributed here on the basis that the file ships inside the figlet npm package, whose LICENSE.txt is the MIT licence (Copyright (C) 2014-present Patrick Gillespie and other contributors). Weaker than a per-font grant — see the header lines below for what the font itself says about its origin."
   },
   {
     "id": "script",
     "name": "Script",
-    "style": "Stroke",
+    "style": "Script",
     "note": "Joined-up handwriting.",
     "bytes": 16864,
     "sha256": "d849d3c46d6af833fb722af017a2dbc99042602f67bd2d4b23eb305f4d4b8cc7",
+    "basis": "header",
     "licence": "Permission is hereby given to modify this font, as long as the modifier's name is placed on a comment line."
+  },
+  {
+    "id": "caligraphy",
+    "name": "Caligraphy",
+    "style": "Script",
+    "note": "Brush-drawn capitals.",
+    "bytes": 23989,
+    "sha256": "00350e6fddd5ec0dc79409b51bec2c2297f23d4d52bdf591822b5276a25fc9a9",
+    "basis": "package",
+    "licence": "No terms in the font header. Redistributed here on the basis that the file ships inside the figlet npm package, whose LICENSE.txt is the MIT licence (Copyright (C) 2014-present Patrick Gillespie and other contributors). Weaker than a per-font grant — see the header lines below for what the font itself says about its origin."
+  },
+  {
+    "id": "fraktur",
+    "name": "Fraktur",
+    "style": "Script",
+    "note": "Blackletter.",
+    "bytes": 26595,
+    "sha256": "15c6f861dd77ddde7e8521984162b84a37987d6bc3527ce0259acc93ca4a2f69",
+    "basis": "package",
+    "licence": "No terms in the font header. Redistributed here on the basis that the file ships inside the figlet npm package, whose LICENSE.txt is the MIT licence (Copyright (C) 2014-present Patrick Gillespie and other contributors). Weaker than a per-font grant — see the header lines below for what the font itself says about its origin."
   },
   {
     "id": "shadow",
@@ -78,6 +146,7 @@
     "note": "Standard with a drop shadow.",
     "bytes": 14552,
     "sha256": "be138f51d3928d6ea515262fe549ac2179c61a7a0c7bd20841639b8bd7f22649",
+    "basis": "header",
     "licence": "Permission is hereby given to modify this font, as long as the modifier's name is placed on a comment line."
   },
   {
@@ -87,6 +156,17 @@
     "note": "Outlined and hollow.",
     "bytes": 13144,
     "sha256": "fd9840a6fc41180db7932ba359933fee2c62d2e648b824500228a3d392579ff4",
+    "basis": "header",
+    "licence": "Permission is hereby given to modify this font, as long as the modifier's name is placed on a comment line."
+  },
+  {
+    "id": "slant-relief",
+    "name": "Slant Relief",
+    "style": "Shadow",
+    "note": "Slant, carved out.",
+    "bytes": 24048,
+    "sha256": "010496378b233c8fbb728d1f78874c03c8d1d0bf12239d5821296cb4df4cda7b",
+    "basis": "header",
     "licence": "Permission is hereby given to modify this font, as long as the modifier's name is placed on a comment line."
   },
   {
@@ -96,16 +176,68 @@
     "note": "Blocky, extruded, tall.",
     "bytes": 25476,
     "sha256": "ba96c495efa742b4a536ac95104df3918c7f29673da98e0bddc816da4d334265",
+    "basis": "header",
     "licence": "Permission is hereby given to modify this font, as long as the modifier's name is placed on a comment line."
   },
   {
-    "id": "fire-font-k",
-    "name": "Fire Font-k",
-    "style": "Decorative",
-    "note": "Letters on fire.",
-    "bytes": 9946,
-    "sha256": "cadf9724b51ff32b9505fc853d5b435c56ef33fdbb4f3a927a09e91350d02396",
-    "licence": "Permission is hereby given to modify this font, as long as the modifier's name is placed on a comment line."
+    "id": "3d-ascii",
+    "name": "3D-ASCII",
+    "style": "3-D",
+    "note": "Deep extrusion, ASCII only.",
+    "bytes": 13184,
+    "sha256": "52ad704a6d5e652a7b89544969d14781aed846fd0d94e6304dcc6f7bf635e6b8",
+    "basis": "package",
+    "licence": "No terms in the font header. Redistributed here on the basis that the file ships inside the figlet npm package, whose LICENSE.txt is the MIT licence (Copyright (C) 2014-present Patrick Gillespie and other contributors). Weaker than a per-font grant — see the header lines below for what the font itself says about its origin."
+  },
+  {
+    "id": "terrace",
+    "name": "Terrace",
+    "style": "3-D",
+    "note": "Stepped and layered.",
+    "bytes": 18887,
+    "sha256": "b64ac30d9e3d9349e7ed604337efd25f2a3114b0fd130c151a6a4f8019a0624c",
+    "basis": "package",
+    "licence": "No terms in the font header. Redistributed here on the basis that the file ships inside the figlet npm package, whose LICENSE.txt is the MIT licence (Copyright (C) 2014-present Patrick Gillespie and other contributors). Weaker than a per-font grant — see the header lines below for what the font itself says about its origin."
+  },
+  {
+    "id": "big-money-ne",
+    "name": "Big Money-ne",
+    "style": "3-D",
+    "note": "Lit from the north-east.",
+    "bytes": 15305,
+    "sha256": "e69ebd240b687c1fc1806818ee8d516d76294d11b46ed24be5d1d6a4c18ac982",
+    "basis": "package",
+    "licence": "No terms in the font header. Redistributed here on the basis that the file ships inside the figlet npm package, whose LICENSE.txt is the MIT licence (Copyright (C) 2014-present Patrick Gillespie and other contributors). Weaker than a per-font grant — see the header lines below for what the font itself says about its origin."
+  },
+  {
+    "id": "big-money-nw",
+    "name": "Big Money-nw",
+    "style": "3-D",
+    "note": "Lit from the north-west.",
+    "bytes": 15360,
+    "sha256": "35d15067d68270d0959d45aa5ffca18fd0db5cc754ae071580ca9b0ab20f0a7a",
+    "basis": "package",
+    "licence": "No terms in the font header. Redistributed here on the basis that the file ships inside the figlet npm package, whose LICENSE.txt is the MIT licence (Copyright (C) 2014-present Patrick Gillespie and other contributors). Weaker than a per-font grant — see the header lines below for what the font itself says about its origin."
+  },
+  {
+    "id": "big-money-se",
+    "name": "Big Money-se",
+    "style": "3-D",
+    "note": "Lit from the south-east.",
+    "bytes": 16666,
+    "sha256": "178808c076406a6d56db4c19320e1de3f2f829cfed39c6f4907d6680b178c816",
+    "basis": "package",
+    "licence": "No terms in the font header. Redistributed here on the basis that the file ships inside the figlet npm package, whose LICENSE.txt is the MIT licence (Copyright (C) 2014-present Patrick Gillespie and other contributors). Weaker than a per-font grant — see the header lines below for what the font itself says about its origin."
+  },
+  {
+    "id": "big-money-sw",
+    "name": "Big Money-sw",
+    "style": "3-D",
+    "note": "Lit from the south-west.",
+    "bytes": 16714,
+    "sha256": "9a56e3822b708838560a32c5a2f1db215318fdfe76e7096c65f170d34794d818",
+    "basis": "package",
+    "licence": "No terms in the font header. Redistributed here on the basis that the file ships inside the figlet npm package, whose LICENSE.txt is the MIT licence (Copyright (C) 2014-present Patrick Gillespie and other contributors). Weaker than a per-font grant — see the header lines below for what the font itself says about its origin."
   },
   {
     "id": "pagga",
@@ -114,6 +246,7 @@
     "note": "Built from ░ ▀ █ — three rows.",
     "bytes": 9825,
     "sha256": "ac5693a0d48e73bc0ef816755fcb0ff04631fcc0a40ed35f22e21dfdafbbede2",
+    "basis": "header",
     "licence": "the terms of the Do What The Fuck You Want To Public License, Version 2, as published by Sam Hocevar. See http://sam.zoy.org/wtfpl/COPYING for more details. as published by Sam Hocevar. See http://sam.zoy.org/wtfpl/COPYING for more details."
   },
   {
@@ -123,6 +256,117 @@
     "note": "Box-drawing strokes, one row tall.",
     "bytes": 6136,
     "sha256": "d3f82bef2625e99b750e81f230d5f4d2b122eb621250e94d2c5317da3e039682",
+    "basis": "header",
     "licence": "the terms of the Do What The Fuck You Want To Public License, Version 2, as published by Sam Hocevar. See http://sam.zoy.org/wtfpl/COPYING for more details. as published by Sam Hocevar. See http://sam.zoy.org/wtfpl/COPYING for more details."
+  },
+  {
+    "id": "blocks",
+    "name": "Blocks",
+    "style": "Blocks",
+    "note": "Solid slabs with a hollow centre.",
+    "bytes": 24678,
+    "sha256": "024068fe15c1b27b01e471e6a481a819cf8f249e6637b0d2fa72e231f7acf30c",
+    "basis": "header",
+    "licence": "Permission is hereby given to modify this font, as long as the modifier's name is placed on a comment line."
+  },
+  {
+    "id": "ansi-regular",
+    "name": "ANSI Regular",
+    "style": "Blocks",
+    "note": "Full-block capitals.",
+    "bytes": 9409,
+    "sha256": "f4b8365d3b658908374fe03f8a3c02d47f620f4af88ec136b88540e788b463b4",
+    "basis": "package",
+    "licence": "No terms in the font header. Redistributed here on the basis that the file ships inside the figlet npm package, whose LICENSE.txt is the MIT licence (Copyright (C) 2014-present Patrick Gillespie and other contributors). Weaker than a per-font grant — see the header lines below for what the font itself says about its origin."
+  },
+  {
+    "id": "ansi-shadow",
+    "name": "ANSI Shadow",
+    "style": "Blocks",
+    "note": "Full blocks with a shadow.",
+    "bytes": 12180,
+    "sha256": "5b3141fa14163c90ff199d169331333875df557fa463b9fb05b85fee6eca6dc1",
+    "basis": "package",
+    "licence": "No terms in the font header. Redistributed here on the basis that the file ships inside the figlet npm package, whose LICENSE.txt is the MIT licence (Copyright (C) 2014-present Patrick Gillespie and other contributors). Weaker than a per-font grant — see the header lines below for what the font itself says about its origin."
+  },
+  {
+    "id": "ansi-compact",
+    "name": "ANSI Compact",
+    "style": "Blocks",
+    "note": "Half-height blocks.",
+    "bytes": 31294,
+    "sha256": "7725d789f12f20f854a2d0fb6f23df3080fefd0753e94055f2078b3853afe30f",
+    "basis": "header",
+    "licence": "This font is free to use and distribute / MIT License"
+  },
+  {
+    "id": "electronic",
+    "name": "Electronic",
+    "style": "Blocks",
+    "note": "Circuit-board slabs.",
+    "bytes": 25578,
+    "sha256": "bffe1417c47f19b3e15644cf65ef9c64cbff4d831d54dc8b5d4a29ba77d35b19",
+    "basis": "package",
+    "licence": "No terms in the font header. Redistributed here on the basis that the file ships inside the figlet npm package, whose LICENSE.txt is the MIT licence (Copyright (C) 2014-present Patrick Gillespie and other contributors). Weaker than a per-font grant — see the header lines below for what the font itself says about its origin."
+  },
+  {
+    "id": "classy",
+    "name": "Classy",
+    "style": "Blocks",
+    "note": "Shaded, with serifs.",
+    "bytes": 44409,
+    "sha256": "c738ee428830b85bd7cdbe3edc7a296f1f1540b73910ee61756933ec43e06998",
+    "basis": "header",
+    "licence": "This font is free to use and distribute / MIT License"
+  },
+  {
+    "id": "coder-mini",
+    "name": "Coder Mini",
+    "style": "Blocks",
+    "note": "Tiny blocks, four rows.",
+    "bytes": 40273,
+    "sha256": "08857103cca94c8c3f515875af04389ec90f926876973c13ca11756c7d724592",
+    "basis": "header",
+    "licence": "This font is free to use and distribute / MIT License"
+  },
+  {
+    "id": "fire-font-k",
+    "name": "Fire Font-k",
+    "style": "Decorative",
+    "note": "Letters on fire.",
+    "bytes": 9946,
+    "sha256": "cadf9724b51ff32b9505fc853d5b435c56ef33fdbb4f3a927a09e91350d02396",
+    "basis": "header",
+    "licence": "Permission is hereby given to modify this font, as long as the modifier's name is placed on a comment line."
+  },
+  {
+    "id": "bloody",
+    "name": "Bloody",
+    "style": "Decorative",
+    "note": "Dripping horror-film capitals.",
+    "bytes": 12448,
+    "sha256": "e3a6a25f8113bfce06a3444f299f67b46d53b27a3604f2f1e328c345ad47ded3",
+    "basis": "package",
+    "licence": "No terms in the font header. Redistributed here on the basis that the file ships inside the figlet npm package, whose LICENSE.txt is the MIT licence (Copyright (C) 2014-present Patrick Gillespie and other contributors). Weaker than a per-font grant — see the header lines below for what the font itself says about its origin."
+  },
+  {
+    "id": "delta-corps-priest-1",
+    "name": "Delta Corps Priest 1",
+    "style": "Decorative",
+    "note": "Angular, armoured, enormous.",
+    "bytes": 13154,
+    "sha256": "5065f00aa615c5e2fa18e9f7871628cb0384e9d9154d1531096e3adc0d84d41f",
+    "basis": "package",
+    "licence": "No terms in the font header. Redistributed here on the basis that the file ships inside the figlet npm package, whose LICENSE.txt is the MIT licence (Copyright (C) 2014-present Patrick Gillespie and other contributors). Weaker than a per-font grant — see the header lines below for what the font itself says about its origin."
+  },
+  {
+    "id": "reverse",
+    "name": "Reverse",
+    "style": "Decorative",
+    "note": "Knocked out of a solid field.",
+    "bytes": 11919,
+    "sha256": "c045fcff5d5ad370fa9b2cd59583d4b6f411816b0738eb522122d826cdcd7b9c",
+    "basis": "package",
+    "licence": "No terms in the font header. Redistributed here on the basis that the file ships inside the figlet npm package, whose LICENSE.txt is the MIT licence (Copyright (C) 2014-present Patrick Gillespie and other contributors). Weaker than a per-font grant — see the header lines below for what the font itself says about its origin."
   }
 ]

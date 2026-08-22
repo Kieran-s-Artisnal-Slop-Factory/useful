@@ -63,6 +63,12 @@ test.describe('ascii art — text', () => {
     // Pagga is the block font — its glyphs are drawn from ░ and █.
     await expect(page.getByTestId('aa-output')).toContainText('░');
 
+    // One of the fonts that ships on the package basis rather than its own
+    // terms, so the second route is exercised end to end and not just in the
+    // build script's unit tests.
+    await page.getByTestId('aa-font-ansi-shadow').click();
+    await expect(page.getByTestId('aa-output')).toContainText('█');
+
     expect(await app.dumpAll()).toEqual(before);
   });
 

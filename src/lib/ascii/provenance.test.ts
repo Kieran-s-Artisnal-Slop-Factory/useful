@@ -86,6 +86,29 @@ describe('provenanceFor — the refusal', () => {
   it('refuses a font whose header states no licence', () => {
     const unlicensed = Buffer.from(makeFlf(['Font Author: ?', 'More Info:', '']), 'utf8');
     expect(() => provenanceFor(unlicensed)).toThrow(/states no licence/);
+    // And the refusal says what a maintainer has to do about it, rather than
+    // leaving them to guess.
+    expect(() => provenanceFor(unlicensed)).toThrow(/basis: 'package'/);
+  });
+
+  it('lets one through only when the catalogue has recorded a basis for it', () => {
+    const unlicensed = Buffer.from(makeFlf(['Font Author: CoSMiC cHiLD', 'More Info:']), 'utf8');
+    // The default is still a refusal: the second route has to be asked for,
+    // per font, or it is not a gate.
+    expect(() => provenanceFor(unlicensed, 'header')).toThrow(/states no licence/);
+
+    const allowed = provenanceFor(unlicensed, 'package');
+    expect(allowed.basis).toBe('package');
+    expect(allowed.licence).toEqual([]);
+    // What the header DOES say is kept, so PROVENANCE.txt can quote it.
+    expect(allowed.origin).toContain('Font Author: CoSMiC cHiLD');
+  });
+
+  it('reports a font that states its own terms as such, even when waved through', () => {
+    const licensed = Buffer.from(makeFlf(['Permission is hereby given to modify this font.']), 'utf8');
+    // Marking a font `package` cannot downgrade one that speaks for itself:
+    // the basis is read from the file, not from the catalogue.
+    expect(provenanceFor(licensed, 'package').basis).toBe('header');
   });
 
   it('accepts one that does, and checksums exactly what it would write', () => {
@@ -123,14 +146,33 @@ describe('the vendored fonts', () => {
     expect(FIGLET_FONTS.some((f) => f.id === 'fire-font-k')).toBe(true);
   });
 
-  it('are on disk, unmodified, and every one carries a licence', () => {
+  it('are on disk, unmodified, and every one is accounted for', () => {
     for (const f of FIGLET_FONTS) {
       expect(existsSync(font(f.id)), `${f.id}.flf is missing`).toBe(true);
       const bytes = readFileSync(font(f.id));
       expect(bytes.length, `${f.id}.flf changed size`).toBe(f.bytes);
       expect(createHash('sha256').update(bytes).digest('hex'), `${f.id}.flf changed`).toBe(f.sha256);
-      expect(f.licence.length, `${f.id} has no licence recorded`).toBeGreaterThan(10);
+      expect(['header', 'package'], `${f.id} has no basis`).toContain(f.basis);
+      expect(f.licence.length, `${f.id} has no terms recorded`).toBeGreaterThan(10);
     }
+  });
+
+  it('only takes the package basis where the font really does state nothing', () => {
+    // The second route must not become the easy route: a font marked
+    // `package` whose header DOES state terms would be a maintainer skipping
+    // the reading, and the recorded basis would be a worse answer than the
+    // truth sitting in the file.
+    for (const f of FIGLET_FONTS.filter((x) => x.basis === 'package')) {
+      const text = readFileSync(font(f.id), 'utf8');
+      expect(licenceLines(readFlf(text).comment), `${f.id} states terms after all`).toEqual([]);
+    }
+  });
+
+  it('still has a majority standing on their own terms', () => {
+    // Not a rule, a smell test: if this ever inverts, the catalogue has
+    // drifted from "fonts we can account for" to "fonts we liked the look of".
+    const byHeader = FIGLET_FONTS.filter((f) => f.basis === 'header').length;
+    expect(byHeader).toBeGreaterThan(FIGLET_FONTS.length / 2);
   });
 
   it('are every one of them precached by the service worker', () => {

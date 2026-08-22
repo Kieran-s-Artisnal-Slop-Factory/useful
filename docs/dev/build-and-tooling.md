@@ -17,7 +17,7 @@ _Describes the code as of v0.3.0 (unreleased; schema v12) — verify against sou
 | [tools/preview-server.mjs](../../tools/preview-server.mjs) | Foreground static server for `dist/`; what Playwright's `webServer` boots. |
 | [tools/build-bg-assets.mjs](../../tools/build-bg-assets.mjs) | Vendors the segmentation model + ONNX Runtime into `public/`, writes `PROVENANCE.txt`. |
 | [tools/build-city-dataset.mjs](../../tools/build-city-dataset.mjs) | Compacts a GeoNames dump into [cities.json](../../src/lib/time/cities.json). |
-| [tools/build-figlet-fonts.mjs](../../tools/build-figlet-fonts.mjs) | Vendors fourteen FIGlet fonts into `public/figlet/`, writes their `PROVENANCE.txt` and [fonts.json](../../src/lib/ascii/fonts.json), and **fails** on a font whose header states no licence. |
+| [tools/build-figlet-fonts.mjs](../../tools/build-figlet-fonts.mjs) | Vendors thirty-seven FIGlet fonts into `public/figlet/`, writes their `PROVENANCE.txt` and [fonts.json](../../src/lib/ascii/fonts.json), and **fails** on a font it cannot account for. |
 | [tools/build-image-fixtures.mjs](../../tools/build-image-fixtures.mjs) | Writes the two binary TIFF fixtures the image specs upload. |
 | [tools/build-math-assets.mjs](../../tools/build-math-assets.mjs) | Vendors MathLive's twenty KaTeX faces, `mathlive-fonts.css` (verbatim) and a stripped `katex.css` into `public/math/`, writes its `PROVENANCE.txt`. |
 | [tools/build-wordlist.mjs](../../tools/build-wordlist.mjs) | Vendors the EFF Long Wordlist (7,776 words, CC BY 3.0 US) into [wordlist.json](../../src/lib/gen/wordlist.json) for the passphrase generator. |
@@ -94,11 +94,11 @@ node tools/build-figlet-fonts.mjs           # copy, checksum, write provenance
 node tools/build-figlet-fonts.mjs --check   # run every gate, write nothing
 ```
 
-Copies fourteen `.flf` files (178.5 KB together) out of `node_modules/figlet/fonts/` into `public/figlet/`, under slugged filenames so no URL carries a `%20`. Three gates, and any of them fails the run without writing a byte:
+Copies thirty-seven `.flf` files (596.5 KB together) out of `node_modules/figlet/fonts/` into `public/figlet/`, under slugged filenames so no URL carries a `%20`. Three gates, and any of them fails the run without writing a byte:
 
-- **A font must state a licence in its own header.** A `.flf` header is free text; plenty name an author and stop. The script accepts the classic FIGlet grant ("Permission is hereby given to modify this font…"), the named licences (MIT, WTFPL, public domain, CC) and a copyright line with terms, and refuses everything else — which is why several good-looking fonts (`ANSI Shadow`, `Bloody`) are not here. The matched sentence is quoted verbatim into `public/figlet/PROVENANCE.txt`, following the header's hard wrapping to the end of the sentence.
+- **A font must be accounted for.** Twenty state terms in their own header — the classic FIGlet grant ("Permission is hereby given to modify this font…"), MIT, the WTFPL — and the matched sentence is quoted verbatim into `public/figlet/PROVENANCE.txt`, following the header's hard wrapping to the end of the sentence. The other seventeen state nothing, and ship only by being marked `basis: 'package'` in the catalogue **one font at a time**: a recorded finding that the file sits inside the MIT-licensed `figlet` package with its author named in the header, which `PROVENANCE.txt` says in those words is weaker than a per-font grant. A font with neither fails the run, and the refusal says what to do about it.
 - **Every font must be listed in `SHELL` in [sw.js](../../public/sw.js).** They are unfingerprinted `public/` files that the background crawl cannot discover, so an unlisted font is a font that is missing offline.
-- **A Latin-1 font is transcoded to UTF-8** (three of the fourteen are), because the app reads them with `Response.text()`, which is UTF-8 — a raw `0xE9` would arrive as U+FFFD and draw the wrong glyph. `PROVENANCE.txt` records that it happened.
+- **A Latin-1 font is transcoded to UTF-8** (four of them are), because the app reads them with `Response.text()`, which is UTF-8 — a raw `0xE9` would arrive as U+FFFD and draw the wrong glyph. `PROVENANCE.txt` records that it happened.
 
 Unusually for this directory, its pure parts are unit tested — the refusal path especially — from [provenance.test.ts](../../src/lib/ascii/provenance.test.ts), which also re-checksums the vendored files against [fonts.json](../../src/lib/ascii/fonts.json). Re-run it when `figlet` is upgraded or the font list changes, then commit `public/figlet/` and `fonts.json` together.
 

@@ -42,6 +42,12 @@
 
   let mode = $state<'text' | 'image'>('text');
 
+  /** Which generators actually paint with the Ink colour, and which vary with
+   * the seed. Both lists exist so a control is only shown where it does
+   * something — an inert picker is worse than a missing one. */
+  const USES_INK: GeneratorId[] = ['heading', 'noise', 'flow', 'icon'];
+  const USES_SEED: GeneratorId[] = ['noise', 'flow', 'material', 'planes'];
+
   // ---- text ------------------------------------------------------------
   let textOptions = $state<TextOptions>({ ...DEFAULT_TEXT_OPTIONS });
   let filler = $derived(generateText(textOptions));
@@ -300,13 +306,16 @@
             <label for="ph-bg">Background</label>
             <input id="ph-bg" data-testid="ph-bg" type="color" bind:value={image.background} />
           </div>
-          {#if image.generator !== 'solid' && image.generator !== 'gradient' && image.generator !== 'scene'}
+          <!-- Only where it paints something. The geometry generators draw
+               from their own palette and the scenes carry their own colours,
+               so an Ink picker there is a control that does nothing. -->
+          {#if USES_INK.includes(image.generator)}
             <div>
               <label for="ph-fg">Ink</label>
               <input id="ph-fg" data-testid="ph-fg" type="color" bind:value={image.foreground} />
             </div>
           {/if}
-          {#if image.generator === 'noise' || image.generator === 'flow' || image.generator === 'material'}
+          {#if USES_SEED.includes(image.generator)}
             <div>
               <label for="ph-seed">Seed</label>
               <input id="ph-seed" data-testid="ph-seed" class="num" bind:value={image.seed} />
@@ -331,6 +340,62 @@
             <div>
               <label for="ph-blur">Blur ({image.blur})</label>
               <input id="ph-blur" data-testid="ph-blur" type="range" min="0" max="8" step="0.5" bind:value={image.blur} />
+            </div>
+          </div>
+        {/if}
+
+        {#if image.generator === 'flow'}
+          <div class="row">
+            <div>
+              <label for="ph-density">Lines ({image.density})</label>
+              <input
+                id="ph-density"
+                data-testid="ph-density"
+                type="range"
+                min="10"
+                max="400"
+                step="10"
+                bind:value={image.density}
+              />
+            </div>
+            <p class="muted small">Past a few hundred the lines stop reading as lines, and the file stops being small.</p>
+          </div>
+        {/if}
+
+        {#if image.generator === 'material' || image.generator === 'planes'}
+          <div class="row">
+            <div>
+              <label for="ph-opacity">Shape opacity ({Math.round(image.opacity * 100)}%)</label>
+              <input
+                id="ph-opacity"
+                data-testid="ph-opacity"
+                type="range"
+                min="0.05"
+                max="1"
+                step="0.05"
+                bind:value={image.opacity}
+              />
+            </div>
+            <p class="muted small">
+              The centre of the range, not a flat value — shapes all at one opacity stop looking
+              layered.
+            </p>
+          </div>
+        {/if}
+
+        {#if image.generator === 'icon'}
+          <div class="row">
+            <div>
+              <label for="ph-icon-scale">Icon size ({Math.round(image.iconScale * 100)}% of the shorter side)</label>
+              <input
+                id="ph-icon-scale"
+                data-testid="ph-icon-scale"
+                type="range"
+                min="0.1"
+                max="0.95"
+                step="0.05"
+                bind:value={image.iconScale}
+              />
             </div>
           </div>
         {/if}

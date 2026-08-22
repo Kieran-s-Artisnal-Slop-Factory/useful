@@ -1,14 +1,29 @@
 FIGlet fonts vendored by tools/build-figlet-fonts.mjs — do not edit by hand.
 
 Source: the `figlet` npm package (MIT, https://github.com/patorjk/figlet.js),
-which redistributes the fonts below. Each entry quotes the licence statement
-found in that font's own .flf header; a font whose header states no licence is
-refused by the build rather than shipped.
+which redistributes the fonts below.
 
-14 fonts, 178.5 KB total.
+Every font ships on one of two bases, recorded per entry:
+
+  basis: header   — the font states its own terms, quoted verbatim below.
+  basis: package  — the font states NO terms. It ships on the package basis
+                    (see below), with whatever its header does say about its
+                    origin quoted underneath. A maintainer marked each of
+                    these one at a time in the catalogue; a font nobody has
+                    looked at fails the build.
+
+The package basis, in full:
+  No terms in the font header. Redistributed here on the basis that the file
+  ships inside the figlet npm package, whose LICENSE.txt is the MIT licence
+  (Copyright (C) 2014-present Patrick Gillespie and other contributors).
+  Weaker than a per-font grant — see the header lines below for what the font
+  itself says about its origin.
+
+37 fonts, 596.5 KB total (20 on their own terms, 17 on the package basis).
 
 ## Standard  (figlet/standard.flf)
 style:    Stroke
+basis:    header
 bytes:    30740
 sha256:   44573a1b2145dfdf0110b6a2d3d98bdc47a98cca50795bd7b78278ee5ca96f79
 author:   Standard by Glenn Chappell & Ian Chai 3/93 -- based on Frank's .sig | Modified by Paul Burton <solution@earthlink.net> 12/96 to include new parameter
@@ -16,6 +31,7 @@ licence:  Permission is hereby given to modify this font, as long as the modifie
 
 ## Slant  (figlet/slant.flf)
 style:    Stroke
+basis:    header
 bytes:    15517
 sha256:   0a1f6ebfa9b0a1658107765d5273f537e2a626c79a6fb431e1ca1e5330a74f2a
 author:   Slant by Glenn Chappell 3/93 -- based on Standard | Modified by Paul Burton <solution@earthlink.net> 12/96 to include new parameter
@@ -23,6 +39,7 @@ licence:  Permission is hereby given to modify this font, as long as the modifie
 
 ## Small  (figlet/small.flf)
 style:    Stroke
+basis:    header
 bytes:    12232
 sha256:   6326d8a718cb57689d5eaa98d301b9297ef6f6300279635b901532a2f3d6aadf
 author:   Small by Glenn Chappell 4/93 -- based on Standard | Modified by Paul Burton <solution@earthlink.net> 12/96 to include new parameter
@@ -30,6 +47,7 @@ licence:  Permission is hereby given to modify this font, as long as the modifie
 
 ## Mini  (figlet/mini.flf)
 style:    Stroke
+basis:    header
 bytes:    9099
 sha256:   45b79cc5974bd2254d6f09a35e23fb7977a1a742e1cf809807bc22585a7106d0
 author:   Mini by Glenn Chappell 4/93 | Modified by Paul Burton <solution@earthlink.net> 12/96 to include new parameter
@@ -37,6 +55,7 @@ licence:  Permission is hereby given to modify this font, as long as the modifie
 
 ## Bigfig  (figlet/bigfig.flf)
 style:    Stroke
+basis:    header
 bytes:    2938
 sha256:   ce44e1dbcb6700e9e0790be7a7a5e27d7482cf989d00ebcd147c36a2cb9415a5
 author:   Expansion font for bigfig program by Glenn Chappell 4/93 -- based on Mini
@@ -44,6 +63,7 @@ licence:  Permission is hereby given to modify this font, as long as the modifie
 
 ## Doom  (figlet/doom.flf)
 style:    Stroke
+basis:    header
 bytes:    7553
 sha256:   3d8fe9963526329ff9d5414a97b0f47e3a852d2f288a693f2938730f5a230e75
 author:   based on Big by Glenn Chappell 4/93 -- based on Standard
@@ -51,20 +71,76 @@ licence:  Permission is hereby given to modify this font, as long as the modifie
 
 ## Varsity  (figlet/varsity.flf)
 style:    Stroke
+basis:    header
 bytes:    8810  (transcoded Latin-1 → UTF-8)
 sha256:   5931543e380090283d2d9ea80a05c08d37ba7a1c0dd63bf9463bba23887a53ee
 author:   Author : myflix
 licence:  Permission is hereby given to modify this font, as long as the modifier's name is placed on a comment line.
 
-## Script  (figlet/script.flf)
+## Epic  (figlet/epic.flf)
 style:    Stroke
+basis:    header
+bytes:    9854
+sha256:   7f38796cdcbc746b42ba68049a74b1359fbaee776bd90ff5b1a2a85b75bf9226
+author:   Epic by Claude Martins 12/94
+licence:  Permission is hereby given to modify this font, as long as the modifier's name is placed on a comment line.
+
+## Broadway  (figlet/broadway.flf)
+style:    Stroke
+basis:    package
+bytes:    15010
+sha256:   6b6501819d8e3e7ffc4646d3e9edee783203bcfc72145157bee293a39743019d
+author:   Figlet translation by Kent Nassen, kentn@cyberspace.org, 1/2/95
+header:   broadway.flf (FIGlet font)
+          Figlet translation by Kent Nassen, kentn@cyberspace.org, 1/2/95
+          Organization: University of Maine System
+
+## Cyberlarge  (figlet/cyberlarge.flf)
+style:    Stroke
+basis:    package
+bytes:    3837
+sha256:   ba9b64f63caa5a7e49d3aca1e61267adb81d9dd0469c3da0eafbb4cc1476ba9c
+header:   Cyberfont - large
+          Figlet conversion by Kent Nassen, kentn@cyberspace.org, 8-10-94
+          From: stock@fwi.uva.nl (Lennert Stock)
+
+## Cybermedium  (figlet/cybermedium.flf)
+style:    Stroke
+basis:    package
+bytes:    3181
+sha256:   fcbb6ba53c8eaa4fd64407c02df04240b5c4822dae7bb27357fdc7446d7a88f7
+header:   Cyberfont - medium
+          Figlet conversion by Kent Nassen, kentn@cyberspace.org, 8-11-94
+          From: stock@fwi.uva.nl (Lennert Stock)
+
+## Script  (figlet/script.flf)
+style:    Script
+basis:    header
 bytes:    16864
 sha256:   d849d3c46d6af833fb722af017a2dbc99042602f67bd2d4b23eb305f4d4b8cc7
 author:   Script by Glenn Chappell 4/93 | Modified by Paul Burton <solution@earthlink.net> 12/96 to include new parameter
 licence:  Permission is hereby given to modify this font, as long as the modifier's name is placed on a comment line.
 
+## Caligraphy  (figlet/caligraphy.flf)
+style:    Script
+basis:    package
+bytes:    23989
+sha256:   00350e6fddd5ec0dc79409b51bec2c2297f23d4d52bdf591822b5276a25fc9a9
+header:   caligraphy.flf composed  by Vinney Thai <ssfiit@eris.cc.umb.edu>
+          caligraphy font (J, O, R) composed by Jorn <jorn@node.site.cat>
+          date: Oct 23, 1994
+
+## Fraktur  (figlet/fraktur.flf)
+style:    Script
+basis:    package
+bytes:    26595
+sha256:   15c6f861dd77ddde7e8521984162b84a37987d6bc3527ce0259acc93ca4a2f69
+header:   Fraktur.flf by Philip Menke (philippe@dds.nl)
+          may 1995
+
 ## Shadow  (figlet/shadow.flf)
 style:    Shadow
+basis:    header
 bytes:    14552
 sha256:   be138f51d3928d6ea515262fe549ac2179c61a7a0c7bd20841639b8bd7f22649
 author:   Shadow by Glenn Chappell 6/93 -- based on Standard & SmShadow | Modified by Paul Burton <solution@earthlink.net> 12/96 to include new parameter
@@ -72,27 +148,85 @@ licence:  Permission is hereby given to modify this font, as long as the modifie
 
 ## Ghost  (figlet/ghost.flf)
 style:    Shadow
+basis:    header
 bytes:    13144  (transcoded Latin-1 → UTF-8)
 sha256:   fd9840a6fc41180db7932ba359933fee2c62d2e648b824500228a3d392579ff4
 author:   Author : myflix
 licence:  Permission is hereby given to modify this font, as long as the modifier's name is placed on a comment line.
 
+## Slant Relief  (figlet/slant-relief.flf)
+style:    Shadow
+basis:    header
+bytes:    24048
+sha256:   010496378b233c8fbb728d1f78874c03c8d1d0bf12239d5821296cb4df4cda7b
+licence:  Permission is hereby given to modify this font, as long as the modifier's name is placed on a comment line.
+
 ## 3D Diagonal  (figlet/3d-diagonal.flf)
 style:    3-D
+basis:    header
 bytes:    25476  (transcoded Latin-1 → UTF-8)
 sha256:   ba96c495efa742b4a536ac95104df3918c7f29673da98e0bddc816da4d334265
 author:   Author : nabis, LG Beard, Markus Gebhard and others
 licence:  Permission is hereby given to modify this font, as long as the modifier's name is placed on a comment line.
 
-## Fire Font-k  (figlet/fire-font-k.flf)
-style:    Decorative
-bytes:    9946
-sha256:   cadf9724b51ff32b9505fc853d5b435c56ef33fdbb4f3a927a09e91350d02396
-author:   Author : MJP | Based on Small.flf by Glenn Chappell 4/93 -- based on Standard
-licence:  Permission is hereby given to modify this font, as long as the modifier's name is placed on a comment line.
+## 3D-ASCII  (figlet/3d-ascii.flf)
+style:    3-D
+basis:    package
+bytes:    13184
+sha256:   52ad704a6d5e652a7b89544969d14781aed846fd0d94e6304dcc6f7bf635e6b8
+author:   Font Author: ?
+header:   Font Author: ?
+          More info on font here:
+          https://web.archive.org/web/20120819044459/http://www.roysac.com/thedrawfonts-tdf.asp
+
+## Terrace  (figlet/terrace.flf)
+style:    3-D
+basis:    package
+bytes:    18887
+sha256:   b64ac30d9e3d9349e7ed604337efd25f2a3114b0fd130c151a6a4f8019a0624c
+header:   - T E R R A C E -
+          - a FIGFont by AJN -
+          created with: http://patorjk.com/figfont-editor
+
+## Big Money-ne  (figlet/big-money-ne.flf)
+style:    3-D
+basis:    package
+bytes:    15305
+sha256:   e69ebd240b687c1fc1806818ee8d516d76294d11b46ed24be5d1d6a4c18ac982
+header:   /$$       /$$
+          | $$      |__/
+          | $$$$$$$  /$$  /$$$$$$  /$$$$$$/$$$$   /$$$$$$  /$$$$$$$   /$$$$$$  /$$   /$$         /$$$$$$$   /$$$$$$
+
+## Big Money-nw  (figlet/big-money-nw.flf)
+style:    3-D
+basis:    package
+bytes:    15360
+sha256:   35d15067d68270d0959d45aa5ffca18fd0db5cc754ae071580ca9b0ab20f0a7a
+header:   $$\       $$\
+          $$ |      \__|
+          $$$$$$$\  $$\  $$$$$$\  $$$$$$\$$$$\   $$$$$$\  $$$$$$$\   $$$$$$\  $$\   $$\         $$$$$$$\  $$\  $$\  $$\
+
+## Big Money-se  (figlet/big-money-se.flf)
+style:    3-D
+basis:    package
+bytes:    16666
+sha256:   178808c076406a6d56db4c19320e1de3f2f829cfed39c6f4907d6680b178c816
+header:   __        __
+          |  \      |  \
+          | $$____   \$$  ______   ______ ____    ______   _______    ______   __    __           _______   ______
+
+## Big Money-sw  (figlet/big-money-sw.flf)
+style:    3-D
+basis:    package
+bytes:    16714
+sha256:   9a56e3822b708838560a32c5a2f1db215318fdfe76e7096c65f170d34794d818
+header:   __        __
+          /  |      /  |
+          $$ |____  $$/   ______   _____  ____    ______   _______    ______   __    __           _______  __   __   __
 
 ## Pagga  (figlet/pagga.flf)
 style:    Blocks
+basis:    header
 bytes:    9825
 sha256:   ac5693a0d48e73bc0ef816755fcb0ff04631fcc0a40ed35f22e21dfdafbbede2
 licence:  the terms of the Do What The Fuck You Want To Public License, Version 2, as published by Sam Hocevar. See http://sam.zoy.org/wtfpl/COPYING for more details.
@@ -100,7 +234,101 @@ licence:  the terms of the Do What The Fuck You Want To Public License, Version 
 
 ## Future  (figlet/future.flf)
 style:    Blocks
+basis:    header
 bytes:    6136
 sha256:   d3f82bef2625e99b750e81f230d5f4d2b122eb621250e94d2c5317da3e039682
 licence:  the terms of the Do What The Fuck You Want To Public License, Version 2, as published by Sam Hocevar. See http://sam.zoy.org/wtfpl/COPYING for more details.
           as published by Sam Hocevar. See http://sam.zoy.org/wtfpl/COPYING for more details.
+
+## Blocks  (figlet/blocks.flf)
+style:    Blocks
+basis:    header
+bytes:    24678  (transcoded Latin-1 → UTF-8)
+sha256:   024068fe15c1b27b01e471e6a481a819cf8f249e6637b0d2fa72e231f7acf30c
+author:   Author : myflix
+licence:  Permission is hereby given to modify this font, as long as the modifier's name is placed on a comment line.
+
+## ANSI Regular  (figlet/ansi-regular.flf)
+style:    Blocks
+basis:    package
+bytes:    9409
+sha256:   f4b8365d3b658908374fe03f8a3c02d47f620f4af88ec136b88540e788b463b4
+author:   Font Author: ?
+header:   Font Author: ?
+          More Info:
+          https://web.archive.org/web/20120819044459/http://www.roysac.com/thedrawfonts-tdf.asp
+
+## ANSI Shadow  (figlet/ansi-shadow.flf)
+style:    Blocks
+basis:    package
+bytes:    12180
+sha256:   5b3141fa14163c90ff199d169331333875df557fa463b9fb05b85fee6eca6dc1
+author:   Font Author: ?
+header:   Font Author: ?
+          More Info:
+          https://web.archive.org/web/20120819044459/http://www.roysac.com/thedrawfonts-tdf.asp
+
+## ANSI Compact  (figlet/ansi-compact.flf)
+style:    Blocks
+basis:    header
+bytes:    31294
+sha256:   7725d789f12f20f854a2d0fb6f23df3080fefd0753e94055f2078b3853afe30f
+author:   Font Author: Loic Cressot
+licence:  This font is free to use and distribute / MIT License
+
+## Electronic  (figlet/electronic.flf)
+style:    Blocks
+basis:    package
+bytes:    25578
+sha256:   bffe1417c47f19b3e15644cf65ef9c64cbff4d831d54dc8b5d4a29ba77d35b19
+author:   Font Author: Derek Lemay <THe PHaRCYDe>
+header:   Font Author: Derek Lemay <THe PHaRCYDe>
+          More Info:
+          https://web.archive.org/web/20120819044459/http://www.roysac.com/thedrawfonts-tdf.asp
+
+## Classy  (figlet/classy.flf)
+style:    Blocks
+basis:    header
+bytes:    44409
+sha256:   c738ee428830b85bd7cdbe3edc7a296f1f1540b73910ee61756933ec43e06998
+author:   Font Author: Loic Cressot
+licence:  This font is free to use and distribute / MIT License
+
+## Coder Mini  (figlet/coder-mini.flf)
+style:    Blocks
+basis:    header
+bytes:    40273
+sha256:   08857103cca94c8c3f515875af04389ec90f926876973c13ca11756c7d724592
+author:   Font Author: Loic Cressot
+licence:  This font is free to use and distribute / MIT License
+
+## Fire Font-k  (figlet/fire-font-k.flf)
+style:    Decorative
+basis:    header
+bytes:    9946
+sha256:   cadf9724b51ff32b9505fc853d5b435c56ef33fdbb4f3a927a09e91350d02396
+author:   Author : MJP | Based on Small.flf by Glenn Chappell 4/93 -- based on Standard
+licence:  Permission is hereby given to modify this font, as long as the modifier's name is placed on a comment line.
+
+## Bloody  (figlet/bloody.flf)
+style:    Decorative
+basis:    package
+bytes:    12448
+sha256:   e3a6a25f8113bfce06a3444f299f67b46d53b27a3604f2f1e328c345ad47ded3
+header:   Figlet conversion by patorjk, April 17, 2008
+
+## Delta Corps Priest 1  (figlet/delta-corps-priest-1.flf)
+style:    Decorative
+basis:    package
+bytes:    13154
+sha256:   5065f00aa615c5e2fa18e9f7871628cb0384e9d9154d1531096e3adc0d84d41f
+author:   Font Author: CoSMiC cHiLD | FIGFont created by patorjk.com's FIGFont Editor: http://patorjk.com/figfont-editor
+header:   Font Author: CoSMiC cHiLD
+          FIGFont created by patorjk.com's FIGFont Editor: http://patorjk.com/figfont-editor
+
+## Reverse  (figlet/reverse.flf)
+style:    Decorative
+basis:    package
+bytes:    11919
+sha256:   c045fcff5d5ad370fa9b2cd59583d4b6f411816b0738eb522122d826cdcd7b9c
+header:   reverse.flf by Matt E. Thurston(thurstme@cda.mrs.umn.edu)

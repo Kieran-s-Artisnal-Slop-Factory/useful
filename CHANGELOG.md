@@ -2,6 +2,57 @@
 
 ## Features
 
+- **ASCII art now ships thirty-seven FIGlet fonts**, up from fourteen — the
+  Big Money set, ANSI Regular/Compact/Shadow, Bloody, Blocks, Broadway,
+  Caligraphy, Classy, Coder Mini, Cyberlarge, Cybermedium, Delta Corps Priest
+  1, Electronic, Epic, Fraktur, Reverse, Slant Relief, Terrace, 3D-ASCII and
+  more, grouped by what they are made of (a new **Script** group joins Stroke,
+  Shadow, 3-D, Blocks and Decorative).
+  - **The licence gate grew a second route rather than being loosened.** Only
+    twenty of the thirty-seven state redistribution terms in their own header;
+    the rest state nothing at all, because most of the FIGlet library predates
+    anyone thinking about licences and the 1990s fonts were posted to
+    alt.ascii-art with a name, an email address and no terms. Refusing all of
+    those means shipping eight fonts, so a font may now ship on a recorded
+    **package basis** — marked one font at a time in the build catalogue,
+    saying that a maintainer read the header and found the file inside the
+    MIT-licensed `figlet` package with its author named. `PROVENANCE.txt` says
+    in those words that this is weaker than a per-font grant, and quotes what
+    each header does say underneath. A font with neither still fails the
+    build, and the refusal names what to do about it.
+  - Four unit cases hold the gate's shape: the default is still a refusal, the
+    second route has to be asked for per font, a font marked `package` whose
+    header *does* state terms is still reported as `header` (the basis is read
+    from the file, never from the catalogue), and a majority must still stand
+    on their own terms.
+
+- **File tree: two clear buttons.** **Clear** empties the tree down to its
+  root — the example folders included — so a tree can be typed from nothing;
+  the root itself survives, because a tree without one is not a tree.
+  **Clear all** in the emoji rules removes every rule including the shipped
+  dozen, after which every file falls back to 📄 and every folder to 📂.
+
+- **Placeholders: the generators got their knobs.**
+  - **Flow field** takes a line count (10–400). Past that the lines stop
+    reading as lines and the file stops being small, so it clamps.
+  - **Layered geometry** takes a shape opacity — the *centre* of the range
+    each shape draws from rather than a flat value, because shapes all at one
+    opacity stop looking layered and start looking like a single stencil.
+  - **Cut planes**, a new generator beside it and its opposite: four to six
+    big quadrilateral slabs on one jittered angle, each long enough to run off
+    both edges, under a shared drop shadow. Its palette is built from the
+    chosen background — two neighbouring hues plus a dark and a light — because
+    a few big slabs in unrelated colours look like a mistake where a dozen
+    small ones look playful, and because it gives the Background picker
+    something to do beyond filling the gaps.
+  - **The icon** takes a size, 10–95% of the shorter side.
+  - **Six more drawn scenes**, taking the set to fifteen — five each of nature
+    (a desert, a dusk coastline), sport (a tennis court, a bicycle on a road)
+    and city (a subway platform, rooftops in the rain).
+  - **The Ink picker is gone where it painted nothing.** It now appears only
+    for the four generators that actually use it; the same rule hides the seed
+    where nothing is random. An inert control is worse than a missing one.
+
 - **Placeholders** (`/tools/placeholders/`): filler text and filler images,
   both seeded, both drawn on the device. Nothing is fetched — the only thing
   on the page that leaves this machine is a card of links to photo sites, and
@@ -369,13 +420,16 @@
 
 ## Other
 
-- **The install precache carries fonts for the first time** (service worker
-  cache `v26`): the fourteen `.flf` files are unfingerprinted `public/` files,
+- **The install precache carries fonts** (service worker cache `v30`): the
+  thirty-seven `.flf` files are unfingerprinted `public/` files,
   so the background crawl that discovers every other asset cannot see them, and
   a banner tool that only works online would be a strange thing to ship in an
-  offline-only app. 178.5 KB for all fourteen. `tools/build-figlet-fonts.mjs`
-  fails if a vendored font is missing from the shell list, and a unit test
-  checks the same thing from the other direction.
+  offline-only app. 596.5 KB for all thirty-seven, which is the largest thing
+  in the shell by a distance and a deliberate trade: the alternative is a
+  bucket of their own filled on demand, and then a font you have not previewed
+  does not render on a plane. `tools/build-figlet-fonts.mjs` fails if a
+  vendored font is missing from the shell list, and a unit test checks the
+  same thing from the other direction.
   - One footnote for anyone editing `public/sw.js`: **no apostrophes inside the
     `SHELL` array**. `tools/audit-precache.mjs` reads that array by matching
     single-quoted strings, so a contraction in a comment reads as a path.

@@ -53,6 +53,7 @@ const SW = resolve(HERE, '../public/sw.js');
  * built from block characters (Pagga).
  */
 export const CATALOGUE_FONTS = [
+  // ---- Stroke: drawn with / \ | _ ------------------------------------------
   { id: 'standard', source: 'Standard', style: 'Stroke', note: 'The FIGlet default since 1993.' },
   { id: 'slant', source: 'Slant', style: 'Stroke', note: 'Standard, leaning.' },
   { id: 'small', source: 'Small', style: 'Stroke', note: 'Half the height of Standard.' },
@@ -60,13 +61,52 @@ export const CATALOGUE_FONTS = [
   { id: 'bigfig', source: 'Bigfig', style: 'Stroke', note: 'Letters drawn with letters.' },
   { id: 'doom', source: 'Doom', style: 'Stroke', note: 'Heavy pipes and slashes.' },
   { id: 'varsity', source: 'Varsity', style: 'Stroke', note: 'Collegiate outline.' },
-  { id: 'script', source: 'Script', style: 'Stroke', note: 'Joined-up handwriting.' },
+  { id: 'epic', source: 'Epic', style: 'Stroke', note: 'Broad and heavy.' },
+  { id: 'broadway', source: 'Broadway', style: 'Stroke', note: 'Theatre marquee.', basis: 'package' },
+  { id: 'cyberlarge', source: 'Cyberlarge', style: 'Stroke', note: 'Wide, clean, spaced out.', basis: 'package' },
+  { id: 'cybermedium', source: 'Cybermedium', style: 'Stroke', note: 'Cyberlarge, tightened up.', basis: 'package' },
+
+  // ---- Script: joined-up and calligraphic ----------------------------------
+  { id: 'script', source: 'Script', style: 'Script', note: 'Joined-up handwriting.' },
+  { id: 'caligraphy', source: 'Caligraphy', style: 'Script', note: 'Brush-drawn capitals.', basis: 'package' },
+  { id: 'fraktur', source: 'Fraktur', style: 'Script', note: 'Blackletter.', basis: 'package' },
+
+  // ---- Shadow and relief ---------------------------------------------------
   { id: 'shadow', source: 'Shadow', style: 'Shadow', note: 'Standard with a drop shadow.' },
   { id: 'ghost', source: 'Ghost', style: 'Shadow', note: 'Outlined and hollow.' },
+  { id: 'slant-relief', source: 'Slant Relief', style: 'Shadow', note: 'Slant, carved out.' },
+
+  // ---- 3-D -----------------------------------------------------------------
   { id: '3d-diagonal', source: '3D Diagonal', style: '3-D', note: 'Blocky, extruded, tall.' },
-  { id: 'fire-font-k', source: 'Fire Font-k', style: 'Decorative', note: 'Letters on fire.' },
+  { id: '3d-ascii', source: '3D-ASCII', style: '3-D', note: 'Deep extrusion, ASCII only.', basis: 'package' },
+  { id: 'terrace', source: 'Terrace', style: '3-D', note: 'Stepped and layered.', basis: 'package' },
+  { id: 'big-money-ne', source: 'Big Money-ne', style: '3-D', note: 'Lit from the north-east.', basis: 'package' },
+  { id: 'big-money-nw', source: 'Big Money-nw', style: '3-D', note: 'Lit from the north-west.', basis: 'package' },
+  { id: 'big-money-se', source: 'Big Money-se', style: '3-D', note: 'Lit from the south-east.', basis: 'package' },
+  { id: 'big-money-sw', source: 'Big Money-sw', style: '3-D', note: 'Lit from the south-west.', basis: 'package' },
+
+  // ---- Blocks: built from block and box-drawing characters -----------------
   { id: 'pagga', source: 'Pagga', style: 'Blocks', note: 'Built from ░ ▀ █ — three rows.' },
   { id: 'future', source: 'Future', style: 'Blocks', note: 'Box-drawing strokes, one row tall.' },
+  { id: 'blocks', source: 'Blocks', style: 'Blocks', note: 'Solid slabs with a hollow centre.' },
+  { id: 'ansi-regular', source: 'ANSI Regular', style: 'Blocks', note: 'Full-block capitals.', basis: 'package' },
+  { id: 'ansi-shadow', source: 'ANSI Shadow', style: 'Blocks', note: 'Full blocks with a shadow.', basis: 'package' },
+  { id: 'ansi-compact', source: 'ANSI Compact', style: 'Blocks', note: 'Half-height blocks.' },
+  { id: 'electronic', source: 'Electronic', style: 'Blocks', note: 'Circuit-board slabs.', basis: 'package' },
+  { id: 'classy', source: 'Classy', style: 'Blocks', note: 'Shaded, with serifs.' },
+  { id: 'coder-mini', source: 'Coder Mini', style: 'Blocks', note: 'Tiny blocks, four rows.' },
+
+  // ---- Decorative ----------------------------------------------------------
+  { id: 'fire-font-k', source: 'Fire Font-k', style: 'Decorative', note: 'Letters on fire.' },
+  { id: 'bloody', source: 'Bloody', style: 'Decorative', note: 'Dripping horror-film capitals.', basis: 'package' },
+  {
+    id: 'delta-corps-priest-1',
+    source: 'Delta Corps Priest 1',
+    style: 'Decorative',
+    note: 'Angular, armoured, enormous.',
+    basis: 'package',
+  },
+  { id: 'reverse', source: 'Reverse', style: 'Decorative', note: 'Knocked out of a solid field.', basis: 'package' },
 ];
 
 /**
@@ -151,29 +191,65 @@ export function authorLines(comment) {
 }
 
 /**
+ * The one basis a font may ship on when its own header states no terms.
+ *
+ * Most of the FIGlet font library predates anybody thinking about licences:
+ * the 1990s fonts were posted to alt.ascii-art with a name and an email
+ * address and nothing else, and several of the modern ones say `Font Author:
+ * ?`. Refusing every one of those means shipping eight fonts, so there is a
+ * second route — and it is deliberately NOT "shrug and copy it".
+ *
+ * A font takes this route only by being marked `basis: 'package'` in the
+ * catalogue above, one font at a time, which records that a maintainer looked
+ * and this is what they found:
+ *
+ *   - the file ships inside the `figlet` npm package, whose LICENSE.txt is the
+ *     MIT licence (Patrick Gillespie and contributors), and
+ *   - the font's own header names its author or its origin, quoted verbatim
+ *     into PROVENANCE.txt.
+ *
+ * That is weaker than a per-font grant and PROVENANCE.txt says so in those
+ * words. It is a judgement, made once, written down, and attached to the file
+ * it is about — which is the whole difference between a decision and a habit.
+ */
+export const PACKAGE_BASIS =
+  'No terms in the font header. Redistributed here on the basis that the file ships inside the ' +
+  'figlet npm package, whose LICENSE.txt is the MIT licence (Copyright (C) 2014-present Patrick ' +
+  'Gillespie and other contributors). Weaker than a per-font grant — see the header lines below ' +
+  'for what the font itself says about its origin.';
+
+/**
  * Everything we record about one font — and the refusal.
  *
- * Throws when the header carries no licence statement. That is the whole
- * point of the script: the failure is loud, it names the font, and it stops
- * the build rather than shipping something we cannot account for.
+ * Throws when the header carries no licence statement AND the catalogue has
+ * not recorded a basis for it. That is the point of the script: a font nobody
+ * has looked at cannot ship, and the failure is loud, names the font, and
+ * quotes the header so the person reading it can make the call.
  */
-export function provenanceFor(buffer) {
+export function provenanceFor(buffer, basis = 'header') {
   const utf8Clean = Buffer.from(buffer.toString('utf8'), 'utf8').equals(buffer);
   const text = utf8Clean ? buffer.toString('utf8') : buffer.toString('latin1');
   const { comment, commentLines } = readFlf(text);
   const licence = licenceLines(comment);
-  if (licence.length === 0) {
+  if (licence.length === 0 && basis !== 'package') {
     throw new Error(
       'the font header states no licence — refusing to vendor it. ' +
+        'Either it does state terms and LICENCE_PATTERNS missed them, or a maintainer must read ' +
+        "the header and mark the catalogue entry `basis: 'package'`. " +
         `Header (${commentLines} comment lines): ${comment.join(' / ').slice(0, 200) || '(empty)'}`
     );
   }
   const out = Buffer.from(text, 'utf8');
+  // The first few header lines are what a `basis: 'package'` font has to say
+  // for itself, so they are recorded rather than summarised.
+  const origin = comment.map((l) => l.trim()).filter(Boolean).slice(0, 3);
   return {
     text,
     bytes: out,
     transcoded: !utf8Clean,
+    basis: licence.length > 0 ? 'header' : 'package',
     licence,
+    origin,
     authors: authorLines(comment),
     sha256: createHash('sha256').update(out).digest('hex'),
   };
@@ -181,6 +257,22 @@ export function provenanceFor(buffer) {
 
 /** `public/figlet/<id>.flf`, as sw.js's SHELL and the app both spell it. */
 export const fontPath = (id) => `figlet/${id}.flf`;
+
+/** Hard-wrap a paragraph, so PROVENANCE.txt reads in a terminal. */
+export function wrap(text, width) {
+  const lines = [];
+  let line = '';
+  for (const word of text.split(/\s+/)) {
+    if (line === '') line = word;
+    else if (line.length + 1 + word.length <= width) line += ` ${word}`;
+    else {
+      lines.push(line);
+      line = word;
+    }
+  }
+  if (line) lines.push(line);
+  return lines;
+}
 
 function main() {
   const check = process.argv.includes('--check');
@@ -198,7 +290,7 @@ function main() {
       continue;
     }
     try {
-      const p = provenanceFor(readFileSync(file));
+      const p = provenanceFor(readFileSync(file), font.basis ?? 'header');
       records.push({ ...font, ...p });
     } catch (err) {
       failures.push(`${font.source}: ${err instanceof Error ? err.message : String(err)}`);
@@ -225,8 +317,13 @@ function main() {
   }
 
   const total = records.reduce((n, r) => n + r.bytes.length, 0);
+  const byHeader = records.filter((r) => r.basis === 'header').length;
+  const summary =
+    `${records.length} fonts, ${(total / 1024).toFixed(1)} KB — ` +
+    `${byHeader} with terms in their own header, ${records.length - byHeader} on the package basis, ` +
+    'all listed in SHELL.';
   if (check) {
-    console.log(`${records.length} fonts, ${(total / 1024).toFixed(1)} KB — all licensed, all listed in SHELL.`);
+    console.log(summary);
     return;
   }
 
@@ -237,19 +334,34 @@ function main() {
     'FIGlet fonts vendored by tools/build-figlet-fonts.mjs — do not edit by hand.',
     '',
     'Source: the `figlet` npm package (MIT, https://github.com/patorjk/figlet.js),',
-    'which redistributes the fonts below. Each entry quotes the licence statement',
-    "found in that font's own .flf header; a font whose header states no licence is",
-    'refused by the build rather than shipped.',
+    'which redistributes the fonts below.',
     '',
-    `${records.length} fonts, ${(total / 1024).toFixed(1)} KB total.`,
+    'Every font ships on one of two bases, recorded per entry:',
+    '',
+    '  basis: header   — the font states its own terms, quoted verbatim below.',
+    '  basis: package  — the font states NO terms. It ships on the package basis',
+    '                    (see below), with whatever its header does say about its',
+    '                    origin quoted underneath. A maintainer marked each of',
+    '                    these one at a time in the catalogue; a font nobody has',
+    '                    looked at fails the build.',
+    '',
+    'The package basis, in full:',
+    ...wrap(PACKAGE_BASIS, 76).map((line) => `  ${line}`),
+    '',
+    `${records.length} fonts, ${(total / 1024).toFixed(1)} KB total ` +
+      `(${byHeader} on their own terms, ${records.length - byHeader} on the package basis).`,
     '',
     ...records.flatMap((r) => [
       `## ${r.source}  (${fontPath(r.id)})`,
       `style:    ${r.style}`,
+      `basis:    ${r.basis}`,
       `bytes:    ${r.bytes.length}${r.transcoded ? '  (transcoded Latin-1 → UTF-8)' : ''}`,
       `sha256:   ${r.sha256}`,
       ...(r.authors.length ? [`author:   ${r.authors.join(' | ')}`] : []),
       ...r.licence.map((line, i) => `${i === 0 ? 'licence:  ' : '          '}${line}`),
+      ...(r.basis === 'package'
+        ? r.origin.map((line, i) => `${i === 0 ? 'header:   ' : '          '}${line}`)
+        : []),
       '',
     ]),
   ].join('\n');
@@ -262,14 +374,12 @@ function main() {
     note: r.note,
     bytes: r.bytes.length,
     sha256: r.sha256,
-    licence: r.licence.join(' '),
+    basis: r.basis,
+    licence: r.basis === 'header' ? r.licence.join(' ') : PACKAGE_BASIS,
   }));
   writeFileSync(CATALOGUE, `${JSON.stringify(catalogue, null, 2)}\n`, 'utf8');
 
-  console.log(
-    `Wrote ${records.length} fonts (${(total / 1024).toFixed(1)} KB) to public/figlet/, ` +
-      'plus PROVENANCE.txt and src/lib/ascii/fonts.json.'
-  );
+  console.log(`Wrote ${summary.replace(/^/, '')}\nto public/figlet/, plus PROVENANCE.txt and src/lib/ascii/fonts.json.`);
 }
 
 // Importable for its unit tests (src/lib/ascii/provenance.test.ts) without

@@ -7,7 +7,17 @@
  */
 import { describe, expect, it } from 'vitest';
 import { mulberry32, pick, randomInt, seedFrom, shuffled } from '../random';
-import { batchName, buildBatch, buildImage, DEFAULT_IMAGE_OPTIONS, fitFontSize, GENERATORS, MAX_SIDE, MIN_SIDE } from './images';
+import {
+  batchName,
+  buildBatch,
+  buildImage,
+  DEFAULT_IMAGE_OPTIONS,
+  fitFontSize,
+  GENERATORS,
+  harmonise,
+  MAX_SIDE,
+  MIN_SIDE,
+} from './images';
 import { SCENES, SCENE_GROUPS, sceneById } from './scenes';
 import { applyRatio, matchRatio, RATIOS, SIZE_PRESETS } from './size';
 import { countText, DEFAULT_TEXT_OPTIONS, generateText, LOREM_OPENING, type TextOptions } from './text';
@@ -227,6 +237,83 @@ describe('filler images', () => {
     expect(short).toBeLessThanOrEqual(200);
   });
 
+  it('draws more streamlines as the density goes up, and clamps it', () => {
+    const paths = (density: number) =>
+      findAll(parseSvg(buildImage({ ...DEFAULT_IMAGE_OPTIONS, generator: 'flow', density })), 'path').length;
+    expect(paths(40)).toBeLessThan(paths(200));
+    // Clamped at both ends: 10 lines is the floor and 400 the ceiling, past
+    // which the lines stop reading as lines and the file stops being small.
+    expect(paths(0)).toBe(paths(10));
+    expect(paths(10_000)).toBe(paths(400));
+  });
+
+  it('takes an opacity for the geometry generators, and varies around it', () => {
+    for (const generator of ['material', 'planes'] as const) {
+      const opacities = (value: number) =>
+        findAll(parseSvg(buildImage({ ...DEFAULT_IMAGE_OPTIONS, generator, opacity: value })), 'polygon').map(
+          (n) => Number(n.attrs.opacity)
+        );
+      const low = opacities(0.2);
+      const high = opacities(0.9);
+      const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
+      expect(mean(low), generator).toBeLessThan(mean(high));
+      // Every shape stays inside the legal range whatever the centre is.
+      for (const o of [...low, ...high]) {
+        expect(o, generator).toBeGreaterThan(0);
+        expect(o, generator).toBeLessThanOrEqual(1);
+      }
+      // A spread, not a flat fill — shapes all at one opacity stop looking
+      // layered, which is what the generator is for.
+      expect(new Set(opacities(0.5)).size, generator).toBeGreaterThan(1);
+    }
+  });
+
+  it('builds the cut-planes palette around the chosen background', () => {
+    const palette = harmonise('#1e6fd9');
+    expect(palette).toHaveLength(5);
+    for (const colour of palette) expect(colour).toMatch(/^#[0-9a-f]{6}$/);
+    // Five distinct colours, and they follow the background's hue rather than
+    // being a fixed set — a few big slabs in unrelated colours look like a
+    // mistake where a dozen small ones look playful.
+    expect(new Set(palette).size).toBe(5);
+    expect(harmonise('#d91e6f')).not.toEqual(palette);
+    // A grey has no hue to build on and must not come back as five greys.
+    expect(new Set(harmonise('#808080')).size).toBe(5);
+    expect(harmonise('not a colour')).toHaveLength(5);
+  });
+
+  it('draws cut planes as a few big slabs rather than scattered confetti', () => {
+    const root = parseSvg(buildImage({ ...DEFAULT_IMAGE_OPTIONS, generator: 'planes', width: 800, height: 450 }));
+    const polygons = findAll(root, 'polygon');
+    expect(polygons.length).toBeGreaterThanOrEqual(4);
+    expect(polygons.length).toBeLessThanOrEqual(6);
+    // Every slab is a quadrilateral that runs off the frame — that is the
+    // difference between this and the small-polygon generator beside it.
+    for (const polygon of polygons) {
+      const points = polygon.attrs.points!.trim().split(/\s+/).map((p) => p.split(',').map(Number));
+      expect(points).toHaveLength(4);
+      const xs = points.map((p) => p[0]!);
+      const ys = points.map((p) => p[1]!);
+      expect(Math.max(...xs) - Math.min(...xs) > 800 || Math.max(...ys) - Math.min(...ys) > 450).toBe(true);
+    }
+    expect(findOne(root, 'feDropShadow')).toBeDefined();
+  });
+
+  it('scales the icon, and clamps it to something that still fits', () => {
+    const width = (scale: number) => {
+      const svg = buildImage({
+        ...DEFAULT_IMAGE_OPTIONS,
+        generator: 'icon',
+        iconScale: scale,
+        iconSvg: '<svg viewBox="0 0 24 24"><path d="M4 4 L20 20"/></svg>',
+      });
+      return Number(/scale\(([\d.]+)\)/.exec(findOne(parseSvg(svg), 'g')!.attrs.transform!)![1]);
+    };
+    expect(width(0.8)).toBeGreaterThan(width(0.3));
+    expect(width(5)).toBe(width(0.95));
+    expect(width(0)).toBe(width(0.1));
+  });
+
   it('draws the icon generator without an icon rather than breaking', () => {
     const svg = buildImage({ ...DEFAULT_IMAGE_OPTIONS, generator: 'icon', iconSvg: null });
     expect(findAll(parseSvg(svg), 'rect')).toHaveLength(1);
@@ -254,11 +341,14 @@ describe('filler images', () => {
 });
 
 describe('the drawn scenes', () => {
-  it('has nine of them, three per group, each parsing on its own', () => {
-    expect(SCENES).toHaveLength(9);
+  it('has fifteen of them, five per group, each parsing on its own', () => {
+    expect(SCENES).toHaveLength(15);
     for (const group of SCENE_GROUPS) {
-      expect(SCENES.filter((s) => s.group === group), group).toHaveLength(3);
+      expect(SCENES.filter((s) => s.group === group), group).toHaveLength(5);
     }
+    // Ids are what the page and any saved settings point at, so a duplicate
+    // would silently shadow a whole drawing.
+    expect(new Set(SCENES.map((s) => s.id)).size).toBe(SCENES.length);
     for (const scene of SCENES) {
       const root = parseSvg(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="${scene.viewBox}">${scene.markup}</svg>`);
       expect(root.children.length, scene.id).toBeGreaterThan(1);

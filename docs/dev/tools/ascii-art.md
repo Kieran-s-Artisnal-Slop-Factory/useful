@@ -11,9 +11,9 @@ _Describes the code as of v0.3.0 (unreleased; schema v12) — verify against sou
 | [image.ts](../../../src/lib/ascii/image.ts) | Pixels → characters: ramps, luminance, cell-aspect compensation, box averaging, per-cell colour |
 | [render.ts](../../../src/lib/ascii/render.ts) | Characters → picture: monospace SVG and HTML on one grid |
 | [fonts.ts](../../../src/lib/ascii/fonts.ts) | The vendored FIGlet catalogue, the lazy loader, layouts and alignment |
-| [fonts.json](../../../src/lib/ascii/fonts.json) | Generated catalogue — id, name, style, bytes, SHA-256, licence |
+| [fonts.json](../../../src/lib/ascii/fonts.json) | Generated catalogue — id, name, style, bytes, SHA-256, basis, terms |
 | [AsciiArtApp.svelte](../../../src/components/apps/AsciiArtApp.svelte) | The page |
-| [build-figlet-fonts.mjs](../../../tools/build-figlet-fonts.mjs) | Vendors `public/figlet/*.flf` + `PROVENANCE.txt`; refuses an unlicensed font |
+| [build-figlet-fonts.mjs](../../../tools/build-figlet-fonts.mjs) | Vendors `public/figlet/*.flf` + `PROVENANCE.txt`; refuses a font it cannot account for |
 | [ascii-art.spec.ts](../../../tests/local/ascii-art.spec.ts), [image.test.ts](../../../src/lib/ascii/image.test.ts), [render.test.ts](../../../src/lib/ascii/render.test.ts), [provenance.test.ts](../../../src/lib/ascii/provenance.test.ts) | Playwright and Vitest |
 
 ## The pipeline
@@ -55,17 +55,24 @@ Colours are grouped into runs before they are written: a photograph's flat areas
 
 ## The fonts, and the licence gate
 
-Fourteen fonts ship in `public/figlet/`, 178.5 KB together, precached with the shell (they are unfingerprinted `public/` files the background crawl cannot discover). `figlet` itself is a lazy chunk; each `.flf` is fetched when a row of the picker scrolls into view or a font is chosen, and registered with `parseFont()` — **not** figlet's own `loadFont`, whose URL comes from a configured `fontPath` and would break under a sub-path base.
+Thirty-seven fonts ship in `public/figlet/`, 596.5 KB together, precached with the shell (they are unfingerprinted `public/` files the background crawl cannot discover). `figlet` itself is a lazy chunk; each `.flf` is fetched when a row of the picker scrolls into view or a font is chosen, and registered with `parseFont()` — **not** figlet's own `loadFont`, whose URL comes from a configured `fontPath` and would break under a sub-path base.
 
 | Style | Fonts |
 | --- | --- |
-| Stroke | Standard, Slant, Small, Mini, Bigfig, Doom, Varsity, Script |
-| Shadow | Shadow, Ghost |
-| 3-D | 3D Diagonal |
-| Decorative | Fire Font-k |
-| Blocks | Pagga, Future |
+| Stroke | Standard, Slant, Small, Mini, Bigfig, Doom, Varsity, Epic, Broadway, Cyberlarge, Cybermedium |
+| Script | Script, Caligraphy, Fraktur |
+| Shadow | Shadow, Ghost, Slant Relief |
+| 3-D | 3D Diagonal, 3D-ASCII, Terrace, Big Money ×4 |
+| Blocks | Pagga, Future, Blocks, ANSI Regular, ANSI Shadow, ANSI Compact, Electronic, Classy, Coder Mini |
+| Decorative | Fire Font-k, Bloody, Delta Corps Priest 1, Reverse |
 
-Every one of them states redistribution terms in its own header — mostly the classic FIGlet grant, plus the WTFPL for the two TOIlet fonts — and [build-figlet-fonts.mjs](../../../tools/build-figlet-fonts.mjs) exits 1 rather than vendor one that does not. That is why the obvious candidates are missing: `ANSI Shadow` says `Font Author: ?`, and `Bloody` says only who converted it. `public/figlet/PROVENANCE.txt` quotes each licence sentence with a SHA-256 of the file as shipped, and [provenance.test.ts](../../../src/lib/ascii/provenance.test.ts) re-checks those checksums, the refusal path, and that every font is listed in `SHELL`.
+### The two bases, and why there are two
+
+Twenty of the thirty-seven state redistribution terms in their own header — mostly the classic FIGlet grant, plus MIT and the WTFPL. The other seventeen state nothing at all: most of the FIGlet library predates anyone thinking about licences, and the 1990s fonts were posted to alt.ascii-art with a name, an email address and no terms (`ANSI Shadow` records its author as `?`; `Bloody` names only who converted it).
+
+Refusing all seventeen means shipping eight fonts, so [build-figlet-fonts.mjs](../../../tools/build-figlet-fonts.mjs) has a second route — and it is deliberately not "shrug and copy it". A font takes it only by being marked `basis: 'package'` in the catalogue, **one font at a time**, which records that a maintainer read the header and found: the file ships inside the `figlet` npm package, whose `LICENSE.txt` is the MIT licence, and the header names its author or origin. `PROVENANCE.txt` says in those words that this is weaker than a per-font grant, and quotes what the header does say underneath each entry.
+
+A font with neither still fails the build, and the refusal names what a maintainer has to do about it. Three unit cases hold the shape: the default is still a refusal, `basis: 'package'` has to be asked for per font, and a font marked `package` whose header *does* state terms is reported as `header` — the basis is read from the file, never from the catalogue. One more checks that a majority still stand on their own terms, which is a smell test rather than a rule: if it ever inverts, the catalogue has drifted from "fonts we can account for" to "fonts we liked the look of".
 
 Two format details bite anyone touching the parser: the six-character signature prefix is `flf2a` plus the hardblank **character**, which may itself be a space (`Future`), so fields are read from `slice(6)` rather than by splitting the line; and TOIlet fonts announce themselves as `tlf2a`.
 

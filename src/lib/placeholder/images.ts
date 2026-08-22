@@ -12,6 +12,7 @@
  */
 import { escapeXml } from '../svg/build';
 import { DEFAULT_GRADIENT, type GradientDef } from '../gen/gradient';
+import { hslToRgb, rgbToHex, rgbToHsl } from '../gen/color';
 import { mulberry32, pick, randomInt, seedFrom } from '../random';
 import { SCENES, type SceneId } from './scenes';
 
@@ -22,6 +23,7 @@ export type GeneratorId =
   | 'noise'
   | 'flow'
   | 'material'
+  | 'planes'
   | 'icon'
   | 'scene';
 
@@ -38,6 +40,7 @@ export const GENERATORS: GeneratorInfo[] = [
   { id: 'noise', label: 'Noise', note: 'Fractal turbulence, tinted and optionally blurred.' },
   { id: 'flow', label: 'Flow field', note: 'Seeded streamlines through a smooth field.' },
   { id: 'material', label: 'Layered geometry', note: 'Translucent polygons, in the style of the era.' },
+  { id: 'planes', label: 'Cut planes', note: 'Big diagonal slabs that fill the frame.' },
   { id: 'icon', label: 'An icon', note: 'Any Lucide icon, on any background.' },
   { id: 'scene', label: 'A drawn scene', note: 'Nine hand-drawn scenes: nature, sport, city.' },
 ];
@@ -54,6 +57,12 @@ export interface ImageOptions {
   frequency: number;
   /** Noise: standard deviation of the blur, 0 for none. */
   blur: number;
+  /** Flow field: how many streamlines, 10-400. */
+  density: number;
+  /** Layered geometry and cut planes: 0.05-1, how solid the shapes are. */
+  opacity: number;
+  /** Icon: 0.1-0.95 of the shorter side. */
+  iconScale: number;
   heading: string;
   subheading: string;
   /** Raw Lucide markup, fetched lazily by the page and passed in. */
@@ -74,6 +83,9 @@ export const DEFAULT_IMAGE_OPTIONS: ImageOptions = {
   foreground: '#1e3a5f',
   frequency: 0.012,
   blur: 0,
+  density: 90,
+  opacity: 0.55,
+  iconScale: 0.5,
   heading: '1200 × 675',
   subheading: 'placeholder',
   iconSvg: null,
@@ -83,6 +95,12 @@ export const DEFAULT_IMAGE_OPTIONS: ImageOptions = {
 
 const clampSide = (n: number): number =>
   Number.isFinite(n) ? Math.min(MAX_SIDE, Math.max(MIN_SIDE, Math.round(n))) : MIN_SIDE;
+
+const clampInt = (n: number, lo: number, hi: number): number =>
+  Number.isFinite(n) ? Math.min(hi, Math.max(lo, Math.round(n))) : lo;
+
+const clampUnit = (n: number, lo: number, hi: number): number =>
+  Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : lo;
 
 const round = (n: number): number => Math.round(n * 100) / 100;
 
@@ -196,7 +214,10 @@ function flowLayer(options: ImageOptions, w: number, h: number, rng: () => numbe
     Math.sin((x + y) * scale * 0.6 + phases[2]!);
 
   const lines: string[] = [];
-  const count = 90;
+  // Density is the count of streamlines. Clamped at 400 because past that the
+  // lines stop reading as lines and the file stops being small — 400 of them
+  // is already ~300 KB of path data.
+  const count = clampInt(options.density, 10, 400);
   const steps = 90;
   const step = Math.max(w, h) / 90;
   for (let i = 0; i < count; i++) {
@@ -220,10 +241,20 @@ function flowLayer(options: ImageOptions, w: number, h: number, rng: () => numbe
   return solidLayer(options, w, h) + lines.join('');
 }
 
-/** Layered translucent polygons — the flat, overlapping shapes of the
- * material-design era, which is exactly what a placeholder wants to be. */
+/** The material-design palette both geometry generators draw from. */
+const MATERIAL_PALETTE = ['#ef5350', '#ab47bc', '#42a5f5', '#26a69a', '#ffca28', '#8d6e63', '#78909c'];
+
+/**
+ * Layered translucent polygons — the flat, overlapping shapes of the
+ * material-design era.
+ *
+ * `opacity` is the CENTRE of the range each shape draws from rather than a
+ * flat value: shapes all at one opacity stop looking layered and start
+ * looking like a single flat stencil, which is the thing this generator is
+ * for.
+ */
 function materialLayer(options: ImageOptions, w: number, h: number, rng: () => number): string {
-  const palette = ['#ef5350', '#ab47bc', '#42a5f5', '#26a69a', '#ffca28', '#8d6e63', '#78909c'];
+  const centre = clampUnit(options.opacity, 0.05, 1);
   const shapes: string[] = [];
   const count = randomInt(rng, 5, 9);
   for (let i = 0; i < count; i++) {
@@ -237,12 +268,102 @@ function materialLayer(options: ImageOptions, w: number, h: number, rng: () => n
       const r = radius * (0.6 + rng() * 0.6);
       points.push(`${round(cx + Math.cos(angle) * r)},${round(cy + Math.sin(angle) * r)}`);
     }
+    const spread = Math.min(centre, 1 - centre) * 0.6;
     shapes.push(
-      `<polygon points="${points.join(' ')}" fill="${pick(rng, palette)}" ` +
-        `opacity="${round(0.35 + rng() * 0.4)}"/>`
+      `<polygon points="${points.join(' ')}" fill="${pick(rng, MATERIAL_PALETTE)}" ` +
+        `opacity="${round(clampUnit(centre + (rng() - 0.5) * 2 * spread, 0.03, 1))}"/>`
     );
   }
   return solidLayer(options, w, h) + shapes.join('');
+}
+
+/**
+ * A palette built around one colour: two neighbouring hues, one much darker,
+ * one much lighter.
+ *
+ * The cut-planes generator draws from this rather than from the fixed
+ * material palette, because a few big slabs in unrelated colours look like a
+ * mistake where a dozen small ones look playful. Deriving the set from the
+ * chosen background also makes the Background picker mean something for this
+ * generator — otherwise it only shows in the gaps.
+ */
+export function harmonise(background: string): string[] {
+  const match = /^#?([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i.exec(background.trim());
+  const rgb: [number, number, number] = match
+    ? [parseInt(match[1]!, 16) / 255, parseInt(match[2]!, 16) / 255, parseInt(match[3]!, 16) / 255]
+    : [0.81, 0.85, 0.89];
+  const [h, s] = rgbToHsl(rgb);
+  // A grey background has no hue to build on, so the palette falls back to a
+  // usable saturation rather than producing five greys.
+  const saturation = Math.max(0.35, Math.min(0.85, s || 0.55));
+  const at = (dh: number, l: number, ds = 0) =>
+    rgbToHex(
+      hslToRgb([
+        (h + dh + 360) % 360,
+        Math.max(0, Math.min(1, saturation + ds)),
+        Math.max(0.08, Math.min(0.92, l)),
+      ]) as [number, number, number]
+    );
+  return [at(0, 0.5), at(-28, 0.62, -0.1), at(24, 0.38), at(0, 0.14, 0.05), at(40, 0.78, -0.2)];
+}
+
+/**
+ * Cut planes: a handful of big diagonal slabs that fill the frame.
+ *
+ * The sibling of `materialLayer` and its opposite — few shapes, each with
+ * four corners, each big enough to run off the edge. Small polygons scattered
+ * on a background read as confetti; the flat-design wallpapers this is after
+ * are made of a few large planes overlapping at a consistent angle, with a
+ * shadow where one crosses another.
+ */
+function planesLayer(options: ImageOptions, w: number, h: number, rng: () => number): string {
+  const centre = clampUnit(options.opacity, 0.05, 1);
+  const palette = harmonise(options.background);
+  const diagonal = Math.hypot(w, h);
+  // One angle for the whole picture, jittered per slab: parallel-ish edges
+  // are what make it read as cut paper rather than as broken glass.
+  const base = (rng() * Math.PI) / 2 + Math.PI / 8;
+  const shapes: string[] = [];
+  const count = randomInt(rng, 4, 6);
+
+  for (let i = 0; i < count; i++) {
+    const angle = base + (rng() - 0.5) * 0.5;
+    const thickness = diagonal * (0.18 + rng() * 0.42);
+    // A point the band runs through, biased towards the middle so no slab
+    // ends up entirely off-frame.
+    const cx = w * (0.15 + rng() * 0.7);
+    const cy = h * (0.15 + rng() * 0.7);
+    const dx = Math.cos(angle);
+    const dy = Math.sin(angle);
+    // Perpendicular, half a thickness either way; along, far enough past the
+    // corners that both ends leave the frame.
+    const px = -dy * (thickness / 2);
+    const py = dx * (thickness / 2);
+    const ex = dx * diagonal;
+    const ey = dy * diagonal;
+    const corners = [
+      [cx + px - ex, cy + py - ey],
+      [cx + px + ex, cy + py + ey],
+      [cx - px + ex, cy - py + ey],
+      [cx - px - ex, cy - py - ey],
+    ];
+    const points = corners.map(([x, y]) => `${round(x!)},${round(y!)}`).join(' ');
+    const spread = Math.min(centre, 1 - centre) * 0.4;
+    shapes.push(
+      `<polygon points="${points}" fill="${pick(rng, palette)}" ` +
+        `opacity="${round(clampUnit(centre + (rng() - 0.5) * 2 * spread, 0.05, 1))}"/>`
+    );
+  }
+
+  return (
+    solidLayer(options, w, h) +
+    // The shadow is what gives the slabs an order; without it they read as one
+    // flat collage rather than as sheets laid over each other.
+    `<defs><filter id="ph-plane-shadow" x="-20%" y="-20%" width="140%" height="140%">` +
+    `<feDropShadow dx="0" dy="${round(diagonal * 0.006)}" stdDeviation="${round(diagonal * 0.004)}" ` +
+    'flood-opacity="0.25"/></filter></defs>' +
+    `<g filter="url(#ph-plane-shadow)">${shapes.join('')}</g>`
+  );
 }
 
 function iconLayer(options: ImageOptions, w: number, h: number): string {
@@ -250,7 +371,7 @@ function iconLayer(options: ImageOptions, w: number, h: number): string {
   if (!options.iconSvg) return base;
   // Lucide icons are 24×24 and stroke-drawn, so the colour flows through
   // `stroke` on the wrapper rather than `fill`.
-  const size = Math.min(w, h) * 0.5;
+  const size = Math.min(w, h) * clampUnit(options.iconScale, 0.1, 0.95);
   const scale = size / 24;
   const inner = options.iconSvg.replace(/^[\s\S]*?<svg[^>]*>/, '').replace(/<\/svg>\s*$/, '');
   return (
@@ -300,6 +421,9 @@ export function buildImage(options: ImageOptions): string {
       break;
     case 'material':
       body = materialLayer(options, w, h, rng);
+      break;
+    case 'planes':
+      body = planesLayer(options, w, h, rng);
       break;
     case 'icon':
       body = iconLayer(options, w, h);

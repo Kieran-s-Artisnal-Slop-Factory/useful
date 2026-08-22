@@ -10,7 +10,7 @@ The tree starts with an example. Click a row to select it, then **+ Folder** or 
 
 **Drag the ⠿ handle** to move a row into a folder. On a touchscreen the handle is the only place a drag starts — a finger on the row itself has to stay a scroll.
 
-**Sort** puts folders first and then sorts by name, the way `ls` does.
+**Sort** puts folders first and then sorts by name, the way `ls` does. **Reset** brings the example back; **Clear** empties the tree down to its root, so you can type your own from nothing.
 
 ## Pasting a listing
 
@@ -36,7 +36,7 @@ Lines it could not make sense of are **listed under the result** rather than dro
 
 - **Drawing** — box characters (`├── └──`) or plain ASCII (`|--`, `` `-- ``).
 - **Root** — show its name, hide it entirely, show it as `.`, or call it something else.
-- **Emoji** — off, a folder/file split (📂 / 📄), or by file extension with a table you can edit.
+- **Emoji** — off, a folder/file split (📂 / 📄), or by file extension with a table you can edit. **Restore defaults** brings the shipped dozen back; **Clear all** removes every rule, including those, so every file falls back to 📄.
 - **Trailing / on folders** and **Full paths instead of names**.
 
 ## Gotchas

@@ -178,6 +178,23 @@ test.describe('file tree — the output options', () => {
     await expect(page.getByTestId('ft-output')).toContainText('🦕 index.ts');
   });
 
+  test('clears every emoji rule, including the ones that shipped', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/file-tree/');
+    await page.getByTestId('ft-emoji').selectOption('extension');
+    await expect(page.getByTestId('ft-output')).toContainText('🟦 index.ts');
+
+    await page.getByTestId('ft-clear-rules').click();
+    // With no rules left every file falls back to the plain glyph — the
+    // folder split still applies, because that is not an extension rule.
+    await expect(page.getByTestId('ft-rules').locator('.chip')).toHaveCount(0);
+    await expect(page.getByTestId('ft-output')).toContainText('📄 index.ts');
+    await expect(page.getByTestId('ft-output')).toContainText('📂 src');
+
+    await page.getByTestId('ft-restore-rules').click();
+    await expect(page.getByTestId('ft-output')).toContainText('🟦 index.ts');
+  });
+
   test('shows, hides, dots and renames the root', async ({ app }) => {
     const { page } = app;
     await app.goto('/tools/file-tree/');
@@ -236,6 +253,26 @@ test.describe('file tree — building one', () => {
     await pointerDrag(page, page.getByTestId('ft-row-src'), page.getByTestId('ft-row-lib'));
     await expect(page.getByTestId('ft-feedback')).toContainText('inside itself');
     await expect(page.getByTestId('ft-output')).toContainText('├── src/');
+  });
+
+  test('clears the whole tree down to its root, example and all', async ({ app }) => {
+    const { page } = app;
+    const before = await app.dumpAll();
+    await app.goto('/tools/file-tree/');
+    await expect(page.getByTestId('ft-output')).toContainText('index.ts');
+
+    await page.getByTestId('ft-clear').click();
+    // The root survives — a tree with no root is not a tree — but nothing
+    // else does, including the three folders nobody asked for.
+    await expect(page.getByTestId('ft-output')).toHaveText('project/');
+    await expect(page.getByTestId('ft-summary')).toHaveText('0 directories, 0 files');
+    await expect(page.getByTestId('ft-rows').locator('li')).toHaveCount(1);
+
+    // And it is still a working tree, not a dead end.
+    await page.getByTestId('ft-add-folder').click();
+    await expect(page.getByTestId('ft-output')).toContainText('new-folder');
+
+    expect(await app.dumpAll()).toEqual(before);
   });
 
   test('sorts folders first, then by name', async ({ app }) => {

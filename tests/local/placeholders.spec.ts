@@ -94,13 +94,68 @@ test.describe('placeholders — filler images', () => {
     await app.goto('/tools/placeholders/');
     await toImageMode(page);
 
-    for (const id of ['solid', 'heading', 'gradient', 'noise', 'flow', 'material', 'scene']) {
+    for (const id of ['solid', 'heading', 'gradient', 'noise', 'flow', 'material', 'planes', 'scene']) {
       await page.getByTestId(`ph-gen-${id}`).click();
       await expect
         .poll(async () => (await previewSize(page)).width, { message: id })
         .toBe(1200);
       expect((await previewSize(page)).height, id).toBe(675);
     }
+
+    expect(await app.dumpAll()).toEqual(before);
+  });
+
+  test('only shows a control where it does something', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/placeholders/');
+    await toImageMode(page);
+
+    // Plain colour has nothing to tune: no ink, no seed, no shape controls.
+    await expect(page.getByTestId('ph-fg')).toHaveCount(0);
+    await expect(page.getByTestId('ph-seed')).toHaveCount(0);
+
+    // The geometry generators draw from their own palette, so an Ink picker
+    // there would be a control that paints nothing.
+    await page.getByTestId('ph-gen-material').click();
+    await expect(page.getByTestId('ph-opacity')).toBeVisible();
+    await expect(page.getByTestId('ph-seed')).toBeVisible();
+    await expect(page.getByTestId('ph-fg')).toHaveCount(0);
+
+    await page.getByTestId('ph-gen-flow').click();
+    await expect(page.getByTestId('ph-density')).toBeVisible();
+    await expect(page.getByTestId('ph-fg')).toBeVisible();
+    await expect(page.getByTestId('ph-opacity')).toHaveCount(0);
+
+    await page.getByTestId('ph-gen-icon').click();
+    await expect(page.getByTestId('ph-icon-scale')).toBeVisible();
+    await expect(page.getByTestId('ph-density')).toHaveCount(0);
+  });
+
+  test('tunes flow density, shape opacity and icon size', async ({ app }) => {
+    const { page } = app;
+    const before = await app.dumpAll();
+    await app.goto('/tools/placeholders/');
+    await toImageMode(page);
+
+    // Each control has to change the drawing, not just its own value.
+    const svg = () =>
+      page.getByTestId('ph-preview').evaluate((n) => decodeURIComponent((n as HTMLImageElement).src));
+
+    await page.getByTestId('ph-gen-flow').click();
+    const sparse = await svg();
+    await page.getByTestId('ph-density').fill('300');
+    await expect.poll(async () => (await svg()).length).toBeGreaterThan(sparse.length);
+
+    await page.getByTestId('ph-gen-planes').click();
+    const solid = await svg();
+    await page.getByTestId('ph-opacity').fill('0.2');
+    await expect.poll(async () => await svg()).not.toBe(solid);
+
+    await page.getByTestId('ph-gen-icon').click();
+    await expect(page.getByTestId('ph-icons').locator('button')).not.toHaveCount(0, { timeout: 60_000 });
+    const small = await svg();
+    await page.getByTestId('ph-icon-scale').fill('0.9');
+    await expect.poll(async () => await svg()).not.toBe(small);
 
     expect(await app.dumpAll()).toEqual(before);
   });
@@ -148,9 +203,10 @@ test.describe('placeholders — filler images', () => {
     await toImageMode(page);
     await page.getByTestId('ph-gen-scene').click();
 
+    // Fifteen of them, five per group.
+    await expect(page.locator('[data-testid^="ph-scene-"]')).toHaveCount(15);
     await page.getByTestId('ph-scene-skyline').click();
-    const svg = await page.getByTestId('ph-copy-svg').evaluate(() => '');
-    expect(svg).toBe('');
+    await page.getByTestId('ph-scene-rooftops').click();
     // The scene is drawn into the same frame, cropped rather than squashed.
     await page.getByTestId('ph-width').fill('400');
     await page.getByTestId('ph-width').press('Enter');
