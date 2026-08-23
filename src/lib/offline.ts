@@ -15,6 +15,7 @@
  */
 import { assetsReady, BG_TOTAL_BYTES, loadAssets } from './bg/runtime';
 import { FONT_CACHE, fontsReady, MATH_ASSETS, MATH_FONT_BYTES } from './math/fonts';
+import { DRAWING_ASSETS, DRAWING_FONT_BYTES, drawingFontsReady } from './notebook/drawing';
 
 export interface OfflineBundle {
   id: string;
@@ -109,6 +110,27 @@ const mathFontsBundle: OfflineBundle = {
   },
 };
 
+/**
+ * The notebook's drawing canvas fonts — same reason as the maths faces:
+ * stable files under `public/` that Excalidraw fetches by name at run time,
+ * so the crawl never sees them. (Excalidraw's own code is part of the app
+ * bundle; this is only the text it draws with.)
+ */
+const drawingFontsBundle: OfflineBundle = {
+  id: 'drawing-fonts',
+  label: 'Drawing fonts',
+  detail: "The eight font families the notebook's drawing canvas writes with.",
+  bytes: DRAWING_FONT_BYTES,
+  ready: () => drawingFontsReady(),
+  async run(onNote) {
+    const cache = await caches.open(FONT_CACHE);
+    for (let i = 0; i < DRAWING_ASSETS.length; i++) {
+      await cache.add(DRAWING_ASSETS[i]!);
+      onNote?.(`${i + 1}/${DRAWING_ASSETS.length}`);
+    }
+  },
+};
+
 function engineBundle(id: 'sqlite' | 'pglite', label: string, bytes: number): OfflineBundle {
   return {
     id,
@@ -142,6 +164,7 @@ export const OFFLINE_BUNDLES: OfflineBundle[] = [
   appBundle,
   modelBundle,
   mathFontsBundle,
+  drawingFontsBundle,
   engineBundle('sqlite', 'SQLite', 1_200_000),
   engineBundle('pglite', 'Postgres', 12_000_000),
 ];

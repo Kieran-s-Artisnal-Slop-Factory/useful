@@ -17,7 +17,7 @@ The **seed** is what makes it repeatable: the same seed always produces the same
 
 ## Filler images
 
-Nine generators, all of them drawn from your settings:
+Nine generators, all of them drawn from your settings. Each one in the picker carries a small example drawn from the colours, seed and scene you have set, so you can see what a generator looks like before choosing it — the examples follow the controls as you change them.
 
 | Generator | What it looks like |
 | --- | --- |

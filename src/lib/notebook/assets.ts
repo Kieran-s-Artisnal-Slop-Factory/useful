@@ -24,6 +24,7 @@
  * (ref parsing, base64, the cap message) are tested in `assets.test.ts`.
  */
 import { byIndex, get, put, softDelete, withSyncFields } from '../db/repo';
+import { decodeBytes, encodeBytes } from '../encode/base64';
 import type { NoteAsset } from '../db/types';
 
 export interface AssetStore {
@@ -40,6 +41,13 @@ export interface AssetStore {
   replace?(src: string, blob: Blob): Promise<void>;
   /** The bytes behind a src, for reopening a drawing. */
   load?(src: string): Promise<Blob | null>;
+  /**
+   * The filename a src was saved under, or undefined when the src IS the
+   * name (a path) or the store has not seen it. An `asset:<id>` ref carries
+   * no name, and the name is what says whether an image is a re-editable
+   * drawing (`*.excalidraw.png`). Synchronous, like `resolve`.
+   */
+  nameOf?(src: string): string | undefined;
   /**
    * A displayable URL for a stored src, or undefined to use the src as
    * written (already a URL the browser can fetch).
@@ -87,26 +95,17 @@ function formatMb(bytes: number): string {
 }
 
 /* ── base64 ─────────────────────────────────────────────────────────── */
-
-/** Well under any engine's argument limit for `String.fromCharCode.apply`. */
-const CHUNK = 0x8000;
+// Both on the shared encoder in lib/encode/base64.ts (Phase 14 folded the
+// hand-rolled `btoa`-in-chunks pair that lived here onto it).
 
 /** The blob's bytes as base64 — no `data:` prefix. */
 export async function blobToBase64(blob: Blob): Promise<string> {
-  const bytes = new Uint8Array(await blob.arrayBuffer());
-  let binary = '';
-  for (let i = 0; i < bytes.length; i += CHUNK) {
-    binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
-  }
-  return btoa(binary);
+  return encodeBytes(new Uint8Array(await blob.arrayBuffer()));
 }
 
 /** The inverse: base64 (no prefix) back to a Blob of the given type. */
 export function base64ToBlob(b64: string, mime: string): Blob {
-  const binary = atob(b64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-  return new Blob([bytes], { type: mime });
+  return new Blob([decodeBytes(b64)], { type: mime });
 }
 
 /** A `data:` URL for a stored row. */
@@ -208,6 +207,10 @@ export function noteAssetStore(noteId: string): NoteAssetStore {
       if (!id) return undefined;
       const row = cache.get(id);
       return row ? dataUrlOf(row) : undefined;
+    },
+    nameOf(src) {
+      const id = assetIdOf(src);
+      return id ? cache.get(id)?.name : undefined;
     },
   };
 }

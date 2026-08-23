@@ -8,10 +8,11 @@ _Describes the code as of v0.3.0 (unreleased; schema v13) — verify against sou
 
 | Tier | What | Where it lives | Filled by | Purged by |
 |---|---|---|---|---|
-| Precache | `SHELL`: every page route + `favicon.svg`, `favicon-maskable.svg`, `manifest.webmanifest` + the thirty-seven `figlet/*.flf` fonts (596.5 KB) | Cache `CACHE_NAME` (`useful-cache-v31`) | `precacheShell()` at `install` | `activate` of a worker with a different `CACHE_NAME` |
-| Runtime cache | Every same-origin GET the page makes: `_astro/` JS/CSS/wasm/data chunks, navigated HTML | Same `useful-cache-v31` | The `fetch` handler (stale-while-revalidate) and the background crawl `warmAssetCache()` | Same version bump |
+| Precache | `SHELL`: every page route + `favicon.svg`, `favicon-maskable.svg`, `manifest.webmanifest` + the thirty-seven `figlet/*.flf` fonts (596.5 KB) | Cache `CACHE_NAME` (`useful-cache-v32`) | `precacheShell()` at `install` | `activate` of a worker with a different `CACHE_NAME` |
+| Runtime cache | Every same-origin GET the page makes: `_astro/` JS/CSS/wasm/data chunks, navigated HTML | Same `useful-cache-v32` | The `fetch` handler (stale-while-revalidate) and the background crawl `warmAssetCache()` | Same version bump |
 | Lazy bundles | Background remover model + ONNX runtime under `models/` and `ort/` | Cache `MODEL_CACHE` (`useful-models-v1`) — deliberately outside `CACHE_PREFIX` | `loadAssets()` in [runtime.ts](../../src/lib/bg/runtime.ts), or the SW's cache-first branch | Never by the SW; only `clearAssets()` (Background remover → "Remove downloaded model") or the user clearing site data |
 | Lazy bundles | The 20 KaTeX faces + their stylesheet under `math/` | Cache `FONT_CACHE` (`useful-fonts-v1`) — also outside `CACHE_PREFIX` | The `math-fonts` bundle in [offline.ts](../../src/lib/offline.ts), or the SW's cache-first branch | Never by the SW; only the user clearing site data |
+| Lazy bundles | The 25 Excalidraw faces under `excalidraw/fonts/` (the notebook's drawing canvas) | The same `FONT_CACHE` | The `drawing-fonts` bundle in [offline.ts](../../src/lib/offline.ts), or the SW's cache-first branch when Excalidraw asks for a face | Never by the SW; only the user clearing site data |
 
 The maths fonts need their own bucket for the same reason the model does, plus one more: they are stable, unfingerprinted files under `public/`, and the crawl below can only find fingerprinted `_astro/` assets — it does not parse CSS `url()`. Being outside `CACHE_PREFIX` also means a `CACHE_NAME` bump does not evict 263 KB of bytes that never change.
 
@@ -29,6 +30,7 @@ The SQL engines are lazy too, but they are ordinary fingerprinted `_astro/` asse
 | [src/components/apps/SettingsApp.svelte](../../src/components/apps/SettingsApp.svelte) | Hosts `<OfflinePanel />` in the "Offline" card |
 | [src/lib/bg/runtime.ts](../../src/lib/bg/runtime.ts) | `MODEL_CACHE`, `BG_ASSETS`, `BG_TOTAL_BYTES`, `assetsReady`, `clearAssets`, `loadAssets` — the model bucket's writer |
 | [src/lib/math/fonts.ts](../../src/lib/math/fonts.ts) | `FONT_CACHE`, `MATH_ASSETS`, `MATH_FONT_BYTES`, `fontsReady`, `ensureFontCss` — the font bucket's writer |
+| [src/lib/notebook/drawing.ts](../../src/lib/notebook/drawing.ts) | `DRAWING_ASSETS`, `DRAWING_FONT_BYTES`, `drawingFontsReady` — the font bucket's other writer; `loadExcalidraw` points `window.EXCALIDRAW_ASSET_PATH` at `excalidraw/` so the fetches land under `FONT_PREFIXES` |
 | [src/lib/sql/engines.ts](../../src/lib/sql/engines.ts) | The `engines` list the engine bundles boot; wasm arrives through `new Worker(new URL('./worker.ts', import.meta.url))` in [adapter.ts](../../src/lib/sql/adapter.ts) and the same call on `'./pglite-worker.ts'` in [pglite-adapter.ts](../../src/lib/sql/pglite-adapter.ts) |
 | [public/manifest.webmanifest](../../public/manifest.webmanifest) | Installability: `display: standalone`, relative `id` / `start_url` / `scope` (`./`), SVG `any` + `maskable` icons |
 | [src/lib/paths.ts](../../src/lib/paths.ts) | `href()` — base-aware paths for the registration URL, model URLs, links |
@@ -51,7 +53,7 @@ The SQL engines are lazy too, but they are ordinary fingerprinted `_astro/` asse
 
 1. Delete every cache whose name starts with `CACHE_PREFIX` (`useful-cache-`) and is not `CACHE_NAME`. Scoped to the prefix because Cache Storage is per origin, not per scope — a path-multiplexing gateway can put several of these apps on one origin, and a bare "delete everything that isn't mine" would make them evict each other.
 2. `self.clients.claim()`.
-3. `warmOnce()` — the paced background crawl, inside `waitUntil` so the worker stays alive for it. Clients are already claimed, so nothing waits on it.
+3. `warmOnce()` — the paced background crawl, started here but **not** inside the `waitUntil`. A worker is *activating* until its activate promise settles, and the browser holds navigations and worker-script loads to an activating worker until it is activated; when the crawl lived inside `waitUntil` (0.2.0 through 0.3.0-pre), every sidebar click and every `new Worker()` on a fresh install hung for as long as the crawl ran — seconds on the 0.2.0 graph, minutes once Excalidraw's chunk joined it, which is when the bcrypt and Docker Compose specs noticed. The fetch handler's own `waitUntil(warmOnce())` is what keeps the worker alive for the crawl now.
 
 ### The background crawl (`warmAssetCache`)
 
@@ -59,6 +61,8 @@ Starts from `SHELL`, walks a queue. For each URL: on a cache hit, use it; on a m
 
 - every `_astro/[A-Za-z0-9_.\-]+` match, normalised onto `BASE + match` (covers `/_astro/x.js`, `/base/_astro/x.js` and Vite's bare `_astro/x.js` in `__vite__mapDeps`);
 - every quoted relative specifier `'./x'` / `"../x"` / `` `./x` `` (the bundler emits dynamic imports with backticks), resolved against the current URL and kept only if it starts with `ASSET_PREFIX` (`BASE + '_astro/'`).
+
+Both are then filtered by `ASSET_FILE` (`/^[^/]+\.[A-Za-z0-9]+$/` on the part after the prefix): a build asset is one path segment with an extension. Minified code is full of strings that look like relative paths and are not files in this build — Excalidraw alone contributes hundreds (`./fonts/Xiaolai/…woff2`, `./locales/de-DE.json`, `./lib/pool`) — and before the filter each was a 404 plus a 120 ms pacing delay, which is how the first crawl came to run for minutes. `audit-precache.mjs` mirrors the rule.
 
 Only `ASSET_PREFIX` paths are ever enqueued, so `models/` and `ort/` are unreachable by the crawl by construction, and `CRAWL_SKIP` (`/\.(wasm|data)$/`) keeps it off the SQL engines' binaries. `WARM_MAX_ASSETS = 600` caps a run; the 0.2.0 build emits 309 files under `_astro/`, of which the crawl reaches 336 URLs in all (28 pages, 299 scripts, 6 stylesheets, the icons and manifest — 16.5 MB; the largest are compute-engine 2.4 MB, DiceBear 1.9 MB, the city dataset 1.4 MB and the notebook editor 1.3 MB) plus four loose string literals that 404 harmlessly.
 
@@ -105,6 +109,8 @@ Details that matter:
 |---|---|---|---|---|
 | `app` | The app itself | 0 | `null` (only the worker knows) | `warmAppAssets` → posts `{ type: 'useful-warm' }` to `navigator.serviceWorker.controller` |
 | `bg-model` | Background remover model | `BG_TOTAL_BYTES` = 15,805,971 | `assetsReady()` | `loadAssets(onProgress)` then `import('onnxruntime-web/wasm')` |
+| `math-fonts` | Maths fonts | `MATH_FONT_BYTES` = 282,448 | `fontsReady()` | `cache.add` each of `MATH_ASSETS` into `FONT_CACHE` |
+| `drawing-fonts` | Drawing fonts | `DRAWING_FONT_BYTES` = 439,576 | `drawingFontsReady()` | `cache.add` each of `DRAWING_ASSETS` into `FONT_CACHE` |
 | `sqlite` | SQLite engine | 1,200,000 | `null` | boot the engine: `engine.createSession()`, `exec('select 1;')`, `destroy()` |
 | `pglite` | Postgres engine | 12,000,000 | `null` | same |
 

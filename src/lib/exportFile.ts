@@ -8,6 +8,7 @@
  * copy helpers resolve false instead of throwing so callers can show a
  * graceful "couldn't copy" state.
  */
+import { parseDataUrl } from './encode/base64';
 
 export function downloadBlob(blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob);
@@ -30,16 +31,16 @@ export function downloadDataUrl(dataUrl: string, filename: string): void {
   downloadBlob(dataUrlToBlob(dataUrl), filename);
 }
 
+/**
+ * A `data:` URL's payload as a Blob of its declared type — base64 or
+ * percent-encoded, through the shared parser. A string that is not a data URL
+ * at all comes back as its own text, so a caller never gets a throw for the
+ * wrong kind of string, only for a broken payload.
+ */
 export function dataUrlToBlob(dataUrl: string): Blob {
-  const [head, body] = dataUrl.split(',', 2);
-  const mime = head?.match(/^data:([^;]+)/)?.[1] ?? 'application/octet-stream';
-  if (head?.includes(';base64')) {
-    const bytes = atob(body ?? '');
-    const buf = new Uint8Array(bytes.length);
-    for (let i = 0; i < bytes.length; i++) buf[i] = bytes.charCodeAt(i);
-    return new Blob([buf], { type: mime });
-  }
-  return new Blob([decodeURIComponent(body ?? '')], { type: mime });
+  const parsed = parseDataUrl(dataUrl);
+  if (parsed) return new Blob([parsed.bytes], { type: parsed.mime });
+  return new Blob([dataUrl], { type: 'application/octet-stream' });
 }
 
 export async function copyText(text: string): Promise<boolean> {

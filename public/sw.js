@@ -23,7 +23,7 @@
 // Bump this on any meaningful change to this file: `activate` only purges
 // caches whose name differs, so a constant name makes that step dead code and
 // lets a previous deploy's (or a poisoned) entry survive forever.
-const CACHE_NAME = 'useful-cache-v31';
+const CACHE_NAME = 'useful-cache-v32';
 
 // Everything under this prefix belongs to this app. Cache Storage is keyed by
 // ORIGIN, not by service-worker scope, so if two of these apps are ever served
@@ -39,6 +39,14 @@ const CACHE_PREFIX = 'useful-cache-';
 // the base.
 const BASE = new URL(self.registration.scope).pathname; // always ends with '/'
 const ASSET_PREFIX = BASE + '_astro/';
+// A build asset is ONE path segment with an extension: `_astro/x.<hash>.js`.
+// The crawl reads chunk text, and minified code is full of strings that look
+// like relative paths but are not files in this build — Excalidraw alone
+// contributes hundreds (`./fonts/Xiaolai/…woff2`, `./locales/de-DE.json`,
+// `./lib/pool`): each one a 404 plus a pacing delay, so the first crawl ran
+// for minutes. Anything with a slash after the prefix, or no extension, is
+// not ours.
+const ASSET_FILE = /^[^/]+\.[A-Za-z0-9]+$/;
 const SHELL = [
   '',
   'preferences/',
@@ -160,7 +168,10 @@ const ML_PREFIXES = [BASE + 'models/', BASE + 'ort/'];
 // be as indefensible as re-downloading the segmentation model.
 // Mirrored by FONT_CACHE in src/lib/math/fonts.ts.
 const FONT_CACHE = 'useful-fonts-v1';
-const FONT_PREFIXES = [BASE + 'math/'];
+// math/ is the KaTeX faces (src/lib/math/fonts.ts); excalidraw/ is the
+// drawing canvas's faces (src/lib/notebook/drawing.ts). Both are vendored,
+// stable, unfingerprinted, and fetched by name at run time.
+const FONT_PREFIXES = [BASE + 'math/', BASE + 'excalidraw/'];
 
 // Servers often send `Vary: Origin`, and module import() requests carry an
 // Origin header while our install-time fetches don't — without ignoreVary the
@@ -273,7 +284,12 @@ async function warmAssetCache({ paced = true, onProgress } = {}) {
     if (!/html|javascript|css/.test(type)) continue;
     const text = await response.clone().text();
     const enqueue = (path) => {
-      if (path.startsWith(ASSET_PREFIX) && !seen.has(path) && !CRAWL_SKIP.test(path)) {
+      if (
+        path.startsWith(ASSET_PREFIX) &&
+        ASSET_FILE.test(path.slice(ASSET_PREFIX.length)) &&
+        !seen.has(path) &&
+        !CRAWL_SKIP.test(path)
+      ) {
         seen.add(path);
         queue.push(path);
       }
@@ -337,9 +353,18 @@ self.addEventListener('activate', (event) => {
         )
       )
       .then(() => self.clients.claim())
-      // Warm in the background. waitUntil keeps the worker alive for the
-      // crawl; clients are already claimed, so nothing is blocked on it.
-      .then(() => warmOnce())
+      .then(() => {
+        // Warm in the background — NOT inside this waitUntil. A worker is
+        // "activating" until its activate promise settles, and the browser
+        // holds navigations and worker-script loads to an activating worker
+        // until it is activated: with the crawl in here, every sidebar click
+        // and every `new Worker()` on a fresh install hung for as long as the
+        // crawl ran (minutes, once the Excalidraw chunk joined the graph —
+        // the notebook's bcrypt-on-the-encryption-page and "saved project
+        // comes back" specs were what noticed). The fetch handler's own
+        // waitUntil(warmOnce()) keeps the worker alive for the crawl instead.
+        void warmOnce();
+      })
   );
 });
 

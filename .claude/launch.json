@@ -4,14 +4,35 @@
     {
       "name": "useful-dev",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev"],
+      "runtimeArgs": [
+        "run",
+        "dev"
+      ],
       "port": 4321
     },
     {
       "name": "useful-dev-alt",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev", "--", "--port", "4335"],
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--",
+        "--port",
+        "4335"
+      ],
       "port": 4335
+    },
+    {
+      "name": "useful-preview",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "tools/preview-server.mjs",
+        "--port",
+        "4330",
+        "--dir",
+        "dist"
+      ],
+      "port": 4330
     }
   ]
 }

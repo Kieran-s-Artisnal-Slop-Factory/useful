@@ -9,9 +9,9 @@
    *              remark-stringify normalizes formatting on round-trip.
    *  - Preview — how the note renders, through this app's markdown path.
    *
-   * Plus two tools on the toolbar: **Diagram** (mermaid, with templates,
-   * completions and a live preview) and **Footnotes**. Retoken's Excalidraw
-   * drawings are not ported (Q12).
+   * Plus three tools on the toolbar: **Diagram** (mermaid, with templates,
+   * completions and a live preview), **Draw** (Excalidraw, saved as a PNG
+   * with the scene embedded, so it reopens for editing) and **Footnotes**.
    *
    * Footnotes are GFM (`text[^ada]` + `[^ada]: the note`). Milkdown parses
    * them but has no schema node for definitions, so a WYSIWYG round-trip
@@ -27,7 +27,7 @@
    * so a parent can treat `onChange` as "autosave now" — and call `flush()`
    * before it unmounts or switches notes to collect what is still owed.
    *
-   * Image bytes — pasted or dropped — go to the `assets` store, and the
+   * Image bytes — pasted, dropped or drawn — go to the `assets` store, and the
    * markdown keeps whatever ref the store hands back (`asset:<id>` for the
    * notebook's store). The default is memory-only: pass a real store to make
    * images outlive the page.
@@ -59,6 +59,7 @@
   import { markdown } from '@codemirror/lang-markdown';
   import type { AssetStore } from '../../lib/notebook/assets';
   import { renderDiagram } from '../../lib/notebook/mermaid';
+  import { drawingFilename, isDrawingRef } from '../../lib/notebook/drawing';
   import {
     appendDefinition,
     findDefinitions,
@@ -79,6 +80,7 @@
   import { ensureKatexCss } from '../../lib/math/fonts';
   import MarkdownPreview from './MarkdownPreview.svelte';
   import DiagramDialog from './DiagramDialog.svelte';
+  import DrawingDialog from './DrawingDialog.svelte';
   import FootnoteDialog, {
     isFootnoteKey,
     type FootnoteRow,
@@ -180,6 +182,17 @@
   // The mermaid workbench: null = closed; `initial` seeds it from an existing
   // fence and `range` marks what to replace in source mode.
   let diagram = $state<{ initial: string; range: { from: number; to: number } | null } | null>(null);
+  // The drawing canvas: undefined = closed. `src` set = reopening that
+  // drawing; null = a blank canvas.
+  let drawing = $state<{ src: string; blob: Blob } | null | undefined>(undefined);
+  /**
+   * Display URL → stored ref, for every image the store has resolved. Crepe's
+   * DOM carries the display URL (a `data:` URL for the notebook's store), and
+   * the ✏ affordance needs the ref it came from.
+   */
+  const displayed = new Map<string, string>();
+  /** Re-applies the ✏ affordance whenever Crepe re-renders an image block. */
+  let blockObserver: MutationObserver | null = null;
   /** The footnote workbench: notes are edited there, not in the canvas. */
   let footnotesOpen = $state(false);
   /** Which note it opens on, when it was opened from one. */
@@ -311,7 +324,16 @@
 
   /** Display proxy: a stored ref → something the browser can show. */
   function proxyImage(url: string): string {
-    return assets.resolve?.(url) ?? url;
+    const shown = assets.resolve?.(url) ?? url;
+    if (shown !== url) {
+      // Keys are data URLs — megabytes each for a big image — and the editor
+      // outlives every note it shows, so the map is bounded rather than
+      // allowed to grow for the life of the page. An evicted entry costs one
+      // ✏ button until Crepe next re-renders that block through here.
+      if (displayed.size >= 200) displayed.clear();
+      displayed.set(shown, url);
+    }
+    return shown;
   }
 
   /* ── Diagrams ──────────────────────────────────────────────────────── */
@@ -365,6 +387,144 @@
     const target = diagram;
     diagram = null;
     replaceOrInsert(fence, target?.range ?? null);
+  }
+
+  /* ── Drawings ──────────────────────────────────────────────────────── */
+
+  /**
+   * Is this stored ref a re-editable drawing? The convention lives in the
+   * filename, and the notebook's store hides the filename behind an
+   * `asset:<id>` ref — so ask the store for the name first.
+   */
+  function isDrawing(ref: string): boolean {
+    return isDrawingRef(assets.nameOf?.(ref) ?? ref);
+  }
+
+  /**
+   * The drawing image ref the cursor sits in, or null — so the Draw button
+   * reopens the drawing you're standing on instead of adding another.
+   * Matches `![alt](path)` where the path is a `*.excalidraw.png`.
+   */
+  function drawingRefAt(text: string, pos: number): string | null {
+    for (const m of text.matchAll(/!\[[^\]]*\]\(([^)\s]+)[^)]*\)/g)) {
+      const start = m.index!;
+      const end = start + m[0].length;
+      if (pos >= start && pos <= end && isDrawing(m[1]!)) return m[1]!;
+    }
+    return null;
+  }
+
+  /** The drawing currently selected in Crepe (a selected image node), or null. */
+  function selectedCrepeDrawing(): string | null {
+    if (!crepe) return null;
+    let found: string | null = null;
+    try {
+      crepe.editor.action((ctx) => {
+        const view = ctx.get(editorViewCtx);
+        const node = (view.state.selection as { node?: { attrs?: Record<string, unknown> } }).node;
+        const src = node?.attrs?.src;
+        if (typeof src !== 'string') return;
+        // The DOM carries the display URL; map it back to the stored ref.
+        const ref = displayed.get(src) ?? src;
+        if (isDrawing(ref)) found = ref;
+      });
+    } catch {
+      // No selection / editor not ready — treat as "nothing selected".
+    }
+    return found;
+  }
+
+  /** Open the canvas — reopening the drawing at the cursor when there is one. */
+  async function openDrawing() {
+    notice = null;
+    const ref =
+      mode === 'source' && cm
+        ? drawingRefAt(cm.state.doc.toString(), cm.state.selection.main.head)
+        : selectedCrepeDrawing();
+
+    if (!ref) {
+      drawing = null; // a blank canvas
+      return;
+    }
+    if (!assets.load) {
+      notice = 'This asset store cannot read images back, so drawings open blank.';
+      drawing = null;
+      return;
+    }
+    const blob = await assets.load(ref);
+    drawing = blob ? { src: ref, blob } : null;
+  }
+
+  /**
+   * Persist the exported PNG. Editing an existing drawing overwrites it in
+   * place when the store allows (every reference to it updates at once);
+   * otherwise — and for a new drawing — the image is stored and its ref
+   * inserted at the cursor.
+   */
+  async function saveDrawing(blob: Blob) {
+    const target = drawing;
+    drawing = undefined;
+
+    try {
+      if (target && assets.replace) {
+        // The old display URL is about to change under the same ref, so any
+        // <img> still pointing at it (Crepe's DOM) has to be re-pointed by
+        // hand — otherwise the editor shows the stale picture until it next
+        // re-renders.
+        const stale = assets.resolve?.(target.src);
+        await assets.replace(target.src, blob);
+        const fresh = proxyImage(target.src);
+        if (stale && fresh && stale !== fresh && root) {
+          for (const img of root.querySelectorAll('img')) {
+            if (img.getAttribute('src') === stale) img.setAttribute('src', fresh);
+          }
+        }
+        previewNonce++;
+        return;
+      }
+
+      const src = await assets.save(blob, drawingFilename());
+      notice = null;
+      replaceOrInsert(`![Drawing](${src})`, null);
+    } catch (err) {
+      // The cap, most likely — a dense drawing at 2× can be a big PNG.
+      notice = err instanceof Error ? err.message : String(err);
+    }
+  }
+
+  /**
+   * Put a ✏ button beside Crepe's caption button on every image that is a
+   * re-editable drawing, so editing one is a single obvious click rather
+   * than "select it, then find the toolbar".
+   */
+  function decorateDrawings() {
+    if (!root) return;
+    for (const block of root.querySelectorAll<HTMLElement>('.milkdown-image-block')) {
+      const img = block.querySelector('img');
+      const operations = block.querySelector('.operation');
+      if (!img || !operations || operations.querySelector('.drawing-edit')) continue;
+
+      const shown = img.getAttribute('src') ?? '';
+      const ref = displayed.get(shown) ?? shown;
+      if (!isDrawing(ref)) continue;
+
+      const button = document.createElement('div');
+      button.className = 'operation-item drawing-edit';
+      button.title = 'Edit this drawing';
+      button.setAttribute('data-testid', 'notebook-drawing-edit');
+      button.textContent = '✏';
+      button.addEventListener('mousedown', (e) => {
+        // Beat ProseMirror to the event: it would move the selection and
+        // blur the block out from under us.
+        e.preventDefault();
+        e.stopPropagation();
+        void (async () => {
+          const blob = await assets.load?.(ref);
+          drawing = blob ? { src: ref, blob } : null;
+        })();
+      });
+      operations.appendChild(button);
+    }
   }
 
   /* ── Footnotes ─────────────────────────────────────────────────────── */
@@ -984,6 +1144,12 @@
     await crepe.create();
     // Definitions in the loaded document are notes, not blocks to edit here.
     harvestFootnotes();
+
+    // Crepe re-renders image blocks on its own schedule (mount, selection,
+    // undo), so re-apply the ✏ affordance whenever the tree changes.
+    decorateDrawings();
+    blockObserver = new MutationObserver(() => decorateDrawings());
+    blockObserver.observe(root, { childList: true, subtree: true });
   }
 
   /** Source mode chrome, on the same inks as CodeEditor.svelte. */
@@ -1081,6 +1247,8 @@
 
   async function destroyEditor() {
     flush();
+    blockObserver?.disconnect();
+    blockObserver = null;
     if (crepe) {
       const instance = crepe;
       crepe = null;
@@ -1140,6 +1308,16 @@
       onclick={openDiagram}
     >
       ◇ Diagram
+    </button>
+    <button
+      type="button"
+      class="tool"
+      data-testid="notebook-toolbar-draw"
+      title="Draw — an Excalidraw canvas; select an existing drawing first to edit it"
+      disabled={mode === 'preview'}
+      onclick={openDrawing}
+    >
+      ✏ Draw
     </button>
     <button
       type="button"
@@ -1222,6 +1400,14 @@
     initial={diagram.initial}
     onSave={saveDiagram}
     onCancel={() => (diagram = null)}
+  />
+{/if}
+
+{#if drawing !== undefined}
+  <DrawingDialog
+    initial={drawing}
+    onSave={saveDrawing}
+    onCancel={() => (drawing = undefined)}
   />
 {/if}
 
@@ -1421,6 +1607,13 @@
     display: flex;
     flex-direction: column;
     align-items: center;
+  }
+
+  /* The ✏ affordance injected next to Crepe's caption button. */
+  .editor-root :global(.milkdown-image-block .operation-item.drawing-edit) {
+    cursor: pointer;
+    font-size: var(--font-size-sm);
+    line-height: 1;
   }
 
   /* In-editor mermaid preview (Crepe code-block renderPreview). */

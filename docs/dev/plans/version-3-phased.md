@@ -237,7 +237,8 @@ in [assets.ts](../../../src/lib/notebook/assets.ts),
 and covered by slow specs; folding them into the shared module is a Phase 14
 job, not a groundwork one. (The shared encoder was measured against the chunked
 `btoa` path they use — 190 ms vs 159 ms for 4 MB, byte-identical output — so
-there is no performance argument for keeping them.)
+there is no performance argument for keeping them.) *Done in Phase 14 — and the
+shared module came out faster than `btoa` in the process; see there.*
 
 **CHANGELOG:** Other.
 
@@ -1113,6 +1114,54 @@ is pinned and every tag moves.
 checklist recorded in the commit.
 
 **CHANGELOG:** Other, plus the release itself.
+
+**Progress (begun 2026-08-22, with the Excalidraw port landing the same
+day):**
+
+- **4 — one base64: done.** The four encoders are gone;
+  [assets.ts](../../../src/lib/notebook/assets.ts) (`blobToBase64` /
+  `base64ToBlob`), [formulaMarkup.ts](../../../src/lib/codegen/formulaMarkup.ts),
+  [mathFonts.ts](../../../src/lib/notebook/mathFonts.ts) and
+  [exportFile.ts](../../../src/lib/exportFile.ts) (`dataUrlToBlob`, now
+  `parseDataUrl`) all call [base64.ts](../../../src/lib/encode/base64.ts). Doing
+  it exposed what Phase 0's measurement had not: the shared DECODE was 30×
+  slower than `atob` on a 2 MB asset (130 ms against 4), because `validate`,
+  `decodedLength` and `decodeBytes` each ran a regex per character and the
+  decoder grew a plain array. All three got an ASCII fast path over one
+  `Int8Array` lookup table and the decoder a preallocated `Uint8Array`; the
+  encoder stopped concatenating four strings per three bytes and writes codes
+  into a byte buffer that one `TextDecoder('latin1')` turns into the string.
+  Measured on the same 2 MB: encode 5 ms (was 127; `btoa` path 57), decode
+  22 ms (was 130; `atob` 4). Byte-identical output, the 23 base64 cases and
+  every unit file that touches the four callers green.
+- **3 — payload pass: measured.** In the build: `bcrypt.*.js` 1.2 KB +
+  `bcrypt-worker-*.js` 21 KB and `figlet.*.js` 16 KB are their own chunks and
+  hold their place in `payload.spec.ts`'s `HEAVY` list; `HashApp.*.js` 18 KB
+  and `DiffApp.*.js` 21 KB + `diff.*.js` 0.3 KB — small enough that laziness
+  would cost a round trip to save nothing. Excalidraw joined the heavy list
+  for real: its main chunk is now named (`excalidraw.*.js`, 1.1 MB, through
+  a re-export facade in `src/lib/vendor/` — see the CHANGELOG) so the
+  `/excalidraw/i` matcher that has stood guard since Phase 10 finally matches
+  something.
+- **2 — offline audit: the mechanical half.** `tools/audit-precache.mjs` over
+  the build: 80 shell routes, 411 files / 22.4 MB reached by the crawl, the
+  four engine wasm/data files (16.8 MB) correctly left to their bundles. The
+  vendored Excalidraw faces joined the font bucket (`FONT_PREFIXES`) and the
+  Offline panel (`drawing-fonts`, 439,576 bytes, with a unit test against its
+  `PROVENANCE.txt`), the same way the maths faces did in Phase 10. The audit
+  also caught a real bug: the crawl ran inside `activate`'s `waitUntil`, so
+  navigations and worker-script loads hung until the first crawl finished —
+  invisible at 0.2.0's graph size, minutes once Excalidraw's chunk fed the
+  crawl hundreds of junk relative paths. Both halves are fixed (crawl started
+  after activation, `ASSET_FILE` filter on what is enqueued; see the
+  CHANGELOG) and the cache is `v32`. The fresh-install → airplane-mode walk
+  through every new tool is still to do by hand.
+- **1, 5, 6, 7 — not started.** The hand-driven keyboard / AA pass, the
+  sidebar decision (Q2: Generators now lists fifteen tools — Logo generator,
+  Hashing, JWT, Docker Compose, Placeholders, Crontab, File tree, ASCII art,
+  Encryption, Secrets, Themes, Gradients, Glassmorphism, Regex snippets, QR
+  code — which is the case the question anticipated), the README / docs-map
+  re-read, and the release.
 
 ---
 

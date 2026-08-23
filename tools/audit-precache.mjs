@@ -92,8 +92,10 @@ while (queue.length > 0) {
   reached.push({ path, bytes, type });
   if (!['html', 'js', 'mjs', 'css'].includes(type)) continue;
   const text = readFileSync(file, 'utf8');
+  // Mirrors ASSET_FILE in sw.js: one segment, with an extension.
+  const ASSET_FILE = /^[^/]+\.[A-Za-z0-9]+$/;
   const enqueue = (p) => {
-    if (p.startsWith(ASSET_PREFIX) && !seen.has(p) && !CRAWL_SKIP.test(p)) {
+    if (p.startsWith(ASSET_PREFIX) && ASSET_FILE.test(p.slice(ASSET_PREFIX.length)) && !seen.has(p) && !CRAWL_SKIP.test(p)) {
       seen.add(p);
       queue.push(p);
     }

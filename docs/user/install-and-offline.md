@@ -21,6 +21,7 @@ Installing prompts the question once: **Make it work offline?** — when the bro
 | The app itself | — | Every page and code chunk, including tools you have not opened |
 | Background remover model | 15.8 MB | The cut-out model plus the runtime it needs |
 | Maths fonts | 0.3 MB | The twenty faces napkin math and the notebook draw maths with |
+| Drawing fonts | 0.4 MB | The eight font families the notebook's drawing canvas writes with |
 | SQLite engine | 1.2 MB | The SQL playground's SQLite database |
 | Postgres engine | 12 MB | The SQL playground's Postgres database |
 
@@ -33,6 +34,7 @@ About 29 MB with everything ticked. "The app itself" is code only: the two SQL e
 - The background remover, once its model is downloaded — either here or from the button on the tool's own page.
 - The SQL playground, once the engine you pick has been downloaded. The two engines are separate downloads, and the background caching never fetches them on its own.
 - Maths in napkin math and the notebook, once the maths fonts are here — from the "Maths fonts" item, or automatically the first time a page draws a formula.
+- Drawings in the notebook, once "The app itself" has reached the canvas (it is a code chunk, fetched the first time you press **✏ Draw**) and the drawing fonts are here — from the "Drawing fonts" item, or automatically as the canvas writes with them. The one family not shipped is the Chinese / Japanese / Korean one; text in it falls back to a download.
 - City search in the Timezones tool, once its city list has been fetched (part of "the app itself", or automatically the first time you search for a city).
 
 ## Gotchas

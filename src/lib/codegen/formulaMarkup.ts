@@ -28,6 +28,7 @@
 // map calls this `static.css`; the file on disk is `mathlive-static.css`, and
 // only the mapped name resolves.
 import rawStaticCss from 'mathlive/static.css?raw';
+import { encodeBytes } from '../encode/base64';
 import { MATH_FONT_FILES } from '../math/fonts';
 import { href } from '../paths';
 
@@ -86,16 +87,7 @@ function firstFamily(value: string): string {
   return first.trim().replace(/^["']|["']$/g, '');
 }
 
-const base64 = (buffer: ArrayBuffer): string => {
-  const bytes = new Uint8Array(buffer);
-  let binary = '';
-  // In chunks: String.fromCharCode(...bytes) blows the argument limit on
-  // anything over about 100 KB.
-  for (let i = 0; i < bytes.length; i += 0x8000) {
-    binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-  }
-  return btoa(binary);
-};
+const base64 = (buffer: ArrayBuffer): string => encodeBytes(new Uint8Array(buffer));
 
 /**
  * Render `latex`, measure which faces it needs, and inline them.

@@ -450,6 +450,85 @@ test.describe('notebook', () => {
     await expect(page.getByTestId('notebook-bulk-check')).not.toBeChecked();
   });
 
+  test('a drawing is one image row that reopens for editing', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/notebook/');
+    await newNote(page);
+    await expect(page.locator('[data-testid="notebook-canvas"]')).toBeVisible({ timeout: 30_000 });
+
+    // Excalidraw (plus React) is a megabyte the page must not carry until the
+    // button is pressed; the fonts it draws with must come from this origin.
+    // (Absence is what can be asserted from the request log: the service
+    // worker's background crawl may already hold a chunk, and a request it
+    // answers is not always reported — so "it arrived" is proved by the
+    // canvas appearing, not by a URL.)
+    const requests: string[] = [];
+    page.on('request', (r) => requests.push(r.url()));
+    await page.waitForTimeout(400);
+    expect(requests.filter((u) => /excalidraw|react/i.test(u))).toEqual([]);
+
+    await page.getByTestId('notebook-toolbar-draw').click();
+    const dialog = page.getByTestId('notebook-drawing-dialog');
+    await expect(dialog).toBeVisible();
+    await expect(dialog.locator('h3')).toHaveText('New drawing');
+    const canvas = dialog.locator('.excalidraw__canvas.interactive');
+    await expect(canvas).toBeVisible({ timeout: 90_000 });
+    expect(requests.filter((u) => /unpkg|esm\.sh|jsdelivr/i.test(u)), 'no CDN').toEqual([]);
+
+    // Draw one rectangle: the tool's shortcut, then a drag.
+    const box = (await canvas.boundingBox())!;
+    await page.mouse.click(box.x + 40, box.y + 40);
+    await page.keyboard.press('r');
+    await page.mouse.move(box.x + 80, box.y + 80);
+    await page.mouse.down();
+    await page.mouse.move(box.x + 260, box.y + 200, { steps: 8 });
+    await page.mouse.up();
+
+    await page.getByTestId('notebook-drawing-save').click();
+    await expect(dialog).toHaveCount(0, { timeout: 60_000 });
+    await expect(page.getByTestId('notebook-editor-notice')).toHaveCount(0);
+
+    // One PNG, named by the convention that marks it re-editable, shown in
+    // the canvas as an ordinary image with the ✏ affordance beside it.
+    const img = page.locator('[data-testid="notebook-canvas"] img');
+    await expect(img).toHaveCount(1);
+    await expect(page.getByTestId('notebook-drawing-edit')).toHaveCount(1);
+    await expect
+      .poll(async () => ((await app.dumpAll()).note_assets ?? []).length, { timeout: 15_000 })
+      .toBe(1);
+    const [asset] = (await app.dumpAll()).note_assets as { name: string; mime: string; bytes: number }[];
+    expect(asset!.name).toBe('drawing.excalidraw.png');
+    expect(asset!.mime).toBe('image/png');
+    expect(asset!.bytes).toBeGreaterThan(0);
+    // Every font Excalidraw asked for came from this origin: its UI face
+    // through the bundled stylesheet (`_astro/`), the canvas faces through
+    // `EXCALIDRAW_ASSET_PATH` (`/excalidraw/fonts/`) — never its CDN.
+    const fontRequests = requests.filter((u) => /\.woff2(\?|$)/i.test(u));
+    for (const u of fontRequests) {
+      expect(u, 'font served from this origin').toMatch(/^http:\/\/127\.0\.0\.1:\d+\/(_astro|excalidraw\/fonts)\//);
+    }
+
+    // ✏ reopens THAT drawing; saving replaces the bytes under the same row
+    // instead of inserting a second image.
+    await page.getByTestId('notebook-drawing-edit').dispatchEvent('mousedown');
+    await expect(dialog).toBeVisible({ timeout: 30_000 });
+    await expect(dialog.locator('h3')).toHaveText('Edit drawing');
+    await expect(canvas).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByTestId('notebook-drawing-error')).toHaveCount(0);
+    await expect(page.getByTestId('notebook-drawing-save')).toHaveText('Update drawing');
+    await page.getByTestId('notebook-drawing-save').click();
+    await expect(dialog).toHaveCount(0, { timeout: 60_000 });
+    await expect(img).toHaveCount(1);
+    expect(((await app.dumpAll()).note_assets ?? []).length).toBe(1);
+
+    // Source mode shows the ref the markdown carries: an ordinary image whose
+    // src is the asset row. (Crepe's image block serialises its ratio into
+    // the alt slot — `![1.00](…)` — for every block image, drawings included.)
+    await page.getByTestId('notebook-mode-source').click();
+    const content = page.locator('[data-testid="notebook-source"] .cm-content');
+    await expect(content).toContainText('](asset:', { timeout: 30_000 });
+  });
+
   test('the editor stays off every other route', async ({ app }) => {
     const { page } = app;
     await app.goto('/tools/notebook/');

@@ -38,7 +38,8 @@ An offline-only, local-first app there is no server, no account, and no network 
   that stop a file which will not do what it looks like it does).
 - **Notes** — a notebook of linked markdown notes: WYSIWYG or raw source
   over one string, `[[wiki links]]` with computed backlinks and aliases that
-  survive renames, footnotes, mermaid diagrams, KaTeX maths, pasted images,
+  survive renames, footnotes, mermaid diagrams, Excalidraw drawings that
+  reopen for editing, KaTeX maths, pasted images,
   nested notes (folders are notes), tick-boxes in the library that export,
   tag, move or delete many notes at once without leaving the note you are
   writing, and export to Markdown, one self-contained HTML file, or PDF
@@ -133,7 +134,8 @@ network and updates itself when the network is available.
 
 Installing the app offers, once, to download everything it can run without a
 network — the pages you have not opened, the background remover's model, the
-maths fonts napkin math and the notebook draw with, and each SQL engine. The
+maths fonts napkin math and the notebook draw with, the fonts the notebook's
+drawing canvas writes with, and each SQL engine. The
 same panel is in Settings → Offline, and can be re-run any time.
 
 One exception, by design: the **Background remover**'s machine-learning assets

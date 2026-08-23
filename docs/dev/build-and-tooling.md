@@ -20,6 +20,7 @@ _Describes the code as of v0.3.0 (unreleased; schema v13) — verify against sou
 | [tools/build-figlet-fonts.mjs](../../tools/build-figlet-fonts.mjs) | Vendors thirty-seven FIGlet fonts into `public/figlet/`, writes their `PROVENANCE.txt` and [fonts.json](../../src/lib/ascii/fonts.json), and **fails** on a font it cannot account for. |
 | [tools/build-image-fixtures.mjs](../../tools/build-image-fixtures.mjs) | Writes the two binary TIFF fixtures the image specs upload. |
 | [tools/build-math-assets.mjs](../../tools/build-math-assets.mjs) | Vendors MathLive's twenty KaTeX faces, `mathlive-fonts.css` (verbatim) and a stripped `katex.css` into `public/math/`, writes its `PROVENANCE.txt`. |
+| [tools/build-excalidraw-assets.mjs](../../tools/build-excalidraw-assets.mjs) | Vendors Excalidraw's web fonts (eight families, 25 `.woff2`, ~430 KB; the 13 MB CJK family deliberately not) into `public/excalidraw/fonts/`, writes its `PROVENANCE.txt`. |
 | [tools/build-wordlist.mjs](../../tools/build-wordlist.mjs) | Vendors the EFF Long Wordlist (7,776 words, CC BY 3.0 US) into [wordlist.json](../../src/lib/gen/wordlist.json) for the passphrase generator. |
 | [tools/audit-precache.mjs](../../tools/audit-precache.mjs) | Not a generator: statically replays the service worker's background crawl over `dist/` and reports what it would cache. |
 | [.claude/launch.json](../../.claude/launch.json) | Dev-server entries for the agent harness. |
@@ -78,6 +79,14 @@ node tools/build-math-assets.mjs [--force]
 ```
 
 Copies MathLive's twenty KaTeX `.woff2` faces and `mathlive-fonts.css` (verbatim — its relative `url(fonts/…)` resolve beside the `fonts/` directory, and its trailing `:root{--ML__static-fonts:true}` is what tells MathLive's own font loader to stand down) into `public/math/`, and writes `public/math/katex.css`: KaTeX's `katex.min.css` with every `@font-face` block removed, because the MathLive faces ARE the KaTeX faces and the notebook needs only the ~20 KB of layout rules. `PROVENANCE.txt` beside them records source, version, bytes and SHA-256 for each of the 22 files (282,448 bytes together), and `MATH_ASSETS` / `MATH_FONT_BYTES` in [fonts.ts](../../src/lib/math/fonts.ts) must agree with it — [fonts.test.ts](../../src/lib/math/fonts.test.ts) checks that. Deliberately not vendored: `mathlive-static.css` (the library injects those rules itself), the keypress `.wav` sounds (switched off; a Playwright case asserts none is fetched) and the compute engine (plain JavaScript, so Vite bundles it). Re-run with `--force` when `mathlive` or `katex` is upgraded.
+
+### `build-excalidraw-assets.mjs` — the drawing canvas's fonts
+
+```sh
+node tools/build-excalidraw-assets.mjs [--force]
+```
+
+Copies Excalidraw's `dist/prod/fonts/` — every family but Xiaolai (13 MB of CJK glyphs against ~430 KB for the other eight together) — into `public/excalidraw/fonts/`, keeping the library's own hashed filenames because its font loader asks for exactly those paths, and writes `PROVENANCE.txt` with the version, licences, a SHA-256 per file and the byte total that [drawing.ts](../../src/lib/notebook/drawing.ts) declares as `DRAWING_FONT_BYTES` ([drawing.test.ts](../../src/lib/notebook/drawing.test.ts) checks the two agree, and that the file list matches). Refuses to write when the family count is not eight. At run time `loadExcalidraw` sets `window.EXCALIDRAW_ASSET_PATH` to this directory before the library evaluates; Excalidraw still lists its CDN after it, so the family not vendored falls back to a download rather than a blank.
 
 ### `build-wordlist.mjs` — the passphrase word list
 

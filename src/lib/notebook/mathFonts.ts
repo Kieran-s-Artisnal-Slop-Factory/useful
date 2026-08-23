@@ -11,6 +11,7 @@
  *
  * Browser-only (computed styles, fetch); nothing here is unit-tested.
  */
+import { buildDataUrl } from '../encode/base64';
 import { MATH_FONT_FILES } from '../math/fonts';
 import { href } from '../paths';
 
@@ -28,13 +29,7 @@ function faceName(family: string, bold: boolean, italic: boolean): string {
 }
 
 async function toDataUrl(blob: Blob): Promise<string> {
-  const bytes = new Uint8Array(await blob.arrayBuffer());
-  let binary = '';
-  const chunk = 0x8000;
-  for (let i = 0; i < bytes.length; i += chunk) {
-    binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
-  }
-  return `data:font/woff2;base64,${btoa(binary)}`;
+  return buildDataUrl('font/woff2', new Uint8Array(await blob.arrayBuffer()));
 }
 
 /** The faces used under `root`, each fetched once from the vendored set. */

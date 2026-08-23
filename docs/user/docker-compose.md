@@ -21,7 +21,7 @@ If a value should not live there, use `${VARIABLE}` interpolation (the value com
 
 **Services** is the main editor. Each service opens to show its image, command, environment, ports, storage and networking; the rest — healthcheck, CPU and memory limits, `depends_on`, `tty`, `privileged` — is behind **Lifecycle, resources and the rest**.
 
-The `compose.yaml` at the bottom updates as you type, and above it is a list of anything worth flagging: **Error** for a file that is wrong, **Careful** for one that is valid and will surprise you. A service with findings gets a count beside its name.
+The `compose.yaml` at the bottom, syntax-highlighted, updates as you type, and above it is a list of anything worth flagging: **Error** for a file that is wrong, **Careful** for one that is valid and will surprise you. A service with findings gets a count beside its name.
 
 ## Templates
 

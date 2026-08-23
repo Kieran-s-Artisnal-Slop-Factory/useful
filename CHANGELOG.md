@@ -2,6 +2,37 @@
 
 ## Features
 
+- **Notebook: drawings.** **✏ Draw** on the editor toolbar opens an Excalidraw
+  canvas (the port from retoken that Phase 10 deferred). **Insert drawing**
+  saves the scene as a PNG image in the note — with the scene embedded in the
+  PNG, so the picture reopens for editing: the ✏ beside the image in the rich
+  view, or select it (or stand inside its `![Drawing](…)` in Source) and press
+  Draw again; **Update drawing** replaces the bytes under the same asset, so
+  every reference to it updates at once. A drawing is an ordinary image to the
+  exports, the backup and the 2 MB cap, and the file opens on excalidraw.com.
+  - **Nothing arrives until the button is pressed.** React, Excalidraw and its
+    stylesheet are one lazy import (a megabyte, named `excalidraw.*.js` in the
+    build so the payload guard can see it), and the notebook spec asserts they
+    are absent before the click and present after.
+  - **The fonts it writes with are served from this origin.** Excalidraw
+    fetches its faces at run time, by default from unpkg; eight families
+    (430 KB) are vendored under `public/excalidraw/` by
+    `tools/build-excalidraw-assets.mjs`, `window.EXCALIDRAW_ASSET_PATH`
+    points there, the service worker keeps them in the font bucket, and
+    **Drawing fonts** joined the Offline panel. The one family left out is the
+    13 MB CJK one, which falls back to the CDN rather than to a blank.
+  - `AssetStore` gained an optional `nameOf(src)`: the notebook's refs are
+    `asset:<id>` and carry no filename, and the filename is what says an
+    image is a drawing.
+
+- **Placeholders: every generator in the picker shows an example.** Each
+  option carries a small picture drawn from the current colours, seed and
+  scene, so the nine generators can be told apart before one is chosen — and
+  the examples follow the controls as they change.
+
+- **Docker Compose: the generated `compose.yaml` is syntax-highlighted**, on
+  the same Prism path every other generated-source block uses.
+
 - **Docker Compose** (`/tools/docker-compose/`, **schema v13**): build a
   `compose.yaml` through controls that know what each field does, start from
   one of nine stack templates, add one of ten service snippets, or read an
@@ -466,6 +497,45 @@
     `secrets.ts` now re-exports from it rather than carrying its own copy.
 
 ## Other
+
+- **The service worker no longer holds navigations hostage to its first
+  crawl** (cache `v32`). The background asset crawl ran inside `activate`'s
+  `waitUntil`, so the worker stayed *activating* until the whole crawl
+  finished — and a browser holds navigations and `new Worker()` script loads
+  to an activating worker until it is activated. On a fresh install that
+  meant sidebar clicks and the bcrypt worker hung for as long as the crawl
+  ran: seconds on the 0.2.0 graph, so nobody saw it; minutes once
+  Excalidraw's chunk joined the graph and its minified strings fed the crawl
+  hundreds of `./fonts/…` and `./locales/…` paths that 404 (each with a 120 ms
+  pacing delay), which is when two Playwright specs hung. The crawl now
+  starts after activation without being awaited (the fetch handler's own
+  `waitUntil` keeps the worker alive for it), and it only enqueues paths that
+  look like build assets — one segment, with an extension — so the junk is
+  never fetched. `tools/audit-precache.mjs` mirrors the rule.
+
+- **One base64, finally** (Phase 14). The four hand-rolled `btoa`-in-chunks /
+  `atob` encoders that Phase 0 left behind — notebook assets, the napkin-math
+  web component's inlined fonts, the HTML export's maths faces and
+  `dataUrlToBlob` — now call `lib/encode/base64.ts`. Folding them showed the
+  shared decoder was 30× slower than `atob` on a 2 MB image (a regex per
+  character, three times over), so the module got an ASCII fast path and a
+  preallocated output; encode went from 127 ms to 5 on 2 MB (faster than
+  `btoa`'s 57), decode from 130 ms to 22. Same bytes out, same 23 unit cases.
+
+- **The service worker's font bucket also holds Excalidraw's faces.**
+  `FONT_PREFIXES` gained `excalidraw/` beside `math/`: same cache, same
+  cache-first-no-revalidate branch, same reasoning (stable, unfingerprinted,
+  fetched by name at run time, so the asset crawl can never reach them).
+
+- **Excalidraw's chunk is named.** Its package entry is `dist/prod/index.js`,
+  so rolldown called its output `prod.*.js` and `chunk-XXXX.*.js` — names
+  the `/excalidraw/i` payload matcher could not see, which made that guard
+  vacuous. The one import of the package now goes through
+  `src/lib/vendor/excalidraw.ts`, a bare re-export whose only job is to lend
+  the dynamic chunk its name: `excalidraw.*.js`. (A rolldown `codeSplitting`
+  group was tried first: with dependencies it dragged shared helpers into the
+  chunk and every page imported 4.8 MB of Excalidraw statically; without
+  them it is incompatible with Astro's `preserveEntrySignatures`.)
 
 - **The install precache carries fonts** (service worker cache `v30`): the
   thirty-seven `.flf` files are unfingerprinted `public/` files,

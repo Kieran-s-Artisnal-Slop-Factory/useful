@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onDestroy, onMount } from 'svelte';
   import Card from '../Card.svelte';
+  import CodeBlock from '../CodeBlock.svelte';
   import Explainer from '../Explainer.svelte';
   import { copyText, downloadBlob, downloadText } from '../../lib/exportFile';
   import { all, patch, put, softDelete, withSyncFields } from '../../lib/db/repo';
@@ -948,7 +949,7 @@
         <p class="muted small" data-testid="dc-findings-clear">Nothing to flag.</p>
       {/if}
 
-      <pre class="out" data-testid="dc-yaml">{yaml}</pre>
+      <CodeBlock code={yaml} language="yaml" testid="dc-yaml" maxHeight="28rem" />
 
       <div class="row">
         <button class="btn btn-primary" data-testid="dc-copy" onclick={copyYaml}>Copy</button>
@@ -1023,17 +1024,6 @@
 
   .warn {
     color: var(--color-danger);
-  }
-
-  .out {
-    border: 1.5px solid var(--border-strong-color);
-    border-radius: var(--radius-sm);
-    padding: var(--space-3);
-    max-height: 28rem;
-    overflow: auto;
-    white-space: pre;
-    margin: 0;
-    font-size: var(--font-size-sm);
   }
 
   .library {
