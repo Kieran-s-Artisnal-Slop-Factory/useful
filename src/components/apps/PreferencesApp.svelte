@@ -62,10 +62,8 @@
   );
 </script>
 
-<div class="page-header">
-  <h1>Preferences</h1>
-</div>
-
+<!-- Rendered inside SettingsApp (Phase 14 folded the Preferences page into
+     Settings), so no page header of its own: the cards sit among Settings'. -->
 {#if loading}
   <p class="muted">Loading…</p>
 {:else}

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { href, isPath } from '../../lib/paths';
-  import { byCategory } from '../../lib/registry';
+  import { byCategory, CATEGORY_ICONS, REGISTRY } from '../../lib/registry';
   import Icon from '../Icon.svelte';
   import CommandPalette from './CommandPalette.svelte';
 
@@ -8,7 +8,7 @@
 
   // One breakpoint, shared by CSS (range syntax, no fractional-zoom gap) and
   // JS. Below it the sidebar is an off-canvas drawer; above, a persisted
-  // collapse.
+  // collapse down to the rail.
   const MOBILE_MQ = '(width < 64rem)';
   const COLLAPSE_KEY = 'useful-sidebar-collapsed';
 
@@ -28,7 +28,27 @@
     typeof document !== 'undefined' && document.documentElement.dataset.sidebar === 'collapsed'
   );
 
-  const groups = byCategory();
+  /**
+   * The sidebar is a RAIL of categories with one category's tools beside it
+   * (Phase 14, sidebar variant G). The App category is not a rail entry: its
+   * one tool, Settings, is the gear pinned to the foot of the rail, and the
+   * home page's link is the brand in the topbar.
+   */
+  const groups = byCategory().filter((g) => g.category !== 'App');
+  const settings = REGISTRY.find((t) => t.id === 'settings')!;
+
+  /** The category of the page at `path`, or null for the home page / Settings. */
+  function categoryOf(p: string): string | null {
+    const tool = REGISTRY.find((t) => t.category !== 'App' && isPath(p, t.route));
+    return tool?.category ?? null;
+  }
+
+  // Which category the flyout shows. Follows the page; a rail click overrides
+  // it until the next navigation lands in a different category.
+  let active = $state(categoryOf(currentPath) ?? groups[0]!.category);
+  const activeGroup = $derived(groups.find((g) => g.category === active) ?? groups[0]!);
+  const railIcon = (g: (typeof groups)[number]): string =>
+    CATEGORY_ICONS[g.category] ?? g.tools[0]?.icon ?? 'settings';
 
   $effect(() => {
     const mql = window.matchMedia(MOBILE_MQ);
@@ -41,6 +61,8 @@
     };
     const onPageLoad = () => {
       path = window.location.pathname;
+      const category = categoryOf(path);
+      if (category) active = category;
       drawerOpen = false;
       paletteOpen = false; // browser back/forward swaps the page underneath
     };
@@ -79,19 +101,29 @@
     };
   });
 
-  function toggleSidebar(): void {
-    if (isMobile) {
-      drawerOpen = !drawerOpen;
-      return;
-    }
-    collapsed = !collapsed;
-    if (collapsed) {
+  function setCollapsed(value: boolean): void {
+    collapsed = value;
+    if (value) {
       document.documentElement.dataset.sidebar = 'collapsed';
       localStorage.setItem(COLLAPSE_KEY, '1');
     } else {
       delete document.documentElement.dataset.sidebar;
       localStorage.removeItem(COLLAPSE_KEY);
     }
+  }
+
+  function toggleSidebar(): void {
+    if (isMobile) {
+      drawerOpen = !drawerOpen;
+      return;
+    }
+    setCollapsed(!collapsed);
+  }
+
+  /** A rail click shows that category — and, collapsed, brings the list back. */
+  function pickCategory(category: string): void {
+    active = category;
+    if (!isMobile && collapsed) setCollapsed(false);
   }
 
   function openPalette(e: MouseEvent): void {
@@ -114,7 +146,7 @@
     </svg>
   </button>
 
-  <a class="brand" href={href('/')}>
+  <a class="brand" href={href('/')} data-testid="nav-brand">
     <!-- Drafting compass: hinge, two legs, and the amber arc it just drew. -->
     <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
       <path d="M8 1v2" stroke="currentColor" stroke-width="1.5" />
@@ -149,26 +181,57 @@
 {/if}
 
 <aside id="app-sidebar" class="sidebar" class:open={drawerOpen} aria-label="Tools">
-  <nav>
-    {#each groups as group (group.category)}
-      <section>
-        <h2>{group.category}</h2>
-        <ul>
-          {#each group.tools as tool (tool.id)}
-            <li>
-              <a
-                href={href(tool.route)}
-                aria-current={isPath(path, tool.route) ? 'page' : undefined}
-                data-testid={'nav-' + tool.id}
-              >
-                <span class="icon"><Icon name={tool.icon} /></span>
-                <span>{tool.name}</span>
-              </a>
-            </li>
-          {/each}
-        </ul>
-      </section>
-    {/each}
+  <!-- The rail: one button per category, the gear for Settings at the foot. -->
+  <nav class="rail" aria-label="Categories" data-testid="sidebar-rail">
+    <ul>
+      {#each groups as group (group.category)}
+        <li>
+          <button
+            type="button"
+            class="rail-btn"
+            class:active={group.category === active}
+            aria-pressed={group.category === active}
+            aria-controls="sidebar-flyout"
+            title={group.category}
+            data-testid={'rail-' + group.category.toLowerCase()}
+            onclick={() => pickCategory(group.category)}
+          >
+            <span class="icon"><Icon name={railIcon(group)} /></span>
+            <span class="rail-label">{group.category}</span>
+          </button>
+        </li>
+      {/each}
+    </ul>
+    <a
+      class="rail-btn gear"
+      href={href(settings.route)}
+      aria-label={settings.name}
+      title={settings.name}
+      aria-current={isPath(path, settings.route) ? 'page' : undefined}
+      data-testid={'nav-' + settings.id}
+    >
+      <span class="icon"><Icon name={settings.icon} /></span>
+    </a>
+  </nav>
+
+  <!-- The flyout: the active category's tools. Hidden with the sidebar
+       collapsed; the rail stays. -->
+  <nav class="flyout" id="sidebar-flyout" aria-label={activeGroup.category} data-testid="sidebar-flyout">
+    <h2>{activeGroup.category}</h2>
+    <ul>
+      {#each activeGroup.tools as tool (tool.id)}
+        <li>
+          <a
+            href={href(tool.route)}
+            aria-current={isPath(path, tool.route) ? 'page' : undefined}
+            data-testid={'nav-' + tool.id}
+          >
+            <span class="icon"><Icon name={tool.icon} /></span>
+            <span>{tool.name}</span>
+          </a>
+        </li>
+      {/each}
+    </ul>
   </nav>
 </aside>
 
@@ -273,6 +336,8 @@
     background: var(--surface-color);
   }
 
+  /* ── Sidebar: rail + flyout ─────────────────────────────────────────── */
+
   .sidebar {
     position: fixed;
     top: 0;
@@ -280,29 +345,104 @@
     left: 0;
     z-index: 30;
     width: var(--sidebar-width);
+    display: flex;
     background: var(--surface-color);
     border-right: 1px solid var(--border-color);
-    overflow-y: auto;
-    overscroll-behavior: contain;
-    padding: var(--space-4) var(--space-3);
   }
 
-  .sidebar h2 {
+  .rail {
+    flex: none;
+    width: var(--rail-width);
+    display: flex;
+    flex-direction: column;
+    border-right: 1px solid var(--border-color);
+    padding: var(--space-2) 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .rail ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    flex: 1;
+  }
+
+  .rail-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    width: 100%;
+    min-height: 3rem;
+    padding: var(--space-2) 0;
+    background: none;
+    border: none;
+    border-radius: 0;
+    cursor: pointer;
+    color: var(--text-muted-color);
+    font: inherit;
+    /* Small enough that the longest name (PRODUCTIVITY, PLAYGROUNDS) fits the
+       rail without an ellipsis; the icon above carries the recognition. */
+    font-size: 0.5rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    text-decoration: none;
+  }
+
+  .rail-btn:hover {
+    background: var(--color-primary-soft);
+    color: var(--text-color);
+  }
+
+  .rail-btn.active,
+  .rail-btn[aria-current='page'] {
+    background: var(--color-primary-soft);
+    color: var(--color-primary-strong);
+    box-shadow: inset 2px 0 0 var(--color-stamp);
+  }
+
+  .rail-label {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    padding-inline: 2px;
+  }
+
+  /* The gear: pinned to the foot of the rail, ruled off from the categories. */
+  .gear {
+    margin-top: auto;
+    border-top: 1px solid var(--border-color);
+  }
+
+  .flyout {
+    flex: 1;
+    min-width: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: var(--space-4) var(--space-2);
+  }
+
+  .flyout h2 {
     font-size: var(--font-size-eyebrow);
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: var(--tracking-label);
     color: var(--text-muted-color);
     padding: var(--space-2) var(--space-3);
+    margin: 0;
   }
 
-  .sidebar ul {
+  .flyout ul {
     list-style: none;
     margin: 0 0 var(--space-4);
     padding: 0;
   }
 
-  .sidebar a {
+  .flyout a {
     display: flex;
     align-items: center;
     gap: var(--space-3);
@@ -314,11 +454,11 @@
     font-size: var(--font-size-sm);
   }
 
-  .sidebar a:hover {
+  .flyout a:hover {
     background: var(--color-primary-soft);
   }
 
-  .sidebar a[aria-current='page'] {
+  .flyout a[aria-current='page'] {
     background: var(--color-primary-soft);
     color: var(--color-primary-strong);
     box-shadow: inset 2px 0 0 var(--color-stamp);
@@ -326,14 +466,16 @@
 
   .sidebar .icon {
     flex: none;
+    display: inline-flex;
   }
 
   .drawer-backdrop {
     display: none;
   }
 
-  /* Desktop: the sidebar starts below the topbar and collapses via the <html>
-     attribute set before first paint (no flash, survives navigation). */
+  /* Desktop: the sidebar starts below the topbar. Collapsed (the <html>
+     attribute set before first paint — no flash, survives navigation) it is
+     the rail alone: a category click brings the list back. */
   @media (width >= 64rem) {
     .sidebar {
       top: var(--navbar-height);
@@ -341,6 +483,10 @@
     }
 
     :global(html[data-sidebar='collapsed']) .sidebar {
+      width: var(--rail-width);
+    }
+
+    :global(html[data-sidebar='collapsed']) .flyout {
       display: none;
     }
   }

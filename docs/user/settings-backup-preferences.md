@@ -1,6 +1,6 @@
 # Settings, backups and preferences
 
-Two pages in the sidebar look after the app itself. **Settings** holds appearance, storage, the offline download, backup export/import, and a locked developer section. **Preferences** holds the defaults the tools fill in for you, and shows every value the app has remembered. Everything the app knows lives in this browser on this device — the backup file is the only way to copy it anywhere else.
+One page looks after the app itself — **Settings**, behind the gear at the foot of the sidebar. It holds appearance, the **preferences** (the defaults the tools fill in for you, and every value the app has remembered), storage, the offline download, backup export/import, and a locked developer section. (Preferences used to be a page of its own; the old address still lands here.) Everything the app knows lives in this browser on this device — the backup file is the only way to copy it anywhere else.
 
 _Describes the code as of v0.3.0 (unreleased; schema v13) — verify against source when in doubt._
 
@@ -45,7 +45,7 @@ Locked by default. Unlocking asks you to type one long sentence exactly, and the
 
 ## Preferences
 
-The Preferences page has two halves: settings you can change, and a list of things the app has remembered on its own.
+The preferences cards sit between Appearance and Storage and come in two halves: settings you can change, and a list of things the app has remembered on its own.
 
 **Timer defaults** — Play sound, Vibrate, Show notification, Delete when finished. These are pre-filled into every new timer. Changes save the moment you tick a box; there is no save button.
 

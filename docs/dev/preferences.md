@@ -11,8 +11,8 @@ _Describes the code as of v0.3.0 (unreleased; schema v13) — verify against sou
 | [types.ts](../../src/lib/db/types.ts) | The `Preferences` interface (every field, all optional) and the `STORES.preferences` entry: `{ indexes: [], singleton: true, fieldMerge: true }`. |
 | [repo.ts](../../src/lib/db/repo.ts) | `SINGLETON_ID = 'singleton'`, `getSingleton`, `putSingleton` — the only sanctioned access path. |
 | [db.ts](../../src/lib/db/db.ts) | Migration v1 creates the store (`keyPath: 'id'`, no indexes). Adding a *field* needs no migration. |
-| [PreferencesApp.svelte](../../src/components/apps/PreferencesApp.svelte) | The `/preferences/` page: editable timer defaults, alarm duration, the auto-remember switch, and a read-only dump of everything else. |
-| [SettingsApp.svelte](../../src/components/apps/SettingsApp.svelte) | `/settings/` — backup, storage, offline, theme, developer unlock. Writes **no** preference field (theme is `localStorage`). |
+| [PreferencesApp.svelte](../../src/components/apps/PreferencesApp.svelte) | The Preferences cards — editable timer defaults, alarm duration, week start, the auto-remember switch, and a read-only dump of everything else — rendered inside `SettingsApp` since Phase 14 (the `/preferences/` page is gone; the address redirects to `/settings/`). |
+| [SettingsApp.svelte](../../src/components/apps/SettingsApp.svelte) | `/settings/` — theme, then `<PreferencesApp />`, then storage, offline, backup, developer unlock. Its own code writes **no** preference field (theme is `localStorage`). |
 | [schema.ts](../../tests/local/helpers/schema.ts) | The test harness's column mirror. A field missing here is a field no test writes or compares. |
 | [export.ts](../../src/lib/db/export.ts) | `foldFieldMerged` — the per-field merge that `fieldMerge` exists for. |
 
@@ -96,7 +96,7 @@ flowchart TD
   M --> I
 ```
 
-## The Preferences page
+## The Preferences cards (on Settings)
 
 [PreferencesApp.svelte](../../src/components/apps/PreferencesApp.svelte) loads the row once on mount into a plain `$state` object and renders three editable cards plus one read-only table:
 

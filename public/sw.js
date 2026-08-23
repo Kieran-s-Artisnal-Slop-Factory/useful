@@ -23,7 +23,7 @@
 // Bump this on any meaningful change to this file: `activate` only purges
 // caches whose name differs, so a constant name makes that step dead code and
 // lets a previous deploy's (or a poisoned) entry survive forever.
-const CACHE_NAME = 'useful-cache-v32';
+const CACHE_NAME = 'useful-cache-v33';
 
 // Everything under this prefix belongs to this app. Cache Storage is keyed by
 // ORIGIN, not by service-worker scope, so if two of these apps are ever served
@@ -49,7 +49,6 @@ const ASSET_PREFIX = BASE + '_astro/';
 const ASSET_FILE = /^[^/]+\.[A-Za-z0-9]+$/;
 const SHELL = [
   '',
-  'preferences/',
   'settings/',
   'tools/timers/',
   'tools/stopwatch/',

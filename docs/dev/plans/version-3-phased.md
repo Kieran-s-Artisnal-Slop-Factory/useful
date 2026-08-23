@@ -1156,16 +1156,18 @@ day):**
   after activation, `ASSET_FILE` filter on what is enqueued; see the
   CHANGELOG) and the cache is `v32`. The fresh-install → airplane-mode walk
   through every new tool is still to do by hand.
-- **5 — sidebar: sketched, awaiting the pick.** Generators now lists fifteen
-  tools (Logo generator, Hashing, JWT, Docker Compose, Placeholders, Crontab,
-  File tree, ASCII art, Encryption, Secrets, Themes, Gradients, Glassmorphism,
-  Regex snippets, QR code) — the case Q2 anticipated. Eight variants, each a
-  live mock over the real registry with its for / against and what it costs,
-  are in [sketches/sidebar-variants.html](sketches/sidebar-variants.html):
-  A as shipped, B the DevOps split Q2 named, C a Security split, D both,
-  E a four-way regroup that dissolves Generators, F collapsible groups,
-  G an icon rail with a flyout, H a flat filtered list with pins. Open it in
-  a browser; F, G and H are interactive.
+- **5 — sidebar: done, variant G.** Generators had reached fifteen tools —
+  the case Q2 anticipated. Eight variants, each a live mock over the real
+  registry with its for / against and what it costs, are in
+  [sketches/sidebar-variants.html](sketches/sidebar-variants.html); the pick
+  was **G, the icon rail with a flyout**, on D's taxonomy (Security and
+  DevOps split out of Generators) plus two changes of the maintainer's own:
+  Scheduler and Notebook share a **Productivity** category, and the App
+  category lost its rows — Home is the brand link, Preferences folded into
+  Settings, and Settings is the gear pinned to the foot of the rail.
+  `CATEGORY_ICONS` in the registry names each category's glyph;
+  `/preferences/` redirects; cache `v33`; `nav.spec.ts` rewritten for the
+  rail.
 - **6 — docs: done** (README "What's in it" and Tables, the docs map, the
   per-tool pages re-read as a set; see that commit).
 - **1 and 7 — not started.** The hand-driven keyboard / AA pass, and the

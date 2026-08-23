@@ -2,6 +2,21 @@
 
 ## Features
 
+- **The sidebar is a rail and a flyout** (Phase 14, Q2 — variant G of the
+  eight in `docs/dev/plans/sketches/sidebar-variants.html`). The left edge is
+  a narrow rail of category icons; the chosen category's tools are listed
+  beside it, and the list follows the page you land on. Collapsing the
+  sidebar now keeps the rail — the collapsed state is useful instead of an
+  empty strip — and a rail click brings the list back on that category. The
+  categories changed with it: **Productivity** (Scheduler, Notebook) replaces
+  two one-tool categories; **Security** (Hashing, JWT, Encryption, Secrets)
+  and **DevOps** (Docker Compose, Crontab, File tree) leave Generators, which
+  keeps the eight that really make things. Home is no longer a sidebar row —
+  the brand in the top bar is its link — and **Preferences folded into
+  Settings**: one page for everything about the app itself, reached by the
+  gear pinned to the foot of the rail. `/preferences/` redirects there, and
+  "prefs" / "preferences" still find it in the palette.
+
 - **Notebook: drawings.** **✏ Draw** on the editor toolbar opens an Excalidraw
   canvas (the port from retoken that Phase 10 deferred). **Insert drawing**
   saves the scene as a PNG image in the note — with the scene embedded in the

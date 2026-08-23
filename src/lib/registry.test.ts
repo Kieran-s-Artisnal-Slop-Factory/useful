@@ -45,11 +45,11 @@ describe('searchRegistry', () => {
 
   it('puts a name match first', () => {
     expect(searchRegistry('sett')[0]!.id).toBe('settings');
-    expect(searchRegistry('home')[0]!.id).toBe('home');
+    expect(searchRegistry('settings')[0]!.id).toBe('settings');
   });
 
   it('finds tools by alias', () => {
-    expect(searchRegistry('prefs').map((t) => t.id)).toContain('preferences');
+    expect(searchRegistry('prefs').map((t) => t.id)).toContain('settings');
     expect(searchRegistry('backup').map((t) => t.id)).toContain('settings');
   });
 

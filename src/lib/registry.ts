@@ -34,14 +34,33 @@ export interface ToolDef {
  */
 export const CATEGORY_ORDER: string[] = [
   'Time',
-  'Scheduler',
-  'Notes',
+  'Productivity',
   'Images',
   'Calculators',
   'Generators',
+  'Security',
+  'DevOps',
   'Playgrounds',
   'App',
 ];
+
+/**
+ * One icon per category, for the sidebar's rail (Phase 14's sidebar: a rail
+ * of categories with the chosen category's tools beside it). Names are keys
+ * of `ICONS` in lib/icons.ts; a category that is not here falls back to its
+ * first tool's icon, so a new category never renders blank.
+ */
+export const CATEGORY_ICONS: Record<string, string> = {
+  Time: 'timer',
+  Productivity: 'calendar-days',
+  Images: 'image',
+  Calculators: 'sigma',
+  Generators: 'hexagon',
+  Security: 'lock',
+  DevOps: 'container',
+  Playgrounds: 'braces',
+  App: 'settings',
+};
 
 export const REGISTRY: ToolDef[] = [
   {
@@ -76,7 +95,7 @@ export const REGISTRY: ToolDef[] = [
     name: 'Scheduler',
     description: 'Events and TODOs on a list, board, or calendar',
     aliases: ['todo', 'todos', 'tasks', 'kanban', 'calendar', 'events', 'agenda'],
-    category: 'Scheduler',
+    category: 'Productivity',
     route: '/tools/scheduler/',
     icon: 'calendar-days',
   },
@@ -313,7 +332,7 @@ export const REGISTRY: ToolDef[] = [
       'pdf',
       'export',
     ],
-    category: 'Notes',
+    category: 'Productivity',
     route: '/tools/notebook/',
     icon: 'notebook',
   },
@@ -382,7 +401,7 @@ export const REGISTRY: ToolDef[] = [
       'pepper',
       'fingerprint',
     ],
-    category: 'Generators',
+    category: 'Security',
     route: '/tools/hashing/',
     icon: 'fingerprint',
   },
@@ -405,7 +424,7 @@ export const REGISTRY: ToolDef[] = [
       'verify token',
       'sign token',
     ],
-    category: 'Generators',
+    category: 'Security',
     route: '/tools/jwt/',
     icon: 'ticket',
   },
@@ -430,7 +449,7 @@ export const REGISTRY: ToolDef[] = [
       'healthcheck',
       'devops',
     ],
-    category: 'Generators',
+    category: 'DevOps',
     route: '/tools/docker-compose/',
     icon: 'container',
   },
@@ -478,7 +497,7 @@ export const REGISTRY: ToolDef[] = [
       'crontab.guru',
       'run-parts',
     ],
-    category: 'Generators',
+    category: 'DevOps',
     route: '/tools/crontab/',
     icon: 'alarm-clock-check',
   },
@@ -500,7 +519,7 @@ export const REGISTRY: ToolDef[] = [
       'folders',
       'listing',
     ],
-    category: 'Generators',
+    category: 'DevOps',
     route: '/tools/file-tree/',
     icon: 'folder-tree',
   },
@@ -553,7 +572,7 @@ export const REGISTRY: ToolDef[] = [
       'otp',
       'cipher',
     ],
-    category: 'Generators',
+    category: 'Security',
     route: '/tools/encryption/',
     icon: 'lock',
   },
@@ -562,7 +581,7 @@ export const REGISTRY: ToolDef[] = [
     name: 'Secrets',
     description: 'Passwords, API keys, JWT secrets, UUIDs and Wi-Fi passphrases',
     aliases: ['password', 'passphrase', 'key', 'token', 'uuid', 'jwt', 'api key', 'wpa', 'wifi', 'random', 'generate'],
-    category: 'Generators',
+    category: 'Security',
     route: '/tools/secrets/',
     icon: 'key-round',
   },
@@ -611,29 +630,26 @@ export const REGISTRY: ToolDef[] = [
     route: '/tools/qr/',
     icon: 'qr-code',
   },
-  {
-    id: 'home',
-    name: 'Home',
-    description: 'Overview of every tool',
-    aliases: ['start', 'index', 'overview'],
-    category: 'App',
-    route: '/',
-    icon: 'house',
-  },
-  {
-    id: 'preferences',
-    name: 'Preferences',
-    description: 'Per-tool defaults and remembered values',
-    aliases: ['prefs', 'defaults', 'options'],
-    category: 'App',
-    route: '/preferences/',
-    icon: 'sliders-horizontal',
-  },
+  // The home page is not a tool: the brand in the top bar is its link, and a
+  // sidebar row for it would only duplicate that. Preferences folded into
+  // Settings at Phase 14 (one page for everything about the app itself), and
+  // the sidebar pins this entry to the foot of its rail as a gear.
   {
     id: 'settings',
     name: 'Settings',
-    description: 'Theme, storage, backup and restore',
-    aliases: ['theme', 'backup', 'restore', 'export', 'import', 'dark mode'],
+    description: 'Theme, storage, backup, restore, and per-tool preferences',
+    aliases: [
+      'theme',
+      'backup',
+      'restore',
+      'export',
+      'import',
+      'dark mode',
+      'preferences',
+      'prefs',
+      'defaults',
+      'options',
+    ],
     category: 'App',
     route: '/settings/',
     icon: 'settings',

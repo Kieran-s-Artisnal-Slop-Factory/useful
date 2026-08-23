@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import Card from '../Card.svelte';
   import OfflinePanel from '../chrome/OfflinePanel.svelte';
+  import PreferencesApp from './PreferencesApp.svelte';
   import {
     clearAllData,
     downloadExport,
@@ -144,6 +145,11 @@
       {/each}
     </div>
   </Card>
+
+  <!-- Per-tool defaults and remembered values: their own page until Phase
+       14, now the cards between Appearance and Storage. The component owns
+       its reads and its one-field-per-toggle writes. -->
+  <PreferencesApp />
 
   <Card title="Storage">
     <div class="stack">

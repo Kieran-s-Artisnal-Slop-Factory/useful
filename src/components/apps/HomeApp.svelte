@@ -3,10 +3,10 @@
   import { byCategory } from '../../lib/registry';
   import Icon from '../Icon.svelte';
 
-  // Everything except Home itself — the home screen is the registry, rendered.
-  const groups = byCategory()
-    .map((g) => ({ ...g, tools: g.tools.filter((t) => t.id !== 'home') }))
-    .filter((g) => g.tools.length > 0);
+  // The home screen is the registry, rendered — every category, Settings
+  // included. (Home itself stopped being a registry entry at Phase 14: the
+  // brand in the topbar is its link.)
+  const groups = byCategory();
 </script>
 
 <div class="page-header">

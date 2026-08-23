@@ -9,11 +9,11 @@ _Describes the code as of v0.3.0 (unreleased; schema v13) — verify against sou
 | Path | Role |
 | --- | --- |
 | [Layout.astro](../../src/layouts/Layout.astro) | The one layout: `<head>`, `ClientRouter`, pre-paint theme/sidebar script, the three persisted islands, `<main class="page">`, service-worker register (prod) / unregister (dev), test-hook loader. |
-| [Chrome.svelte](../../src/components/chrome/Chrome.svelte) | Topbar (hamburger, brand, sheet code, Search button), sidebar/drawer, collapse persistence, the `ctrl+k` listener, palette mounting. |
+| [Chrome.svelte](../../src/components/chrome/Chrome.svelte) | Topbar (hamburger, brand, sheet code, Search button), the rail-and-flyout sidebar / mobile drawer, collapse persistence, the `ctrl+k` listener, palette mounting. |
 | [CommandPalette.svelte](../../src/components/chrome/CommandPalette.svelte) | The search dialog: input, listbox, keyboard model, focus trap and restore. |
 | [NotificationEngine.svelte](../../src/components/chrome/NotificationEngine.svelte) | Persisted island that runs the timer/scheduler alarm engine and renders notices (see [notification-engine.md](notification-engine.md)). |
 | [OfflineSetup.svelte](../../src/components/chrome/OfflineSetup.svelte) | Persisted island: the one-time post-install offline offer (documented with the service worker). |
-| [registry.ts](../../src/lib/registry.ts) | `ToolDef`, `CATEGORY_ORDER`, `REGISTRY`, `byCategory()`, `searchRegistry()`. |
+| [registry.ts](../../src/lib/registry.ts) | `ToolDef`, `CATEGORY_ORDER`, `CATEGORY_ICONS`, `REGISTRY`, `byCategory()`, `searchRegistry()`. |
 | [fuzzy.ts](../../src/lib/fuzzy.ts) | `fuzzyScore()` / `isSubsequence()` — the palette's matcher. |
 | [icons.ts](../../src/lib/icons.ts), [Icon.svelte](../../src/components/Icon.svelte) | `ICONS` map of inlined Lucide stroke paths, `hasIcon()`, and the renderer. |
 | [paths.ts](../../src/lib/paths.ts) | `href()` / `isPath()` — base-path-aware links. |
@@ -56,7 +56,7 @@ Because the tool component is `client:only`, the server-rendered HTML for a page
 | `name` | Display name (note `number-conversion` is named "Programming", `colors` is named "Themes"). |
 | `description` | One line shown on home tiles and in the palette. |
 | `aliases` | Extra search terms the name lacks (`tz`, `prefs`, `remove bg`…). |
-| `category` | Must be one of `CATEGORY_ORDER` — `Time`, `Scheduler`, `Images`, `Calculators`, `Generators`, `Playgrounds`, `App` (last, holds Home/Preferences/Settings). |
+| `category` | Must be one of `CATEGORY_ORDER` — `Time`, `Productivity` (Scheduler, Notebook), `Images`, `Calculators`, `Generators`, `Security` (Hashing, JWT, Encryption, Secrets), `DevOps` (Docker Compose, Crontab, File tree), `Playgrounds`, `App` (last; holds Settings alone — Home is not a tool and Preferences folded into Settings at Phase 14). `CATEGORY_ICONS` gives each category the glyph its rail button shows. |
 | `route` | App-absolute with trailing slash (`/tools/timers/`, `/`); always rendered through `href()`. |
 | `icon` | Key into `ICONS`. |
 
@@ -67,8 +67,8 @@ Because the tool component is `client:only`, the server-rendered HTML for a page
 ```mermaid
 flowchart TD
   R["REGISTRY + CATEGORY_ORDER (registry.ts)"]
-  R -->|byCategory| S["Chrome.svelte sidebar (nav-&lt;id&gt;)"]
-  R -->|"byCategory minus 'home'"| H["HomeApp.svelte tiles (tile-&lt;id&gt;)"]
+  R -->|"byCategory minus App, CATEGORY_ICONS"| S["Chrome.svelte rail (rail-&lt;category&gt;) + flyout (nav-&lt;id&gt;), gear = Settings"]
+  R -->|byCategory| H["HomeApp.svelte tiles (tile-&lt;id&gt;)"]
   R -->|"searchRegistry + fuzzyScore"| P["CommandPalette.svelte (max 10 rows)"]
   R -->|"unit test: ids unique, route shape, known category, hasIcon"| U["registry.test.ts"]
   R -->|"ROUTES = REGISTRY routes"| A["a11y.spec.ts sweep"]
@@ -81,7 +81,9 @@ The dashed edge matters: the service worker's `SHELL` list is **not** derived fr
 
 `Chrome.svelte` uses one breakpoint for CSS and JS: `MOBILE_MQ = '(width < 64rem)'` (CSS range syntax, so there is no fractional-zoom gap between the two).
 
-- **Desktop (≥ 64rem)**: the sidebar is fixed below the topbar (`top: var(--navbar-height)`, `z-index: 5`). Collapse is the attribute `html[data-sidebar='collapsed']`; the sidebar hides with `display: none` and `global.css` stops padding the body left. `toggleSidebar()` flips the attribute and writes `localStorage['useful-sidebar-collapsed'] = '1'` (or removes it).
+The sidebar is a **rail and a flyout** (Phase 14, sidebar variant G — the eight candidates are in [plans/sketches/sidebar-variants.html](plans/sketches/sidebar-variants.html)). The rail is one button per category in `CATEGORY_ORDER` (minus `App`), each showing `CATEGORY_ICONS[category]` over a tiny uppercase label, `aria-pressed` on the active one, `data-testid="rail-<category>"`; pinned to its foot, ruled off, the gear — a plain link to Settings (`nav-settings`, `aria-current` when there). The flyout beside it (`#sidebar-flyout`, `data-testid="sidebar-flyout"`) lists the active category's tools as before (`nav-<id>`, `aria-current="page"`). Which category is active: `categoryOf(path)` — the category of the tool whose route matches — on every `astro:page-load`, falling back to the first category on the home page and on Settings; a rail click overrides it until the next navigation lands in a different category. The home page has no row: the brand in the topbar is its link.
+
+- **Desktop (≥ 64rem)**: the sidebar is fixed below the topbar (`top: var(--navbar-height)`, `z-index: 5`). Collapse is the attribute `html[data-sidebar='collapsed']`; collapsed, the sidebar narrows to `--rail-width` (4rem) and the flyout is `display: none` — the rail and the gear stay, and `global.css` pads the body by the rail instead of `--sidebar-width`. `toggleSidebar()` flips the attribute and writes `localStorage['useful-sidebar-collapsed'] = '1'` (or removes it); a rail click while collapsed un-collapses onto that category (`pickCategory`).
 - **Mobile (< 64rem)**: the sidebar is an off-canvas drawer (`translateX(-100%)` **and** `visibility: hidden`, so closed links leave the tab order and the accessibility tree) with `z-index: 30` over a `.drawer-backdrop` scrim (`z-index: 25`). The hamburger toggles `drawerOpen`; a click on the backdrop, an `astro:page-load`, or resizing across the breakpoint closes it. `kbd`, the Search label and the sheet code are hidden on mobile.
 - The hamburger carries `aria-expanded` (drawer state on mobile, `!collapsed` on desktop) and `aria-controls="app-sidebar"`.
 - The active link gets `aria-current="page"` via `isPath(path, tool.route)`; visually a `--color-primary-soft` fill with a 2px stamp-coloured inset rule.
@@ -142,14 +144,14 @@ sequenceDiagram
 
 | Layer | z-index | Source |
 | --- | --- | --- |
-| Desktop sidebar | 5 | `Chrome.svelte` |
+| Desktop sidebar (width `--sidebar-width` = 15rem, or `--rail-width` = 4rem collapsed) | 5 | `Chrome.svelte` |
 | Topbar (`position: fixed`, height `--navbar-height` = 3.5rem) | 20 | `Chrome.svelte` |
 | Drawer backdrop / mobile drawer (width `--sidebar-width` = 15rem) | 25 / 30 | `Chrome.svelte` |
 | Palette backdrop | 50 | `CommandPalette.svelte` |
 | Notification notices | 60 | `NotificationEngine.svelte` |
 | Drag ghost | 1000 | `global.css` `.drag-ghost` |
 
-The body gets `padding-top: var(--navbar-height)` and, on desktop while not collapsed, `padding-left: var(--sidebar-width)` (`global.css`).
+The body gets `padding-top: var(--navbar-height)` and, on desktop, `padding-left: var(--sidebar-width)` — or `var(--rail-width)` while collapsed (`global.css`).
 
 ## Shared components
 
@@ -227,7 +229,7 @@ Consumers: `SchedulerApp` (board cards), `CalendarView` (rescheduling), `ImageEd
 
 - Two lists to keep in step (registry and `SHELL`); the unit test guards only the first. `sw.js` is a plain script outside the bundle, so it cannot import the registry — that one stays manual.
 - The palette shows at most 10 results and searches names/aliases/category/description only — nothing inside a tool.
-- No keyboard shortcut toggles the sidebar; only the hamburger.
+- No keyboard shortcut toggles the sidebar; only the hamburger. Rail buttons and the gear are ordinary buttons/links in the tab order; the flyout's heading is the active category's name.
 - `Icon` renders an empty square for an unknown key so a typo degrades visibly rather than crashing the shell.
 - Theme, sidebar collapse and test mode live in `localStorage`, not IndexedDB, so they are outside backups and are per browser profile.
 - Developer-mode unlock in Settings is `sessionStorage` (`useful-inDeveloperMode`) — resets every session by design.

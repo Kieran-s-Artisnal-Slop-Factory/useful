@@ -1060,7 +1060,7 @@ test.describe('week and day views', () => {
     const firstColumn = await page.getByTestId('tg-col').first().getAttribute('data-date');
     expect(new Date(firstColumn + 'T00:00').getDay()).toBe(0);
 
-    await app.goto('/preferences/');
+    await app.goto('/settings/');
     const before = await app.dumpAll();
     await page.getByTestId('pref-scheduler_week_start').selectOption('1');
     await expect

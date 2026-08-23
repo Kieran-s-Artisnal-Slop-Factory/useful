@@ -219,7 +219,7 @@ test.describe('alarm loop + preferences panel', () => {
 
   test('the alarm duration preference caps the ringing', async ({ app }) => {
     const { page } = app;
-    await app.goto('/preferences/');
+    await app.goto('/settings/');
     await page.getByTestId('pref-timer_alarm_seconds').fill('1');
     await page.getByTestId('pref-timer_alarm_seconds').blur();
     await expect
@@ -243,7 +243,7 @@ test.describe('alarm loop + preferences panel', () => {
 
   test('panel toggles write only the singleton and drive the timer form', async ({ app }) => {
     const { page } = app;
-    await app.goto('/preferences/');
+    await app.goto('/settings/');
     const before = await app.dumpAll();
     await page.getByTestId('pref-timer_default_delete_on_complete').check();
     await expect
@@ -258,7 +258,7 @@ test.describe('alarm loop + preferences panel', () => {
 
   test('with auto-remember off, saving a timer leaves the set defaults alone', async ({ app }) => {
     const { page } = app;
-    await app.goto('/preferences/');
+    await app.goto('/settings/');
     await page.getByTestId('pref-auto_remember_based_on_last_value').uncheck();
     await expect
       .poll(async () => (await app.get('preferences', 'singleton'))?.auto_remember_based_on_last_value)

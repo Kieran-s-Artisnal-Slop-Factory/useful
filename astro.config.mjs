@@ -10,6 +10,9 @@ export default defineConfig({
   // manifest already resolve through it (src/lib/paths.ts). Leave it off when
   // serving at the domain root (the default, and how the backend serves it).
   // base: '/useful',
+  // Preferences folded into Settings at Phase 14; the old address still lands
+  // somewhere useful (a static meta-refresh page in the build).
+  redirects: { '/preferences/': '/settings/' },
   integrations: [svelte()],
   vite: {
     // onnxruntime-web (background remover) ships its own wasm loader and

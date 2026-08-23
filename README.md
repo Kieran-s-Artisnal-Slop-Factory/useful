@@ -58,7 +58,7 @@ Everything runs locally: no account, no server, no telemetry.
   defaults, last-used timezone pair, last-used photography sensor format, the
   image tools' JPG quality, the last-open SVG-editor document, the last SQL
   playground engine, the config playground's last mode and open schema, the
-  notebook's open note and editor mode; the Preferences page shows what has
+  notebook's open note and editor mode; Settings shows what has
   been remembered)
 - `timers` — countdown timers; running timers store an absolute `end_at`
   deadline, so nothing writes per tick

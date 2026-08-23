@@ -105,4 +105,6 @@
   --page-max-width: 60rem;
   --navbar-height: 3.5rem;
   --sidebar-width: 15rem;
+  /* The sidebar's category rail; collapsed, the sidebar is this wide. */
+  --rail-width: 4rem;
 }

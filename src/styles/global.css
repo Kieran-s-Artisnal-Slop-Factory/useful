@@ -318,6 +318,11 @@ main.page::after {
   html:not([data-sidebar='collapsed']) body {
     padding-left: var(--sidebar-width);
   }
+
+  /* Collapsed keeps the category rail on screen, so the page still moves over. */
+  html[data-sidebar='collapsed'] body {
+    padding-left: var(--rail-width);
+  }
 }
 
 /* The sheet's header strip: title left, actions right, ruled off below. */
