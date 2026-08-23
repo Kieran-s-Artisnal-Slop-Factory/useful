@@ -304,7 +304,7 @@
           — every font records its author and the terms it ships under, and one the build cannot
           account for at all is refused.
         </p>
-        <div class="fonts" data-testid="aa-fonts">
+        <div class="fonts" role="radiogroup" aria-label="Font" data-testid="aa-fonts">
           {#each FIGLET_STYLES as style (style)}
             <h3 class="group">{style}</h3>
             {#each FIGLET_FONTS.filter((f) => f.style === style) as font (font.id)}

@@ -2,7 +2,7 @@
 
 **JWT** (under Generators, or Ctrl/Cmd+K) reads JSON Web Tokens, checks their signatures, and makes new ones. Nothing you paste is uploaded or saved.
 
-_Describes the code as of v0.3.0 (unreleased; schema v13) — verify against source when in doubt._
+_Describes the code as of v0.3.0 (schema v13) — verify against source when in doubt._
 
 ## Reading a token
 

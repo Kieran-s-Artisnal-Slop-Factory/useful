@@ -2,7 +2,7 @@
 
 `/tools/base64/` — text and files in and out of base64, in four combinations: (text | image) x (encode | decode). A stateless Svelte island over [base64.ts](../../../src/lib/encode/base64.ts) and [sniff.ts](../../../src/lib/encode/sniff.ts); it writes nothing at any point.
 
-_Describes the code as of v0.3.0 (unreleased; schema v13) — verify against source when in doubt._
+_Describes the code as of v0.3.0 (schema v13) — verify against source when in doubt._
 
 ## File map
 

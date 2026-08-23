@@ -2,7 +2,7 @@
 
 **Encryption** (under Generators, or Ctrl/Cmd+K) does five things: encrypts text with a password, makes an RSA key pair, runs a key agreement, hashes a password with bcrypt, and demonstrates a one-time pad. All of it happens in the tab.
 
-_Describes the code as of v0.3.0 (unreleased; schema v13) — verify against source when in doubt._
+_Describes the code as of v0.3.0 (schema v13) — verify against source when in doubt._
 
 ## A password (AES-256-GCM)
 

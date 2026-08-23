@@ -2,7 +2,7 @@
 
 A layered vector drawing tool under **Images** in the sidebar (or Ctrl/Cmd+K). A document is a canvas size, a background, and a stack of layers — rectangles, ellipses, triangles, stars, lines, polygons, text, and SVG markup you paste in. You move and shape layers on the canvas by dragging handles, and every finished change is saved for you a moment later. Documents stay editable forever because the shapes themselves are stored, not a picture of them; you export SVG, PNG or JPG whenever you want a file.
 
-_Describes the code as of v0.3.0 (unreleased; schema v13) — verify against source when in doubt._
+_Describes the code as of v0.3.0 (schema v13) — verify against source when in doubt._
 
 ## Documents
 

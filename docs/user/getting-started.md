@@ -2,7 +2,7 @@
 
 useful is a set of small tools — timers, a scheduler, image editors, calculators, generators and a SQL playground — that run entirely inside your browser. There is no account to create and no server behind it: what you make is stored in this browser, nothing is uploaded, and once a page has loaded it keeps working without a network.
 
-_Describes the code as of v0.3.0 (unreleased; schema v13) — verify against source when in doubt._
+_Describes the code as of v0.3.0 (schema v13) — verify against source when in doubt._
 
 ## Getting around
 

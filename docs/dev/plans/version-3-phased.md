@@ -1170,8 +1170,24 @@ day):**
   rail.
 - **6 — docs: done** (README "What's in it" and Tables, the docs map, the
   per-tool pages re-read as a set; see that commit).
-- **1 and 7 — not started.** The hand-driven keyboard / AA pass, and the
-  release.
+- **1 — accessibility sweep: done.** The registry-driven `a11y.spec.ts`
+  (names, labels, headings, token contrast in both schemes, the keyboard
+  paths) green over every route, plus the hand pass the scope asked for,
+  driven through the dev server in both schemes: every tabbable control in
+  `<main>` named, no custom role without a tab stop, no text below AA against
+  its real background. The similarity matrix is a captioned `<table>` with
+  the stepper as plain buttons; the diff is a `<table>` with an sr-only
+  caption, column headers, and `<ins>`/`<del>` for the changed spans (so a
+  change is not colour alone); the Compose editor's disclosures are native
+  `<details>`/`<summary>`, every summary in the tab order; the ASCII font
+  picker is thirty-seven labelled radios sharing one `name` (arrow keys move
+  within it) — the one finding: the group itself had no accessible name, so
+  the container now carries `role="radiogroup" aria-label="Font"`.
+- **7 — release: done.** `0.3.0 (2026-08-22)`, schema v13 called out at the
+  top of the CHANGELOG entry, every doc banner re-stamped, both suites green
+  against the release build (trust gate included), `audit-precache` numbers
+  in the service-worker doc refreshed. Left for 0.4.0: the fresh-install →
+  airplane-mode walk by hand on a real device.
 
 ---
 

@@ -1,4 +1,10 @@
-# 0.3.0 (unreleased)
+# 0.3.0 (2026-08-22)
+
+**Schema v13.** This release migrates the browser database from v12 to v13
+(the `compose_projects` store for Docker Compose). Your data is carried
+across in place; a backup exported from 0.3.0 will not import into an older
+build, so export one before downgrading. Fifteen stores in all — see the
+README's Tables section.
 
 ## Features
 
@@ -516,8 +522,20 @@
 
 ## Other
 
+- **Release 0.3.0.** `VERSION` and `package.json` agree at 0.3.0; every doc
+  banner reads "as of v0.3.0 (schema v13)". Phase 14's closing audits, all
+  against the release build: `npm test` and `npm run test:unit` green with
+  the trust gate reporting its injected faults detected; the a11y sweep over
+  every registered route plus a hand pass (keyboard and AA in both schemes)
+  over the similarity matrix, the diff table, the Compose disclosure tree
+  and the ASCII font picker — one finding, the font picker's radios had no
+  group name and now carry `role="radiogroup" aria-label="Font"`; the payload
+  guard; the offline suite with `math-fonts` and `drawing-fonts`; and
+  `tools/audit-precache.mjs` over the build.
+
 - **The service worker no longer holds navigations hostage to its first
-  crawl** (cache `v32`). The background asset crawl ran inside `activate`'s
+  crawl** (cache `v32`; `v33` followed with the sidebar, whose shell lost the
+  `preferences/` route). The background asset crawl ran inside `activate`'s
   `waitUntil`, so the worker stayed *activating* until the whole crawl
   finished — and a browser holds navigations and `new Worker()` script loads
   to an activating worker until it is activated. On a fresh install that

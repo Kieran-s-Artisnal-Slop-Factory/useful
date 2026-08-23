@@ -2,7 +2,7 @@
 
 `/tools/crontab/` — read a cron expression, build one, see when it next runs, and find out where the line actually goes. A stateless Svelte island over five pure modules; nothing is written to IndexedDB.
 
-_Describes the code as of v0.3.0 (unreleased; schema v13) — verify against source when in doubt._
+_Describes the code as of v0.3.0 (schema v13) — verify against source when in doubt._
 
 ## File map
 

@@ -2,7 +2,7 @@
 
 A real database engine running in a Web Worker inside the tab: SQLite (sqlite-wasm) or Postgres (PGlite), behind one message protocol so the UI never knows which one it is driving. The page (`/tools/sql-playground/`, category **Playgrounds**) is a CodeMirror editor, two data grids — a results grid and a table browser, both retoken's `DataTable`, with search, an AND/OR filter tree, sortable headers, paging and CSV export — plus snapshot save/restore and import/export in SQL, binary and JSON forms. Ported from [retoken](https://github.com/Descent098/retoken) with the exercise-checking half removed; persistence was rebuilt on this app's data layer (`sql_playgrounds`, one row per engine) so a workspace rides backups and the data-integrity oracle audits every write. The live database is memory-only — only the SQL needed to rebuild it is stored.
 
-_Describes the code as of v0.3.0 (unreleased; schema v13) — verify against source when in doubt._
+_Describes the code as of v0.3.0 (schema v13) — verify against source when in doubt._
 
 ## File map
 

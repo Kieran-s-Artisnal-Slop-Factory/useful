@@ -2,7 +2,7 @@
 
 `/tools/docker-compose/` — build a `compose.yaml` through a UI that knows what each field does, start from a template, or read an existing file back in. The one tool in 0.3.0 that owns a store.
 
-_Describes the code as of v0.3.0 (unreleased; schema v13) — verify against source when in doubt._
+_Describes the code as of v0.3.0 (schema v13) — verify against source when in doubt._
 
 ## File map
 
