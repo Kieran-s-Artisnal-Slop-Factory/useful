@@ -1156,12 +1156,20 @@ day):**
   after activation, `ASSET_FILE` filter on what is enqueued; see the
   CHANGELOG) and the cache is `v32`. The fresh-install → airplane-mode walk
   through every new tool is still to do by hand.
-- **1, 5, 6, 7 — not started.** The hand-driven keyboard / AA pass, the
-  sidebar decision (Q2: Generators now lists fifteen tools — Logo generator,
-  Hashing, JWT, Docker Compose, Placeholders, Crontab, File tree, ASCII art,
-  Encryption, Secrets, Themes, Gradients, Glassmorphism, Regex snippets, QR
-  code — which is the case the question anticipated), the README / docs-map
-  re-read, and the release.
+- **5 — sidebar: sketched, awaiting the pick.** Generators now lists fifteen
+  tools (Logo generator, Hashing, JWT, Docker Compose, Placeholders, Crontab,
+  File tree, ASCII art, Encryption, Secrets, Themes, Gradients, Glassmorphism,
+  Regex snippets, QR code) — the case Q2 anticipated. Eight variants, each a
+  live mock over the real registry with its for / against and what it costs,
+  are in [sketches/sidebar-variants.html](sketches/sidebar-variants.html):
+  A as shipped, B the DevOps split Q2 named, C a Security split, D both,
+  E a four-way regroup that dissolves Generators, F collapsible groups,
+  G an icon rail with a flyout, H a flat filtered list with pins. Open it in
+  a browser; F, G and H are interactive.
+- **6 — docs: done** (README "What's in it" and Tables, the docs map, the
+  per-tool pages re-read as a set; see that commit).
+- **1 and 7 — not started.** The hand-driven keyboard / AA pass, and the
+  release.
 
 ---
 

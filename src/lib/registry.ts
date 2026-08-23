@@ -507,7 +507,7 @@ export const REGISTRY: ToolDef[] = [
   {
     id: 'ascii-art',
     name: 'ASCII art',
-    description: 'A picture as characters, or words as a banner in fourteen FIGlet fonts',
+    description: 'A picture as characters, or words as a banner in thirty-seven FIGlet fonts',
     aliases: [
       'ascii',
       'ascii art',

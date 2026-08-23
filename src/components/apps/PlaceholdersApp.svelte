@@ -29,6 +29,7 @@
     type ImageOptions,
   } from '../../lib/placeholder/images';
   import { SCENES, SCENE_GROUPS } from '../../lib/placeholder/scenes';
+  import THUMBNAILS from '../../lib/placeholder/thumbnails.json';
   import { RATIOS, SIZE_PRESETS, applyRatio, describeSize, matchRatio } from '../../lib/placeholder/size';
 
   /**
@@ -66,35 +67,15 @@
   let svg = $derived(buildImage(image));
   let previewUri = $derived(svgDataUri(svg));
 
-  /** Lucide's `image` icon, inlined so the icon generator's thumbnail can be
-   * drawn without fetching the 2 MB set first. */
-  const SAMPLE_ICON =
-    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/>' +
-    '<circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>';
-
   /**
-   * One small picture per generator, drawn from the CURRENT settings at a
-   * fixed 16:9 — so the picker shows what each one looks like before it is
-   * chosen, and the thumbnails follow the colours and seed as they change.
-   * Nine 160×90 SVGs per keystroke is cheap; the flow field is the dearest
-   * and it is a few dozen short paths at this size.
+   * One small example per generator, rendered once by
+   * tools/build-placeholder-thumbs.mjs from the generators' defaults and
+   * committed as data. They do not follow the controls — a first version
+   * redrew all nine on every change and the page felt slow for pictures whose
+   * only job is to say what a flow field looks like; the big preview is the
+   * live one.
    */
-  let thumbnails = $derived(
-    Object.fromEntries(
-      GENERATORS.map((generator) => [
-        generator.id,
-        svgDataUri(
-          buildImage({
-            ...image,
-            generator: generator.id,
-            width: 160,
-            height: 90,
-            iconSvg: image.iconSvg ?? SAMPLE_ICON,
-          })
-        ),
-      ])
-    ) as Record<GeneratorId, string>
-  );
+  const thumbnails = THUMBNAILS as Record<GeneratorId, string>;
 
   let feedback = $state<string | null>(null);
   let feedbackTimer: ReturnType<typeof setTimeout> | undefined;

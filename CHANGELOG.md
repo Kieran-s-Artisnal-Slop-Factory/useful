@@ -26,9 +26,12 @@
     image is a drawing.
 
 - **Placeholders: every generator in the picker shows an example.** Each
-  option carries a small picture drawn from the current colours, seed and
-  scene, so the nine generators can be told apart before one is chosen — and
-  the examples follow the controls as they change.
+  option carries a small picture of that generator's default look, so the
+  nine can be told apart before one is chosen. The pictures are rendered
+  once by `tools/build-placeholder-thumbs.mjs` (through the real generator
+  code, bundled with esbuild) and committed as data — a first cut redrew all
+  nine from the live settings on every change and the page felt slow for
+  pictures whose only job is to say what a flow field looks like.
 
 - **Docker Compose: the generated `compose.yaml` is syntax-highlighted**, on
   the same Prism path every other generated-source block uses.

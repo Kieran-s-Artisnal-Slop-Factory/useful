@@ -1,0 +1,322 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Sidebar variants — Phase 14 Q2</title>
+<style>
+  /* The app's own tokens (src/styles/theme.css), so the mocks read like the
+     real sidebar. Toggle the scheme with the button top-right. */
+  :root {
+    color-scheme: light dark;
+    --color-primary: light-dark(#1c4c9c, #e8eef7);
+    --color-primary-strong: light-dark(#102a56, #ffffff);
+    --color-primary-soft: light-dark(#d9e5f6, #24488f);
+    --color-stamp: light-dark(#a55f0b, #f2c53d);
+    --bg-color: light-dark(#e9eef6, #142e63);
+    --surface-color: light-dark(#f8fbfe, #1a3a77);
+    --surface-raised-color: light-dark(#ffffff, #1f4287);
+    --text-color: light-dark(#14305e, #e8eef7);
+    --text-muted-color: light-dark(#3f5c8c, #aac2e8);
+    --border-color: light-dark(#b7c8de, #33528f);
+    --border-strong-color: light-dark(#5f7aa6, #8099c9);
+    --color-danger: light-dark(#b93a21, #ff8a7d);
+    --font-body: ui-monospace, "Cascadia Code", Consolas, "SF Mono", monospace;
+    --font-size-sm: 0.85rem;
+    --font-size-eyebrow: 0.7rem;
+    --tracking-label: 0.18em;
+    --radius-sm: 2px;
+    --space-1: 0.25rem; --space-2: 0.5rem; --space-3: 0.75rem; --space-4: 1rem; --space-5: 1.5rem;
+  }
+  html[data-theme="light"] { color-scheme: light; }
+  html[data-theme="dark"] { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: var(--font-body); background: var(--bg-color); color: var(--text-color);
+    font-size: 0.95rem; line-height: 1.45;
+  }
+  header.top {
+    display: flex; align-items: center; gap: var(--space-4); padding: var(--space-3) var(--space-5);
+    border-bottom: 1.5px solid var(--border-strong-color); background: var(--surface-color);
+    position: sticky; top: 0; z-index: 5;
+  }
+  header.top h1 { font-size: 1rem; margin: 0; letter-spacing: 0.08em; text-transform: uppercase; }
+  header.top .spacer { flex: 1; }
+  .eyebrow { font-size: var(--font-size-eyebrow); text-transform: uppercase; letter-spacing: var(--tracking-label); color: var(--text-muted-color); font-weight: 600; }
+  main { padding: var(--space-5); max-width: 88rem; margin: 0 auto; }
+  .intro { max-width: 62rem; color: var(--text-muted-color); margin: 0 0 var(--space-4); }
+  .tabs { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-4); }
+  .tabs button {
+    font: inherit; font-size: var(--font-size-sm); font-weight: 600; padding: var(--space-2) var(--space-3);
+    border: 1.5px solid var(--border-strong-color); border-radius: var(--radius-sm); background: var(--surface-color); color: var(--text-color); cursor: pointer;
+  }
+  .tabs button[aria-selected="true"] { background: var(--color-primary-soft); color: var(--color-primary-strong); box-shadow: inset 0 -2px 0 var(--color-stamp); }
+  .stage { display: grid; grid-template-columns: minmax(14rem, 17rem) 1fr; gap: var(--space-5); align-items: start; }
+  @media (max-width: 56rem) { .stage { grid-template-columns: 1fr; } }
+  .frame {
+    border: 1.5px solid var(--border-strong-color); border-radius: var(--radius-sm); background: var(--surface-color);
+    height: 40rem; overflow-y: auto; overscroll-behavior: contain; padding: var(--space-4) var(--space-3); position: relative;
+  }
+  .frame .chrome-top { position: sticky; top: -1rem; margin: -1rem -0.75rem var(--space-3); padding: var(--space-2) var(--space-3); background: var(--surface-color); border-bottom: 1px solid var(--border-color); display: flex; gap: var(--space-2); align-items: center; font-size: var(--font-size-sm); }
+  .frame .brand { font-weight: 700; letter-spacing: 0.12em; }
+  .frame .hint { color: var(--text-muted-color); font-size: var(--font-size-eyebrow); }
+  nav h2 { font-size: var(--font-size-eyebrow); font-weight: 600; text-transform: uppercase; letter-spacing: var(--tracking-label); color: var(--text-muted-color); padding: var(--space-2) var(--space-3); margin: 0; }
+  nav ul { list-style: none; margin: 0 0 var(--space-4); padding: 0; }
+  nav a {
+    display: flex; align-items: center; gap: var(--space-3); padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm);
+    text-decoration: none; color: var(--text-color); font-weight: 600; font-size: var(--font-size-sm); cursor: pointer;
+  }
+  nav a:hover { background: var(--color-primary-soft); }
+  nav a[aria-current="page"] { background: var(--color-primary-soft); color: var(--color-primary-strong); box-shadow: inset 2px 0 0 var(--color-stamp); }
+  .ico { flex: none; width: 0.9rem; height: 0.9rem; border: 1.5px solid currentColor; border-radius: 2px; opacity: 0.7; display: inline-block; }
+  .ico.dot { border-radius: 50%; }
+  .notes { background: var(--surface-raised-color); border: 1px solid var(--border-color); border-radius: var(--radius-sm); padding: var(--space-4) var(--space-5); }
+  .notes h3 { margin: 0 0 var(--space-2); font-size: 1rem; }
+  .notes p { margin: 0 0 var(--space-3); }
+  .notes ul { margin: 0 0 var(--space-3); padding-left: 1.2rem; }
+  .notes .pro::marker { content: "+ "; color: #2a7a3b; }
+  .notes .con::marker { content: "− "; color: var(--color-danger); }
+  .notes table { border-collapse: collapse; font-size: var(--font-size-sm); margin-top: var(--space-2); }
+  .notes td, .notes th { border: 1px solid var(--border-color); padding: var(--space-1) var(--space-2); text-align: left; vertical-align: top; }
+  .notes th { background: var(--surface-color); font-weight: 600; }
+  code { background: var(--color-primary-soft); padding: 0 0.3em; border-radius: 2px; font-size: 0.9em; }
+  .pickbar { margin-top: var(--space-4); display: flex; gap: var(--space-3); align-items: center; flex-wrap: wrap; }
+  .pickbar button { font: inherit; font-size: var(--font-size-sm); font-weight: 600; padding: var(--space-2) var(--space-3); border: 1.5px solid var(--border-strong-color); border-radius: var(--radius-sm); background: var(--color-primary); color: #fff; cursor: pointer; }
+  .pickbar .picked { font-size: var(--font-size-sm); color: var(--text-muted-color); }
+  .pickbar textarea { width: 100%; min-height: 3.5rem; font: inherit; font-size: var(--font-size-sm); background: var(--surface-color); color: var(--text-color); border: 1px solid var(--border-color); padding: var(--space-2); }
+  /* Variant F: collapsible */
+  nav details > summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: var(--space-2); }
+  nav details > summary::-webkit-details-marker { display: none; }
+  nav details > summary::before { content: "▸"; font-size: 0.7rem; width: 0.8rem; color: var(--text-muted-color); }
+  nav details[open] > summary::before { content: "▾"; }
+  nav details > summary h2 { padding-left: 0; flex: 1; }
+  nav details .count { font-size: var(--font-size-eyebrow); color: var(--text-muted-color); padding-right: var(--space-3); }
+  /* Variant G: rail + flyout */
+  .rail-wrap { display: flex; height: 100%; margin: -1rem -0.75rem; }
+  .rail { width: 3.25rem; border-right: 1px solid var(--border-color); padding: var(--space-3) 0; display: flex; flex-direction: column; gap: var(--space-1); align-items: stretch; }
+  .rail button { font: inherit; border: 0; background: none; color: var(--text-muted-color); padding: var(--space-2) 0; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 0.55rem; letter-spacing: 0.04em; text-transform: uppercase; }
+  .rail button[aria-selected="true"] { color: var(--color-primary-strong); background: var(--color-primary-soft); box-shadow: inset 2px 0 0 var(--color-stamp); }
+  .rail .glyph { width: 1.1rem; height: 1.1rem; border: 1.5px solid currentColor; border-radius: 3px; }
+  .flyout { flex: 1; padding: var(--space-3); overflow-y: auto; }
+  /* Variant H: flat + filter */
+  .filter { width: 100%; font: inherit; font-size: var(--font-size-sm); padding: var(--space-2) var(--space-3); border: 1.5px solid var(--border-strong-color); border-radius: var(--radius-sm); background: var(--surface-raised-color); color: var(--text-color); margin-bottom: var(--space-3); }
+  .pin { margin-left: auto; color: var(--color-stamp); font-size: var(--font-size-sm); opacity: 0.8; }
+  /* Variant E: two-column dense groups */
+  nav ul.dense { display: grid; grid-template-columns: 1fr 1fr; gap: 0 var(--space-1); }
+  nav ul.dense a { padding-left: var(--space-2); padding-right: var(--space-1); font-size: 0.78rem; gap: var(--space-2); }
+  .subhead { font-size: var(--font-size-eyebrow); color: var(--text-muted-color); padding: var(--space-1) var(--space-3) 0; letter-spacing: 0.1em; }
+</style>
+</head>
+<body>
+<header class="top">
+  <h1>Sidebar variants</h1>
+  <span class="eyebrow">Phase 14 · Q2 · Generators has fifteen tools</span>
+  <span class="spacer"></span>
+  <button id="theme" class="eyebrow" style="font: inherit; cursor: pointer; background: none; border: 1px solid var(--border-strong-color); padding: 0.3rem 0.6rem; color: var(--text-color);">scheme: auto</button>
+</header>
+<main>
+  <p class="intro">
+    Eight ways the left rail could read now that <strong>Generators</strong> lists fifteen tools. Every mock uses the real
+    registry (names, categories, order) and the app's own tokens; the ones marked <em>interactive</em> actually fold,
+    filter or fly out. Variant <strong>A</strong> is what ships today, for reference. Pick one (or say "A with C's split"),
+    and the rest is one field per tool in <code>src/lib/registry.ts</code> plus <code>CATEGORY_ORDER</code> — the a11y sweep,
+    the palette and the home tiles all read the same list, so nothing else moves.
+  </p>
+  <div class="tabs" role="tablist" id="tabs"></div>
+  <div class="stage">
+    <div class="frame" id="frame"></div>
+    <aside class="notes" id="notes"></aside>
+  </div>
+  <div class="pickbar">
+    <button id="pick">I pick this one</button>
+    <span class="picked" id="picked"></span>
+    <textarea id="summary" readonly aria-label="Selection summary" placeholder="Your pick, in a line you can paste back."></textarea>
+  </div>
+</main>
+<script>
+// ── Registry, as of 0.3.0 (src/lib/registry.ts) ───────────────────────────
+const TOOLS = [
+  ['Timers','Time'],['Stopwatch','Time'],['Timezones','Time'],
+  ['Scheduler','Scheduler'],
+  ['Notebook','Notes'],
+  ['Image converter','Images'],['Base64','Images'],['Image resizer','Images'],['Image compressor','Images'],['Background remover','Images'],['SVG editor','Images'],['Image editor','Images'],['Sprite editor','Images'],
+  ['Programming','Calculators'],['Photography','Calculators'],['File transfer','Calculators'],['Diff','Calculators'],['Similarity','Calculators'],['Text analysis','Calculators'],['Napkin math','Calculators'],
+  ['Logo generator','Generators'],['Hashing','Generators'],['JWT','Generators'],['Docker Compose','Generators'],['Placeholders','Generators'],['Crontab','Generators'],['File tree','Generators'],['ASCII art','Generators'],['Encryption','Generators'],['Secrets','Generators'],['Themes','Generators'],['Gradients','Generators'],['Glassmorphism','Generators'],['Regex snippets','Generators'],['QR code','Generators'],
+  ['SQL playground','Playgrounds'],['Config playground','Playgrounds'],
+  ['Home','App'],['Preferences','App'],['Settings','App'],
+].map(([name, category]) => ({ name, category }));
+const ORDER = ['Time','Scheduler','Notes','Images','Calculators','Generators','Playgrounds','App'];
+const CURRENT = 'Placeholders'; // the "you are here" highlight in every mock
+
+const DEVOPS = new Set(['Docker Compose','Crontab','File tree']);
+const SECURITY = new Set(['Hashing','JWT','Encryption','Secrets']);
+const DESIGN = new Set(['Logo generator','Placeholders','Themes','Gradients','Glassmorphism']);
+const TEXTCODE = new Set(['ASCII art','Regex snippets','QR code']);
+
+function regroup(fn, order) {
+  const tools = TOOLS.map((t) => ({ ...t, category: fn(t) }));
+  const cats = order.filter((c) => tools.some((t) => t.category === c));
+  return cats.map((category) => ({ category, tools: tools.filter((t) => t.category === category) }));
+}
+const groupsA = () => regroup((t) => t.category, ORDER);
+const groupsB = () => regroup((t) => DEVOPS.has(t.name) ? 'DevOps' : t.category, ['Time','Scheduler','Notes','Images','Calculators','Generators','DevOps','Playgrounds','App']);
+const groupsC = () => regroup((t) => SECURITY.has(t.name) ? 'Security' : t.category, ['Time','Scheduler','Notes','Images','Calculators','Generators','Security','Playgrounds','App']);
+const groupsD = () => regroup((t) => DEVOPS.has(t.name) ? 'DevOps' : SECURITY.has(t.name) ? 'Security' : t.category, ['Time','Scheduler','Notes','Images','Calculators','Generators','Security','DevOps','Playgrounds','App']);
+const groupsE = () => regroup((t) => DESIGN.has(t.name) ? 'Design' : TEXTCODE.has(t.name) ? 'Text & code' : SECURITY.has(t.name) ? 'Security' : DEVOPS.has(t.name) ? 'DevOps' : t.category, ['Time','Scheduler','Notes','Images','Calculators','Design','Text & code','Security','DevOps','Playgrounds','App']);
+
+const h = (tag, attrs = {}, ...children) => {
+  const el = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === 'class') el.className = v; else if (k.startsWith('on')) el.addEventListener(k.slice(2), v); else if (v !== null && v !== undefined) el.setAttribute(k, v);
+  }
+  for (const c of children.flat()) el.append(c instanceof Node ? c : document.createTextNode(String(c)));
+  return el;
+};
+const chromeTop = (hint) => h('div', { class: 'chrome-top' }, h('span', { class: 'brand' }, '△ USEFUL'), h('span', { class: 'hint' }, hint ?? ''));
+const link = (t, extra) => h('a', { href: '#', 'aria-current': t.name === CURRENT ? 'page' : null, onclick: (e) => e.preventDefault() }, h('span', { class: 'ico' + (t.category === 'App' ? ' dot' : '') }), h('span', {}, t.name), extra ?? '');
+const list = (groups, opts = {}) => h('nav', {}, groups.map((g) => h('section', {}, opts.subheads && opts.subheads[g.category] ? [h('h2', {}, g.category), h('div', { class: 'subhead' }, opts.subheads[g.category])] : h('h2', {}, g.category), h('ul', { class: opts.dense && opts.dense.has(g.category) ? 'dense' : '' }, g.tools.map((t) => h('li', {}, link(t)))))));
+
+// ── The eight ─────────────────────────────────────────────────────────────
+const VARIANTS = [
+  { id: 'A', title: 'A · As shipped', render: () => [chromeTop('reference'), list(groupsA())],
+    notes: { what: 'The 0.3.0 sidebar as it is: eight categories, Generators carrying fifteen. Here so the others have something to be compared against.',
+      pros: ['Nothing to change, nothing to re-learn.', 'One long list is honest: these ARE all "things that make something".'],
+      cons: ['Fifteen rows under one eyebrow; the eye stops scanning around Crontab.', 'Hashing, JWT, Encryption and Secrets are not generators in any ordinary sense.', 'The screenshot in the plan is exactly what Q2 worried about.'] } },
+  { id: 'B', title: 'B · DevOps split', render: () => [chromeTop('Generators 12 · DevOps 3'), list(groupsB())],
+    notes: { what: 'The split Q2 proposed: Docker Compose, Crontab and File tree leave Generators for a DevOps category placed right after it. Generators keeps twelve.',
+      pros: ['The three tools a backend person opens sit together and are findable by their job.', 'Smallest possible change; the plan already named it.'],
+      cons: ['Twelve is still a long Generators.', 'Is File tree DevOps? It is README furniture — it could stay a generator.', 'Three-tool categories read a little thin next to Images (8).'] } },
+  { id: 'C', title: 'C · Security split', render: () => [chromeTop('Generators 11 · Security 4'), list(groupsC())],
+    notes: { what: 'Hashing, JWT, Encryption and Secrets become Security. Docker Compose, Crontab and File tree stay generators.',
+      pros: ['Fixes the worst misnomer: none of those four "generate" anything in the sense Themes or QR code do.', 'Four is a comfortable category size; Phase 5 built them on shared crypto plumbing, so they are siblings in code too.'],
+      cons: ['Generators still eleven.', '"Security" is a heavy word for a password-strength toy and a JWT decoder.'] } },
+  { id: 'D', title: 'D · Both splits', render: () => [chromeTop('Generators 8 · Security 4 · DevOps 3'), list(groupsD())],
+    notes: { what: 'B and C together: Generators (8) · Security (4) · DevOps (3), in that order.',
+      pros: ['Every category lands between three and eight rows — the same band Images, Calculators and Time sit in.', 'What remains in Generators (Logo, Placeholders, ASCII art, Themes, Gradients, Glassmorphism, Regex, QR) really is "make me a thing".'],
+      cons: ['Ten categories; the rail gets taller than a 768 px laptop viewport, so the bottom (Playgrounds, App) scrolls off.', 'Two new eyebrows to name in docs, the palette and the a11y sweep (mechanical, but real).'] } },
+  { id: 'E', title: 'E · Four-way regroup', render: () => [chromeTop('Design 5 · Text & code 3 · Security 4 · DevOps 3'), list(groupsE())],
+    notes: { what: 'Generators dissolves entirely: Design (Logo, Placeholders, Themes, Gradients, Glassmorphism), Text &amp; code (ASCII art, Regex snippets, QR code), Security, DevOps.',
+      pros: ['No category over eight; every eyebrow describes a job rather than a verb.', 'Design tools that share the gradient engine sit together.'],
+      cons: ['Eleven categories — the longest rail of the eight; definitely needs F or G underneath it.', '"Text &amp; code" is a grab bag (QR code is neither).', 'The word Generators disappears from the app, docs and the plan\'s vocabulary.'] } },
+  { id: 'F', title: 'F · Collapsible groups', interactive: true,
+    render: () => {
+      const groups = groupsA();
+      const nav = h('nav', {});
+      for (const g of groups) {
+        const open = g.tools.some((t) => t.name === CURRENT) || g.category === 'App';
+        const det = h('details', open ? { open: '' } : {}, h('summary', {}, h('h2', {}, g.category), h('span', { class: 'count' }, String(g.tools.length))), h('ul', {}, g.tools.map((t) => h('li', {}, link(t)))));
+        nav.append(det);
+      }
+      return [chromeTop('interactive — click an eyebrow'), nav];
+    },
+    notes: { what: 'Same taxonomy as A, but every category folds. The category holding the current page opens on load; the others show a count. Open/closed state would be remembered in <code>preferences</code> like the collapsed-sidebar flag already is.',
+      pros: ['Fifteen rows stop mattering — you only see the group you are in.', 'Composable: F can sit under B, C, D or E.', 'Keyboard: <code>&lt;details&gt;</code> is natively operable; nothing custom to audit.'],
+      cons: ['One more click to reach a tool in a closed group (the palette, Ctrl/Cmd+K, already covers the fast path).', 'A first-time visitor sees eight closed headings and has to guess — unless groups default open until first interaction.'] } },
+  { id: 'G', title: 'G · Icon rail + flyout', interactive: true,
+    render: () => {
+      const groups = groupsD();
+      let active = groups.find((g) => g.tools.some((t) => t.name === CURRENT))?.category ?? groups[0].category;
+      const wrap = h('div', { class: 'rail-wrap' });
+      const rail = h('div', { class: 'rail' });
+      const fly = h('div', { class: 'flyout' });
+      const abbrev = { Time: 'time', Scheduler: 'sched', Notes: 'notes', Images: 'img', Calculators: 'calc', Generators: 'gen', Security: 'sec', DevOps: 'ops', Playgrounds: 'play', App: 'app' };
+      const paint = () => {
+        rail.replaceChildren(...groups.map((g) => h('button', { 'aria-selected': g.category === active ? 'true' : 'false', title: g.category, onclick: () => { active = g.category; paint(); } }, h('span', { class: 'glyph' }), abbrev[g.category] ?? g.category.slice(0, 4).toLowerCase())));
+        const g = groups.find((x) => x.category === active);
+        fly.replaceChildren(h('nav', {}, h('h2', {}, g.category), h('ul', {}, g.tools.map((t) => h('li', {}, link(t))))));
+      };
+      paint();
+      wrap.append(rail, fly);
+      return [wrap];
+    },
+    notes: { what: 'A 3.25 rem rail of category icons (this mock uses D\'s taxonomy, it works with any); the chosen category\'s tools show beside it. Collapsing the sidebar would leave just the rail instead of nothing.',
+      pros: ['Total height is the longest category, not the sum of all of them — ten or eleven categories stop costing anything.', 'The collapsed state becomes useful (the rail) instead of an empty strip.'],
+      cons: ['Two-step navigation for cross-category moves; the current page\'s category must be tracked for the rail highlight.', 'Needs real category icons (Lucide has them, but it is ten more choices) and the most new CSS of the eight.', 'Mobile drawer needs its own treatment — the rail makes no sense at 20 rem wide.'] } },
+  { id: 'H', title: 'H · Flat list + filter', interactive: true,
+    render: () => {
+      const pinned = new Set(['Notebook', 'Placeholders', 'Docker Compose']);
+      const all = [...TOOLS].filter((t) => t.category !== 'App').sort((a, b) => a.name.localeCompare(b.name));
+      const app = TOOLS.filter((t) => t.category === 'App');
+      const nav = h('nav', {});
+      const input = h('input', { class: 'filter', type: 'search', placeholder: 'Filter tools… (/)', 'aria-label': 'Filter tools' });
+      const body = h('div', {});
+      const paint = () => {
+        const q = input.value.trim().toLowerCase();
+        const match = (t) => !q || t.name.toLowerCase().includes(q) || t.category.toLowerCase().includes(q);
+        const pins = all.filter((t) => pinned.has(t.name) && match(t));
+        const rest = all.filter((t) => match(t));
+        body.replaceChildren(
+          pins.length && !q ? h('section', {}, h('h2', {}, 'Pinned'), h('ul', {}, pins.map((t) => h('li', {}, link(t, h('span', { class: 'pin' }, '★')))))) : '',
+          h('section', {}, h('h2', {}, q ? `${rest.length} match${rest.length === 1 ? '' : 'es'}` : 'All tools · A–Z'), h('ul', {}, rest.map((t) => h('li', {}, link(t, h('span', { class: 'pin', style: 'color: var(--text-muted-color); font-size: 0.65rem; opacity: .7' }, t.category)))))),
+          q ? '' : h('section', {}, h('h2', {}, 'App'), h('ul', {}, app.map((t) => h('li', {}, link(t))))),
+        );
+      };
+      input.addEventListener('input', paint);
+      paint();
+      nav.append(input, body);
+      return [chromeTop('interactive — type to filter'), nav];
+    },
+    notes: { what: 'No categories in the rail at all: a filter box, a Pinned section (user-chosen, stored in <code>preferences</code>), then every tool A–Z with its category as a faint suffix. Categories survive on the home page tiles and in the palette.',
+      pros: ['The taxonomy question stops existing for the sidebar; no category ever gets "too long" again.', 'Pinning is the feature people actually want from a sidebar of 38 tools.'],
+      cons: ['Thirty-five rows A–Z is the longest unbroken list of the eight — without the filter or pins it is worse than A.', 'Loses the glanceable "what kinds of things are in here" that the eyebrows give a first-time visitor.', 'Duplicates the palette\'s job one pane to the left.'] } },
+];
+
+// ── Wiring ────────────────────────────────────────────────────────────────
+const tabs = document.getElementById('tabs');
+const frame = document.getElementById('frame');
+const notes = document.getElementById('notes');
+const picked = document.getElementById('picked');
+const summary = document.getElementById('summary');
+let current = location.hash.replace('#', '') || 'A';
+// localStorage is unavailable on an opaque origin (a data: snapshot); the pick just does not persist there.
+const store = { get: (k) => { try { return localStorage.getItem(k); } catch { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch { /* opaque origin */ } } };
+let pick = store.get('sidebar-variant-pick') || '';
+
+function show(id) {
+  current = id;
+  history.replaceState(null, '', '#' + id);
+  for (const b of tabs.children) b.setAttribute('aria-selected', b.dataset.id === id ? 'true' : 'false');
+  const v = VARIANTS.find((x) => x.id === id);
+  frame.replaceChildren(...v.render());
+  const n = v.notes;
+  const mk = (cls, items) => h('ul', {}, items.map((s) => { const li = h('li', { class: cls }); li.innerHTML = s; return li; }));
+  const what = h('p', {}); what.innerHTML = n.what;
+  notes.replaceChildren(
+    h('h3', {}, v.title + (v.interactive ? ' — interactive' : '')),
+    what,
+    h('div', { class: 'eyebrow' }, 'for'), mk('pro', n.pros),
+    h('div', { class: 'eyebrow' }, 'against'), mk('con', n.cons),
+    h('div', { class: 'eyebrow' }, 'what it costs'),
+    costTable(id),
+  );
+  paintPick();
+}
+function costTable(id) {
+  const rows = {
+    A: ['none', '—', '—'],
+    B: ['registry: 3 category fields + CATEGORY_ORDER', 'docs: 3 user pages\' opening line, README "What\'s in it", docs map', 'tests: a11y ROUTES derive from the registry — nothing'],
+    C: ['registry: 4 category fields + CATEGORY_ORDER', 'docs: 4 user pages, README, docs map', 'tests: nothing'],
+    D: ['registry: 7 category fields + CATEGORY_ORDER', 'docs: 7 user pages, README, docs map', 'tests: nothing'],
+    E: ['registry: 15 category fields + CATEGORY_ORDER', 'docs: 15 user pages, README, docs map, plan vocabulary', 'tests: nothing'],
+    F: ['Chrome.svelte: &lt;details&gt; per group + a preferences field for open state', 'docs: app-shell-navigation.md', 'tests: nav.spec (fold/unfold, remembered), a11y keyboard path'],
+    G: ['Chrome.svelte: rail + flyout + collapsed-state rework; 10 category icons', 'docs: app-shell-navigation.md, design-system.md', 'tests: nav.spec rewrite, a11y keyboard path, mobile drawer'],
+    H: ['Chrome.svelte: filter + pins; preferences field for pins', 'docs: app-shell-navigation.md, getting-started.md', 'tests: nav.spec (filter, pin, persist), a11y'],
+  }[id];
+  const t = h('table', {}, h('tr', {}, h('th', {}, 'code'), h('th', {}, 'docs'), h('th', {}, 'tests')), h('tr', {}, rows.map((r) => { const td = h('td', {}); td.innerHTML = r; return td; })));
+  return t;
+}
+function paintPick() {
+  picked.textContent = pick ? `picked: ${pick}` : 'nothing picked yet';
+  summary.value = pick ? `Sidebar: variant ${pick} — ${VARIANTS.find((v) => v.id === pick).title.slice(4)}` : '';
+}
+for (const v of VARIANTS) tabs.append(h('button', { role: 'tab', 'data-id': v.id, 'aria-selected': 'false', onclick: () => show(v.id) }, v.title));
+document.getElementById('pick').addEventListener('click', () => { pick = current; store.set('sidebar-variant-pick', pick); paintPick(); });
+document.addEventListener('keydown', (e) => { if (e.key >= '1' && e.key <= '8' && e.target.tagName !== 'INPUT') show(VARIANTS[Number(e.key) - 1].id); });
+// Scheme toggle: auto → light → dark → auto.
+const themeBtn = document.getElementById('theme');
+const states = ['auto', 'light', 'dark']; let ti = 0;
+themeBtn.addEventListener('click', () => { ti = (ti + 1) % 3; const s = states[ti]; if (s === 'auto') delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = s; themeBtn.textContent = 'scheme: ' + s; });
+show(VARIANTS.some((v) => v.id === current) ? current : 'A');
+</script>
+</body>
+</html>

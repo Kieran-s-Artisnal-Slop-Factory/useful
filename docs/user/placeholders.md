@@ -17,7 +17,7 @@ The **seed** is what makes it repeatable: the same seed always produces the same
 
 ## Filler images
 
-Nine generators, all of them drawn from your settings. Each one in the picker carries a small example drawn from the colours, seed and scene you have set, so you can see what a generator looks like before choosing it — the examples follow the controls as you change them.
+Nine generators, all of them drawn from your settings. Each one in the picker carries a small example of its default look, so you can see what a generator does before choosing it; the big preview below is the one that follows your controls.
 
 | Generator | What it looks like |
 | --- | --- |
@@ -45,6 +45,6 @@ Set the **size** directly, or use a ratio button (16:9, 4:3, 3:2, 1:1, 9:16) or 
 - **SVG scales, PNG does not.** A 4000-pixel PNG of a gradient is megabytes; the SVG is under a kilobyte and looks right at any size. Only reach for PNG or JPG when something downstream cannot read SVG.
 - **A caption is fitted, not wrapped.** A very long heading gets small rather than moving onto a second line.
 - **There is no conic gradient here.** SVG does not have one — the gradient tool's conic option cannot be drawn into a file, so it is missing rather than quietly turned into something else.
-- **The icon set is big.** About 2 MB, fetched the first time you pick the icon generator and never before, so the other seven generators cost nothing.
+- **The icon set is big.** About 2 MB, fetched the first time you pick the icon generator and never before, so the other eight generators cost nothing.
 - **The photo links leave the app.** The last card links to Unsplash, Pexels, Pixabay and placehold.co — those are external sites. Everything else here works with no network at all. Read each site's licence before shipping someone else's photograph: "free to download" and "free to use in your product" are different sentences.
 - **Nothing is saved.** Reloading starts fresh — but the same seed and settings bring the same result back.

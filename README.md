@@ -26,11 +26,11 @@ An offline-only, local-first app there is no server, no account, and no network 
   with HMAC, salt and pepper), encryption (AES with a password, RSA key pairs,
   ECDH key agreement, bcrypt and a one-time pad), JWTs (decode, verify,
   sign), ASCII art (a picture as characters, or words as a banner in one of
-  fourteen vendored FIGlet fonts), file trees (built by hand or read back
-  from a pasted `ls`, `dir` or `tree` listing) and crontab (an expression
+  thirty-seven vendored FIGlet fonts), file trees (built by hand or read back
+  from a pasted `ls`, `dir` or `tree` listing), crontab (an expression
   read back in English with its next runs, a builder, a systemd timer, and
-  where the line actually goes) and placeholders (filler text from two
-  corpora, and eight seeded image generators including nine hand-drawn
+  where the line actually goes), placeholders (filler text from two
+  corpora, and nine seeded image generators including fifteen hand-drawn
   scenes — all drawn on the device, nothing fetched) and a Docker Compose
   builder (services, networks, volumes, secrets and configs through controls
   that explain each field, nine stack templates and ten service snippets, a
@@ -100,7 +100,8 @@ Everything runs locally: no account, no server, no telemetry.
   titles kept so `[[links]]` keep resolving), tags, and a `parent_id` pointing
   at another note — folders are notes, so the sidebar is one tree. Backlinks
   are computed from bodies, never stored
-- `note_assets` — images pasted into a note, as base64 with their size. Keyed
+- `note_assets` — images pasted into a note, and Excalidraw drawings (a PNG
+  with the scene embedded), as base64 with their size. Keyed
   to the note and deleted with it; a child store so listing notes never
   carries image bytes, and capped per asset because a backup is one JSON file
 
@@ -134,8 +135,8 @@ network and updates itself when the network is available.
 
 Installing the app offers, once, to download everything it can run without a
 network — the pages you have not opened, the background remover's model, the
-maths fonts napkin math and the notebook draw with, the fonts the notebook's
-drawing canvas writes with, and each SQL engine. The
+maths fonts napkin math and the notebook draw with, the notebook's
+drawing-canvas fonts, and each SQL engine. The
 same panel is in Settings → Offline, and can be re-run any time.
 
 One exception, by design: the **Background remover**'s machine-learning assets

@@ -12,6 +12,7 @@ _Describes the code as of v0.3.0 (unreleased; schema v13) — verify against sou
 | [text.ts](../../../src/lib/placeholder/text.ts) | Both corpora and the text generator |
 | [images.ts](../../../src/lib/placeholder/images.ts) | The nine image generators, and batches |
 | [scenes.ts](../../../src/lib/placeholder/scenes.ts) | The fifteen hand-drawn scenes |
+| [thumbnails.json](../../../src/lib/placeholder/thumbnails.json) | The picker's nine example pictures (160×90 data URIs), rendered from the defaults by [tools/build-placeholder-thumbs.mjs](../../../tools/build-placeholder-thumbs.mjs) and committed; they do not follow the controls |
 | [size.ts](../../../src/lib/placeholder/size.ts) | Ratios, presets and the aspect lock |
 | [PlaceholdersApp.svelte](../../../src/components/apps/PlaceholdersApp.svelte) | The page |
 | [placeholders.spec.ts](../../../tests/local/placeholders.spec.ts), [placeholder.test.ts](../../../src/lib/placeholder/placeholder.test.ts) | Playwright and Vitest |

@@ -195,7 +195,7 @@ test.describe('payload discipline', () => {
     const chunks = urls.filter((u) => /figlet[^/]*\.js/i.test(u));
     expect(chunks.length, 'figlet should arrive as exactly one lazy chunk').toBe(1);
 
-    // And the fourteen fonts are fetched by the picker as its rows scroll
+    // And the fonts are fetched by the picker as its rows scroll
     // into view. A list nobody has looked at must not cost 178 KB.
     const fonts = urls.filter((u) => /\.flf(\?|$)/i.test(u));
     expect(fonts.length, 'the chosen font should load').toBeGreaterThanOrEqual(1);
