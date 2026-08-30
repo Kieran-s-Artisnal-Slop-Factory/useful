@@ -1,6 +1,6 @@
 # Calculators
 
-Three stateless calculator tools — number-base conversion with bit-width operations, photography equivalence and light stops, and file-transfer time — each a Svelte island over a pure-function module in `src/lib/calc/`. None of them writes to IndexedDB while computing; the single deliberate write in the group is the photography tool remembering the sensor format in `preferences.photo_last_format`.
+Three stateless calculator tools — number-base conversion with bit-width operations and a step-by-step visualizer for the binary ones, photography equivalence and light stops, and file-transfer time — each a Svelte island over a pure-function module in `src/lib/calc/`. None of them writes to IndexedDB while computing; the single deliberate write in the group is the photography tool remembering the sensor format in `preferences.photo_last_format`.
 
 _Describes the code as of v0.4.0 (unreleased; schema v13) — verify against source when in doubt._
 
@@ -9,6 +9,7 @@ _Describes the code as of v0.4.0 (unreleased; schema v13) — verify against sou
 | Path | Role |
 | --- | --- |
 | [numberBase.ts](../../../src/lib/calc/numberBase.ts) | Base parsing/formatting, signed/unsigned readings, NOT / one's / two's complement — all `bigint` |
+| [binaryOps.ts](../../../src/lib/calc/binaryOps.ts) | The eleven two-operand operations, each returning the answer **and** the steps that produced it — ripple add/subtract, shift-and-add multiply, restoring long division, columnar AND/OR/XOR, and the three shifts |
 | [photography.ts](../../../src/lib/calc/photography.ts) | Sensor formats, total-light equivalence, stop formulas, 1/3-stop snapping, shutter parse/format |
 | [transfer.ts](../../../src/lib/calc/transfer.ts) | Size and speed unit tables, `transferSeconds`, duration and rate formatting |
 | [NumberBaseApp.svelte](../../../src/components/apps/NumberBaseApp.svelte) | `/tools/number-conversion/` — page title "Programming" |
@@ -75,6 +76,96 @@ flowchart TD
 - Under the decimal field, `signed: <n>` (`nb-signed`) appears only when `toSigned(value) !== value`, i.e. the top bit is set.
 - Operations table rows (`nb-op-not`, `nb-op-ones`, `nb-op-twos`): binary grouped in fours via `groupDigits(formatInBase(v, 2, width), 4)`, hex padded, decimal unsigned, and a Signed column `toSigned(result, width)`. NOT and one's complement are the same computation shown twice on purpose — the tool teaches them as separate ideas.
 - Seven explainers: binary→decimal, decimal→binary, hex↔binary, octal↔binary, NOT, one's, two's (the last interpolates the live `value` / `signed`).
+
+### Operation visualizer
+
+A second card below the Operations table: two operands, an operation, and the
+working. [binaryOps.ts](../../../src/lib/calc/binaryOps.ts) does the arithmetic
+and returns a `Trace` — the answer plus the steps that produced it — and
+`NumberBaseApp.svelte` only draws it. Operand **a** is the page's canonical
+value from the card above, so the page keeps one number that means something;
+operand **b** has its own synchronised set of the same four base fields, parsed
+by the same `parseInBase` and truncated by the same `mask(width)` on a width
+change.
+
+`runOp(op, a, b, { width, signed })` returns `{ ok: true, trace }`, or
+`{ ok: false, error }` for the one refusal there is — division by zero, which
+is refused in words rather than answered with an infinity. `BINARY_OPS` is the
+catalogue the picker renders: add, subtract, multiply, divide, modulo, AND, OR,
+XOR, and the three shifts. Logical and arithmetic right shift are separate
+**operations** rather than one operation with a mode, because the difference
+between them is the lesson.
+
+`signed` changes the RESULT BITS of division and modulo only. Everywhere else
+it changes how the answer is read, not what it is — `signedMatters` on the
+`OpDef` says which, the page states it in a line under the picker, and a unit
+test proves the claim by running every other operation both ways over every
+vector and asserting the bits match.
+
+A `Trace` is:
+
+| Field | What |
+| --- | --- |
+| `result` | The answer, unsigned within the width |
+| `summary` | One or two sentences about the operation as a whole |
+| `steps[]` | `text` (a full sentence), `focus` (the bit positions this step works on), `rows` (the whole drawn table **after** this step), `value` (the answer so far) and `emit` (the one bit of it this step decided, where it decided one) |
+| `flags[]` | `id`, `label`, `on`, and a sentence about what the flag means for THESE operands — never a bare boolean |
+
+A `TraceRow` is a label plus exactly `width` characters of `0`, `1` or a space
+for a column not yet decided, and optionally `lostHigh` / `lostLow`: bits that
+fell off the top or the bottom of the width. The app pads those to the widest
+row in the step so every column still lines up under its bit number, and draws
+them with a dashed border rather than a tint — a tinted background sits under
+`--text-muted-color` and drops it below the ratio the a11y sweep checks that
+token at.
+
+**The trace contract** is what keeps the drawing honest, and
+[binaryOps.test.ts](../../../src/lib/calc/binaryOps.test.ts) holds it to it:
+`steps` is never empty, `steps.at(-1).value === result`, and where every step
+emits a bit, OR-ing those bits alone reproduces `result`. Multiply is checked a
+step further — the partial-product rows are read back out of the **drawn**
+bit strings, summed, and compared with the answer. A picture that cannot be
+replayed into the result is decoration.
+
+```mermaid
+flowchart TD
+  A["Operand a - the page's canonical value"] --> R
+  B["Operand b - its own four synchronised base fields"] --> R
+  O["Operation picker and the signed checkbox"] --> R
+  W["Bit width 8 / 16 / 32 / 64"] --> R
+  R["runOp: op, a, b, width, signed"] -->|"b is 0 on divide or modulo"| X["ok false - refused in words, no table drawn"]
+  R -->|otherwise| T["Trace: result, summary, steps, flags"]
+  T --> RES["Result echoed in all four bases plus its signed reading"]
+  T --> F["Flags, each with a sentence about these operands"]
+  T --> S["steps at stepIndex - Back and Next, both keyboard-operable"]
+  S --> TBL["Bit table: one column per bit, focus highlighted, bits outside the width drawn dashed"]
+```
+
+Per operation, what the trace shows:
+
+- **add / subtract** — one step per column, right to left, with the carry-in
+  or borrow-in row drawn above the operands. Both flags are always present and
+  told apart: carry (or borrow) asks whether the **unsigned** answer fit,
+  signed overflow asks whether the **signed** one did. Overflow is decided by
+  comparing `toSigned(a) + toSigned(b)` with `toSigned(result)` rather than by
+  bit-fiddling, so it is right by construction.
+- **multiply** — shift-and-add: one step per multiplier bit, a partial-product
+  row added for each 1, and the bits that shift past the top drawn falling off
+  in the out-of-width columns. Flags: bits dropped (unsigned) and signed
+  overflow, which can genuinely differ — `0xFF × 0xFF` at 8 bits drops
+  bits but is the correct signed answer for −1 × −1.
+- **divide / modulo** — restoring long division, one quotient bit per step,
+  most significant first. Signed operands are divided as **magnitudes** and the
+  sign is applied in its own final step, which is both the honest trace and
+  what makes truncation toward zero visible: −7 / 2 is −3, not −4, and
+  the remainder takes the sign of the dividend so `(a / b) * b + a % b == a`
+  still holds. The one overflowing division — the most negative value by
+  −1 — is named.
+- **AND / OR / XOR** — one step per column, no carries, no borrows.
+- **shifts** — one step per place moved, naming the bit that left and what
+  filled in. Past the width the answer is the mathematical one in a single
+  step, with a flag saying that C calls this undefined and that x86 would mask
+  the count while ARM gives zero.
 
 ## Photography
 
@@ -188,9 +279,10 @@ Defaults 1 GB, 100 Mbps, overhead 0. Inputs are strings; `num` accepts any finit
 | File | Runner | Covers |
 | --- | --- | --- |
 | [numberBase.test.ts](../../../src/lib/calc/numberBase.test.ts) | vitest (`npm run test:unit`) | Parsing per base, prefixes/separators, negative decimals as two's complement, range on both ends, padding, grouping, signed round-trip, hand-computed NOT/one's/two's table across all widths |
+| [binaryOps.test.ts](../../../src/lib/calc/binaryOps.test.ts) | vitest | Every operation at every width, signed and unsigned, over a table of fixed traps plus a seeded sample, checked against BigInt's own arithmetic (which already has C's semantics for `/`, `%` and `>>`) rather than against numbers copied out of the code's own output; the trace contract on every one of them; `0xFF + 1` (carry, no overflow) against `0x7F + 1` (overflow, no carry); multiplication dropping high bits with the partial products read back out of the drawn rows; `-7 / 2` and `-7 % 2` at each width; the most-negative-over-−1 overflow; arithmetic against logical shift on a negative value; shifting by ≥ the width; and the proof that `signed` changes the bits of nothing but division and modulo |
 | [photography.test.ts](../../../src/lib/calc/photography.test.ts) | vitest | Crop factors, the 20 mm f/2.8 → 40 mm f/5.6 example, exact stop formulas (m4/3 vs APS-C ≈ 0.83), snapping including table fallbacks, shutter parse/format, `formatStops` sign trimming |
 | [transfer.test.ts](../../../src/lib/calc/transfer.test.ts) | vitest | Unit tables, hand-computed durations across unit combinations, overhead, null on impossible input, `formatDuration` carry, `speedBothWays` |
-| [calculators.spec.ts](../../../tests/local/calculators.spec.ts) | Playwright (`npm test`) | Each page end-to-end with `dumpAll()` before/after asserting zero writes; the format pick audited with `assertIsolatedDelta` to `preferences/singleton` and restored after a reload that itself writes nothing; explainers toggle from the keyboard on all three pages |
+| [calculators.spec.ts](../../../tests/local/calculators.spec.ts) | Playwright (`npm test`) | Each page end-to-end with `dumpAll()` before/after asserting zero writes; the format pick audited with `assertIsolatedDelta` to `preferences/singleton` and restored after a reload that itself writes nothing; explainers toggle from the keyboard on all three pages. The visualizer adds six zero-write cases: stepping a trace by mouse and by keyboard, editing an operand restarting it at step 1, carry-without-overflow against overflow-without-carry, division by zero refused with no table drawn, signed division truncating toward zero with the sign as its own step, multiplication's out-of-width columns, arithmetic against logical shift, and a width change truncating both operands |
 | [a11y.spec.ts](../../../tests/local/a11y.spec.ts) | Playwright | The three routes are in the every-page sweep (accessible names, labelled fields, heading structure); palette keyboard navigation lands on Photography; an explainer opens from the keyboard |
 | [offline.spec.ts](../../../tests/local/offline.spec.ts), [payload.spec.ts](../../../tests/local/payload.spec.ts) | Playwright | Use `/tools/photography/` as the "light tool" probe: served from cache offline, and pulls none of the heavy bundles |
 
@@ -198,6 +290,10 @@ Defaults 1 GB, 100 Mbps, overhead 0. Inputs are strings; `num` accepts any finit
 
 - No sign extension on width growth, and truncation on width shrink — deliberate register-move semantics; the canonical value is unsigned so nothing else would be well-defined.
 - Minus is decimal-only. A leading `-` in binary/octal/hex is a validation error; negatives in those bases are their two's-complement bit patterns.
+- **The Operations table and the visualizer are separate cards.** The 0.4.0 plan proposed folding NOT / one's / two's complement into the visualizer's trace presentation so the page had one way of showing work. They were left where they are instead: they are unary and instantaneous, there is no working to step through, and rewriting a shipped, passing spec to move three rows buys nothing. Their testids (`nb-op-not`, `nb-op-ones`, `nb-op-twos`) are unchanged.
+- **A shift by more than the width is answered, not refused.** The result is the mathematical one (zero, or all sign bits for an arithmetic shift). C and C++ call it undefined behaviour and real CPUs disagree — x86 masks the count to 5 or 6 bits, ARM gives zero — so the flag says all of that rather than the page pretending one of them is the answer.
+- **Division is restoring long division, not a fast divider.** It is the algorithm that can be drawn, which is the point; it is not what a modern CPU does.
+- **A trace materialises every row of the table at every step.** At 64 bits with a dense multiplier that is a few hundred kilobytes of transient strings, which is nothing for a browser and keeps the drawing code to `steps[i].rows`. Nothing here is ever stored.
 - `formatShutter` shows every sub-second value as `1/N` with N rounded, so 0.7 s renders as `1/1` and 0.6 s as `1/2`. It only ever displays the parsed set-A shutter, which the user typed.
 - The four fixed crop factors are the plan's; there is no custom-crop or 1-inch/medium-format entry. The model ignores lens transmission (T-stops), sensor generation and diffraction — it is pure geometry.
 - Snap tables end at f/32 and ISO 102400 (start f/1.0 and ISO 25); beyond them the geometric value replaces the marketing number.

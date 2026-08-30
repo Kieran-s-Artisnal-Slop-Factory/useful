@@ -1,5 +1,47 @@
 # 0.4.0 (unreleased)
 
+## Features
+
+- **The programming calculator shows its working** (Phase 1). A new
+  **Operation visualizer** under the existing Operations table takes a second
+  number and walks an operation through it one step at a time: add, subtract,
+  multiply, divide, modulo, AND, OR, XOR, and the three shifts. Operand **a**
+  is the value at the top of the page; operand **b** gets its own set of the
+  same four synchronised base boxes, so both operands are entered the same way
+  and both truncate together when the bit width shrinks. **Back** and **Next**
+  step the trace from the mouse or the keyboard, the answer is echoed in all
+  four bases with its signed reading, and every step is a full sentence — the
+  highlight is decoration, and the sentence is what a screen reader gets.
+  - **Carry and signed overflow are shown separately, because they are
+    different questions.** Carry asks whether the answer fit read as unsigned;
+    overflow asks whether it fit read as two's complement. At 8 bits
+    `0xFF + 1` carries without overflowing and `0x7F + 1` overflows without
+    carrying, and the page says which, in words, every time.
+  - **Multiply is drawn as shift-and-add**, one partial product per set bit,
+    with the bits that shift past the top of the width drawn falling off it in
+    their own dashed columns.
+  - **Divide and modulo are restoring long division**, one quotient bit per
+    step. Signed operands are divided as magnitudes and the sign goes back on
+    as its own visible step — which is what makes truncation toward zero
+    obvious: −7 / 2 is −3, not −4, and the remainder takes the sign of the
+    dividend so `(a / b) * b + a % b` still equals `a`. The one division that
+    overflows (the most negative value by −1) is named. **Dividing by zero is
+    refused in words** rather than answered with an infinity, because integers
+    do not have one.
+  - **The two right shifts are separate operations**, not one with a switch:
+    logical feeds in zeros, arithmetic copies the sign bit, and the page says
+    which bit left and what filled in at every place. Shifting by the width or
+    more is answered with the mathematical result and a note that C calls it
+    undefined and that x86 and ARM disagree about it.
+  - **Signed changes the answer's bits for division and modulo only.**
+    Everywhere else it changes how the result is read, and the page says so
+    rather than leaving you to wonder why the checkbox did nothing.
+  - The trace is checked, not just drawn: every operation is tested at every
+    width against BigInt's own arithmetic, and every trace has to replay into
+    its own answer — the bits the steps claim to have decided are OR-ed
+    together and compared with the result, and multiplication's partial
+    products are read back out of the drawn rows and summed.
+
 ## Other
 
 - **Groundwork for the rest of 0.4.0** (Phase 0). Nothing on screen changes;

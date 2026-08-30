@@ -1,6 +1,6 @@
 # Calculators
 
-Three small calculators under **Calculators** in the sidebar (or search for them with Ctrl/Cmd+K): **Programming** converts numbers between binary, octal, decimal and hex and shows bit operations; **Photography** turns one camera's settings into their equivalents on other sensor sizes and compares two sets of settings in stops; **File transfer** estimates how long a file takes to move at a given network speed. Each page has "by hand" drop-downs that explain the maths. Nothing you type is saved, with one exception: the Photography page remembers which sensor format you picked.
+Three small calculators under **Calculators** in the sidebar (or search for them with Ctrl/Cmd+K): **Programming** converts numbers between binary, octal, decimal and hex, shows bit operations, and walks two numbers through an operation one bit at a time; **Photography** turns one camera's settings into their equivalents on other sensor sizes and compares two sets of settings in stops; **File transfer** estimates how long a file takes to move at a given network speed. Each page has "by hand" drop-downs that explain the maths. Nothing you type is saved, with one exception: the Photography page remembers which sensor format you picked.
 
 _Describes the code as of v0.4.0 (unreleased; schema v13) — verify against source when in doubt._
 
@@ -11,8 +11,11 @@ _Describes the code as of v0.4.0 (unreleased; schema v13) — verify against sou
 3. If what you typed is not valid for that box (a `2` in binary, a value that does not fit the width) an error appears under it and the other boxes keep the last good value.
 4. In Decimal only, you can type a negative number. Under the Decimal box a "signed: …" line appears whenever the current bit pattern has its top bit set — that is what the same bits mean as a signed number.
 5. The **Operations** table shows Bitwise NOT, one's complement and two's complement of the current value, each in binary (grouped in fours), hex, decimal and signed.
+6. The **Operation visualizer** below it takes a second number and shows the working. Enter operand **b** in any of its four boxes (the value at the top of the page is operand **a**), pick an operation — add, subtract, multiply, divide, modulo, AND, OR, XOR, or one of the three shifts — and step through it with **Back** and **Next**. Each step is a sentence, so you can follow it without reading the colours, and the table shows the bits as they are decided. The answer is echoed in all four bases, and the flags underneath say in words what happened to it.
 
-The page starts at 5 in 8-bit and goes back to that on reload.
+For the shifts, operand b is the number of places to shift rather than a value. For divide and modulo, the **Read the operands as signed** box changes the answer itself; for everything else it only changes how the answer is read.
+
+The page starts at 5 + 3 in 8-bit and goes back to that on reload.
 
 ## Photography
 
@@ -36,6 +39,11 @@ The estimate shows the transfer time (for example "1 min 20 s"), the same figure
 
 ### Programming
 
+- **Carry and overflow are different things, and the visualizer shows both.** Carry asks whether the answer fit when the bits are read as an ordinary counting number; overflow asks whether it fit when they are read as a signed one. They come apart constantly. At 8 bits, `0xFF + 1` **carries** but does not overflow — 255 + 1 does not fit, but −1 + 1 = 0 is perfectly fine. `0x7F + 1` **overflows** but does not carry — 127 + 1 = 128 fits as a counting number, but a signed byte cannot hold +128 and the answer comes out as −128. A CPU works both out on every add and lets the program pick which one to care about, which is why C's signed overflow is a bug you can have without anything looking wrong.
+- **Dividing by zero is refused, not answered.** There is no integer infinity: a CPU raises a fault and the program stops. The page says so instead of inventing a number.
+- **Signed division rounds toward zero, but an arithmetic shift rounds down.** −7 / 2 is −3, and the remainder takes the sign of the number being divided, so −7 % 2 is −1. But −1 >> 1 is −1, not 0 — shifting right always rounds toward minus infinity. They are not interchangeable, however much a compiler would like them to be.
+- **The two right shifts are different operations.** Logical (`>>>`) feeds in zeros, so a negative number becomes a large positive one. Arithmetic (`>>`) copies the sign bit in, so a negative number stays negative. Picking the wrong one is a classic bug, so the page keeps them apart rather than hiding the choice.
+- **Shifting by the width or more is undefined in C.** The page still gives you an answer — the mathematical one — and says that real processors disagree about it, so you do not write code that depends on what your machine happened to do.
 - **Negative numbers are shown as two's complement.** Typing −5 in Decimal at 8 bits puts `11111011`, `373` and `fb` in the other boxes; those are the same bits. Decimal is the only box that accepts a minus sign — in binary, octal and hex a negative number is just its bit pattern.
 - **Both readings are accepted in Decimal.** At 8 bits, `255` and `−1` are the same value; the box shows whichever you typed and the "signed:" line shows the other reading.
 - **Changing the width changes the number.** Going narrower drops the high bits (like moving a value into a smaller register). Going wider keeps the bits but not the sign: 8-bit −5 becomes 16-bit 251, because nothing is sign-extended.
@@ -43,7 +51,7 @@ The estimate shows the transfer time (for example "1 min 20 s"), the same figure
 - Bitwise NOT and one's complement are the same operation — the table shows both because they are taught as separate ideas.
 - Two's complement of 0 is 0, and two's complement of the most negative value (for example −128 in 8 bits) is itself — that is how CPUs behave, not a bug.
 - Hex is shown in lowercase; binary, octal and hex are zero-padded to the width; decimal is not.
-- Nothing here is saved. Reloading returns to 5 in 8-bit.
+- Nothing here is saved. Reloading returns to 5 + 3 in 8-bit.
 
 ### Photography
 

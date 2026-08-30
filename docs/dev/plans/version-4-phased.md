@@ -171,7 +171,7 @@ nobody answers.
 | Phase | Goal | New deps | DB | Notes |
 |-------|------|----------|----|-------|
 | 0 | Groundwork: version bump, template engine, shared previewer | — | — | **DONE.** Unblocks 2, 3, 4 |
-| 1 | Programming calculator operation visualizer | — | — | Independent |
+| 1 | Programming calculator operation visualizer | — | — | **DONE.** Independent |
 | 2 | Web playground (port from learn-anywhere) | `@codemirror/lang-html`, `-css`, `-javascript`, `@emmetio/codemirror6-plugin`; lazy `sucrase` | **v14** | `web_playgrounds` |
 | 3 | HTTP playground — request/response core | — | — | Stateless; largest single phase |
 | 4 | HTTP playground — environments, variables, secrets | — | **v15** | `http_requests`, `http_environments`, `http_secrets` (local-only) |
@@ -243,7 +243,7 @@ Playwright — existing suites stay green unchanged.
 
 ---
 
-## Phase 1 — Programming calculator operation visualizer
+## Phase 1 — Programming calculator operation visualizer — DONE
 
 **Goal:** the TODO's one improvement to an existing system — see *how* two
 binary numbers combine, step by step, at a fixed bit width.
@@ -274,8 +274,13 @@ binary numbers combine, step by step, at a fixed bit width.
    pattern), operation picker, result echoed in all four bases, and the step
    table — keyboard-steppable like the similarity tool's DP matrix, with the
    current step described in a sentence, not colour alone.
-3. The existing NOT / one's / two's complement entries fold into the same
-   trace presentation, so the page has one way of showing work.
+3. ~~The existing NOT / one's / two's complement entries fold into the same
+   trace presentation, so the page has one way of showing work.~~ **Not
+   done, deliberately.** They are unary and instantaneous — there is no
+   working to step through — and folding them would have meant rewriting a
+   shipped, passing spec to move three rows. The Operations table stays as
+   it is, testids included, and the visualizer is a card of its own below
+   it. Recorded in the calculators dev page's Known limits.
 
 **Data model:** none. Stateless, like the rest of the page.
 

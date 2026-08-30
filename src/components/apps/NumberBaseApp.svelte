@@ -16,6 +16,12 @@
     type Base,
     type BitWidth,
   } from '../../lib/calc/numberBase';
+  import {
+    BINARY_OPS,
+    OP_BY_ID,
+    runOp,
+    type BinaryOp,
+  } from '../../lib/calc/binaryOps';
 
   // Stateless tool: everything below is view state — nothing ever touches
   // IndexedDB (the data suite asserts zero writes on this page).
@@ -43,6 +49,7 @@
       value = r.value;
       errors[base] = null;
       refresh(base);
+      step = 0;
     } else {
       errors[base] = r.error;
     }
@@ -52,6 +59,9 @@
     // Shrinking the width truncates to the low bits, like a CPU register move.
     value = value & mask(width);
     refresh(null);
+    bValue = bValue & mask(width);
+    refreshB(null);
+    step = 0;
   }
 
   let signed = $derived(toSigned(value, width));
@@ -71,6 +81,73 @@
   function bin(v: bigint): string {
     return groupDigits(formatInBase(v, 2, width), 4);
   }
+
+  // --- Operation visualizer ------------------------------------------------
+  // Operand a is the page's value above, so the page keeps one canonical
+  // number; operand b gets its own synchronised set of the same four fields,
+  // entered exactly the same way. Still stateless — nothing here is written.
+
+  let opId = $state<BinaryOp>('add');
+  let opSigned = $state(false);
+  let bValue = $state(3n);
+  let bTexts = $state<Record<number, string>>({ 2: '', 8: '', 10: '', 16: '' });
+  let bErrors = $state<Record<number, string | null>>({ 2: null, 8: null, 10: null, 16: null });
+  /** Which step of the trace is being read. Reset by anything that changes it. */
+  let step = $state(0);
+
+  refreshB(null);
+
+  function refreshB(except: Base | null) {
+    for (const b of BASES) {
+      if (b === except) continue;
+      bTexts[b] = formatInBase(bValue, b, width);
+      bErrors[b] = null;
+    }
+  }
+
+  function onInputB(base: Base) {
+    const r = parseInBase(bTexts[base] ?? '', base, width);
+    if (r.ok) {
+      bValue = r.value;
+      bErrors[base] = null;
+      refreshB(base);
+      step = 0;
+    } else {
+      bErrors[base] = r.error;
+    }
+  }
+
+  let opDef = $derived(OP_BY_ID[opId]);
+  let run = $derived(runOp(opId, value, bValue, { width, signed: opSigned }));
+  let trace = $derived(run.ok ? run.trace : null);
+  let stepCount = $derived(trace?.steps.length ?? 0);
+  /** Clamped rather than trusted: the trace can shrink under a stale index. */
+  let stepIndex = $derived(Math.min(step, Math.max(0, stepCount - 1)));
+  let current = $derived(trace ? (trace.steps[stepIndex] ?? null) : null);
+
+  /**
+   * The drawn table for the current step. Rows can carry bits that fell
+   * outside the width on either side; padding them to the widest row is what
+   * keeps every column of the table lined up under its bit number.
+   */
+  let view = $derived.by(() => {
+    if (!current) return null;
+    const highPad = Math.max(0, ...current.rows.map((r) => r.lostHigh?.length ?? 0));
+    const lowPad = Math.max(0, ...current.rows.map((r) => r.lostLow?.length ?? 0));
+    return {
+      highPad,
+      lowPad,
+      rows: current.rows.map((r) => ({
+        label: r.label,
+        high: (r.lostHigh ?? '').padStart(highPad, ' '),
+        bits: r.bits,
+        low: (r.lostLow ?? '').padEnd(lowPad, ' '),
+      })),
+    };
+  });
+
+  /** Bit numbers across the top, most significant first. */
+  let columns = $derived(Array.from({ length: width }, (_, i) => width - 1 - i));
 </script>
 
 <div class="page-header">
@@ -210,6 +287,221 @@
       </div>
     </div>
   </Card>
+
+  <Card title="Operation visualizer">
+    <div class="stack">
+      <div class="row">
+        <label class="inline" for="nb-op">Operation</label>
+        <select
+          id="nb-op"
+          data-testid="nb-op-picker"
+          class="narrow"
+          bind:value={opId}
+          onchange={() => (step = 0)}
+        >
+          {#each BINARY_OPS as op (op.id)}
+            <option value={op.id}>{op.label} ({op.symbol})</option>
+          {/each}
+        </select>
+        <label class="inline" for="nb-op-signed">
+          <input
+            id="nb-op-signed"
+            type="checkbox"
+            data-testid="nb-op-signed"
+            bind:checked={opSigned}
+            onchange={() => (step = 0)}
+          />
+          Read the operands as signed
+        </label>
+      </div>
+
+      <p class="muted small" data-testid="nb-vis-signed-note">
+        {#if opDef.signedMatters}
+          Signed changes the answer's BITS for this operation — dividing &minus;7 by 2 is not
+          dividing 249 by 2.
+        {:else}
+          Signed changes only how this answer is read; the bits come out the same either way.
+        {/if}
+      </p>
+
+      <div>
+        <p class="operand-label" data-testid="nb-b-label">
+          {opDef.countsBits ? 'Shift amount (b)' : 'Operand b'} — operand a is the value above
+        </p>
+        <div class="fields">
+          {#each BASES as base (base)}
+            <div>
+              <label for={'nb-b-input-' + base}>{BASE_LABELS[base]}</label>
+              <input
+                id={'nb-b-input-' + base}
+                data-testid={'nb-b-input-' + base}
+                class="mono"
+                type="text"
+                autocomplete="off"
+                spellcheck="false"
+                bind:value={bTexts[base]}
+                oninput={() => onInputB(base)}
+              />
+              {#if bErrors[base]}
+                <p class="error" data-testid={'nb-b-error-' + base} role="alert">{bErrors[base]}</p>
+              {/if}
+            </div>
+          {/each}
+        </div>
+      </div>
+
+      {#if !run.ok}
+        <p class="error" data-testid="nb-vis-error" role="alert">{run.error}</p>
+      {:else if trace && current && view}
+        <p class="expression mono" data-testid="nb-vis-expression">
+          0x{formatInBase(value, 16, width)}
+          {opDef.symbol}
+          0x{formatInBase(bValue, 16, width)} = 0x{formatInBase(trace.result, 16, width)}
+        </p>
+
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Binary</th>
+                <th>Hex</th>
+                <th>Decimal</th>
+                <th>Signed</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="mono" data-testid="nb-vis-bin">{bin(trace.result)}</td>
+                <td class="mono" data-testid="nb-vis-hex">{formatInBase(trace.result, 16, width)}</td>
+                <td class="mono" data-testid="nb-vis-dec">{trace.result}</td>
+                <td class="mono" data-testid="nb-vis-signed">{toSigned(trace.result, width)}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <p class="muted small" data-testid="nb-vis-summary">{trace.summary}</p>
+
+        {#if trace.flags.length > 0}
+          <ul class="flags">
+            {#each trace.flags as f (f.id)}
+              <li data-testid={'nb-vis-flag-' + f.id} class:on={f.on}>
+                <strong>{f.label}: {f.on ? 'yes' : 'no'}</strong> — {f.text}
+              </li>
+            {/each}
+          </ul>
+        {/if}
+
+        <div class="stepper">
+          <button
+            class="btn btn-sm"
+            data-testid="nb-vis-step-back"
+            disabled={stepIndex <= 0}
+            onclick={() => (step = Math.max(0, stepIndex - 1))}>Back</button
+          >
+          <span data-testid="nb-vis-step-text">
+            Step {stepIndex + 1} of {stepCount}: {current.text}
+          </span>
+          <button
+            class="btn btn-sm"
+            data-testid="nb-vis-step-next"
+            disabled={stepIndex >= stepCount - 1}
+            onclick={() => (step = Math.min(stepCount - 1, stepIndex + 1))}>Next</button
+          >
+        </div>
+
+        <div class="table-wrap">
+          <table class="bits" data-testid="nb-vis-table">
+            <caption class="sr-only">
+              The working for {opDef.label} at {width} bits, step {stepIndex + 1} of {stepCount}.
+              Columns are numbered by bit, most significant first; dashed columns fall outside
+              the width.
+            </caption>
+            <thead>
+              <tr>
+                <th scope="col"><span class="sr-only">Row</span></th>
+                {#if view.highPad > 0}
+                  <th colspan={view.highPad} class="outside">out</th>
+                {/if}
+                {#each columns as c (c)}
+                  <th scope="col">{c}</th>
+                {/each}
+                {#if view.lowPad > 0}
+                  <th colspan={view.lowPad} class="outside">out</th>
+                {/if}
+              </tr>
+            </thead>
+            <tbody>
+              {#each view.rows as r (r.label)}
+                <tr>
+                  <th scope="row">{r.label}</th>
+                  {#each [...r.high] as ch, i (i)}
+                    <td class="outside">{ch === ' ' ? '' : ch}</td>
+                  {/each}
+                  {#each [...r.bits] as ch, i (i)}
+                    <td
+                      class:now={current.focus.includes(width - 1 - i)}
+                      data-testid={current.focus.includes(width - 1 - i)
+                        ? 'nb-vis-cell-now'
+                        : undefined}>{ch === ' ' ? '' : ch}</td
+                    >
+                  {/each}
+                  {#each [...r.low] as ch, i (i)}
+                    <td class="outside">{ch === ' ' ? '' : ch}</td>
+                  {/each}
+                </tr>
+              {/each}
+            </tbody>
+          </table>
+        </div>
+      {/if}
+
+      <div class="stack explainers">
+        <Explainer summary="Carry vs signed overflow by hand" testid="explainer-carry-overflow">
+          <p>
+            They are two different questions about the same bits. <strong>Carry</strong> asks
+            whether the answer fit when the bits are read as UNSIGNED;
+            <strong>signed overflow</strong> asks whether it fit when they are read as two's
+            complement. A CPU works both out on every add and lets you choose which one to
+            branch on.
+          </p>
+          <p>
+            At 8 bits, <code>0xFF + 1</code> carries but does not overflow (255 + 1 does not fit
+            unsigned, while &minus;1 + 1 = 0 is perfectly fine signed), and
+            <code>0x7F + 1</code> overflows but does not carry (127 + 1 = 128 fits unsigned,
+            while +127 + 1 cannot be +128 in a signed byte and comes out as &minus;128).
+          </p>
+        </Explainer>
+        <Explainer summary="Shift-and-add multiplication by hand" testid="explainer-shift-add">
+          <p>
+            Long multiplication with only two times tables. For each 1 in the multiplier, write
+            the multiplicand shifted left into that column; for each 0, write nothing. Add the
+            rows.
+          </p>
+          <p>
+            <code>5 × 5</code> = <code>101 × 101</code> → <code>101</code> (bit 0) +
+            <code>10100</code> (bit 2) = <code>11001</code> = 25. Any row bits that shift past
+            the top of the width are dropped, which is exactly where the answer stops being the
+            true product.
+          </p>
+        </Explainer>
+        <Explainer summary="Binary long division by hand" testid="explainer-long-division">
+          <p>
+            The same algorithm as decimal long division, but the only question at each step is
+            "does it go in?" — the answer is 0 or 1, never 7. Bring the next dividend bit down
+            into the remainder; if the remainder now reaches the divisor, subtract it and write
+            a 1; otherwise write a 0.
+          </p>
+          <p>
+            Negative operands are divided as magnitudes and given their signs back at the end.
+            That is what makes integer division truncate TOWARD ZERO — <code>-7 / 2</code> is
+            <code>-3</code>, not <code>-4</code> — and why the remainder takes the sign of the
+            dividend, so <code>(a / b) * b + a % b</code> still equals <code>a</code>.
+          </p>
+        </Explainer>
+      </div>
+    </div>
+  </Card>
 </div>
 
 <style>
@@ -244,5 +536,94 @@
 
   .explainers {
     gap: var(--space-2);
+  }
+
+  .operand-label {
+    font-size: var(--font-size-sm);
+    color: var(--text-muted-color);
+    margin-bottom: var(--space-2);
+  }
+
+  .expression {
+    font-size: var(--font-size-sm);
+  }
+
+  .stepper {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-3);
+    font-size: var(--font-size-sm);
+  }
+
+  .flags {
+    list-style: none;
+    padding: 0;
+    display: grid;
+    gap: var(--space-2);
+    font-size: var(--font-size-sm);
+  }
+
+  .flags li {
+    border-left: 3px solid var(--border-color);
+    padding-left: var(--space-3);
+  }
+
+  .flags li.on {
+    border-left-color: var(--color-warning);
+  }
+
+  table.bits {
+    border-collapse: collapse;
+    font-family: var(--font-mono);
+    font-size: var(--font-size-sm);
+  }
+
+  table.bits th,
+  table.bits td {
+    border: 1px solid var(--border-color);
+    padding: 2px var(--space-1);
+    text-align: center;
+    min-width: 1.6rem;
+  }
+
+  table.bits thead th {
+    color: var(--text-muted-color);
+    background: var(--surface-raised-color);
+    font-weight: 400;
+  }
+
+  table.bits tbody th {
+    text-align: right;
+    white-space: nowrap;
+    padding-inline: var(--space-2);
+    color: var(--text-muted-color);
+    font-weight: 400;
+  }
+
+  /* Columns outside the width are marked by a dashed border rather than a
+     tinted background: the tint would sit under --text-muted-color and drop
+     its contrast below the ratio the a11y sweep checks that token at. */
+  table.bits th.outside,
+  table.bits td.outside {
+    color: var(--text-muted-color);
+    border-style: dashed;
+  }
+
+  table.bits td.now {
+    background: var(--color-stamp);
+    color: var(--color-on-primary);
+    font-weight: 700;
+  }
+
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
   }
 </style>

@@ -50,6 +50,186 @@ test.describe('number conversion', () => {
   });
 });
 
+test.describe('operation visualizer', () => {
+  /**
+   * Operand a is the page's own value; operand b is the second synchronised
+   * set of base fields. Everything here is stateless, so every case ends by
+   * asserting the database is byte-identical to what it was.
+   */
+  test('steps a trace and tells carry from signed overflow, writing nothing', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/number-conversion/');
+    const before = await app.dumpAll();
+
+    // Defaults: 5 + 3 at 8 bits, echoed in all four bases.
+    await expect(page.getByTestId('nb-vis-expression')).toContainText('0x05 + 0x03 = 0x08');
+    await expect(page.getByTestId('nb-vis-bin')).toHaveText('0000 1000');
+    await expect(page.getByTestId('nb-vis-hex')).toHaveText('08');
+    await expect(page.getByTestId('nb-vis-dec')).toHaveText('8');
+    await expect(page.getByTestId('nb-vis-signed')).toHaveText('8');
+
+    // The step table draws the columns that have been decided and no more.
+    await expect(page.getByTestId('nb-vis-step-text')).toContainText('Step 1 of 8');
+    await expect(page.getByTestId('nb-vis-step-text')).toContainText(
+      'Bit 0: 1 + 1 + carry 0 = 2'
+    );
+    await expect(page.getByTestId('nb-vis-step-back')).toBeDisabled();
+
+    // Stepping forward moves through the columns and re-enables Back.
+    await page.getByTestId('nb-vis-step-next').click();
+    await expect(page.getByTestId('nb-vis-step-text')).toContainText('Step 2 of 8');
+    await expect(page.getByTestId('nb-vis-step-text')).toContainText('Bit 1: 0 + 1 + carry 1');
+    await expect(page.getByTestId('nb-vis-step-back')).toBeEnabled();
+    await expect(page.getByTestId('nb-vis-cell-now').first()).toBeVisible();
+    await page.getByTestId('nb-vis-step-back').click();
+    await expect(page.getByTestId('nb-vis-step-text')).toContainText('Step 1 of 8');
+
+    // The stepper is operable from the keyboard, not the mouse alone.
+    await page.getByTestId('nb-vis-step-next').focus();
+    await page.keyboard.press('Enter');
+    await expect(page.getByTestId('nb-vis-step-text')).toContainText('Step 2 of 8');
+
+    // 0xFF + 1 CARRIES but does not overflow: -1 + 1 = 0 is fine signed.
+    await page.getByTestId('nb-input-16').fill('ff');
+    await page.getByTestId('nb-b-input-16').fill('01');
+    await expect(page.getByTestId('nb-vis-dec')).toHaveText('0');
+    await expect(page.getByTestId('nb-vis-flag-carry')).toContainText('Carry out: yes');
+    await expect(page.getByTestId('nb-vis-flag-overflow')).toContainText('Signed overflow: no');
+    // Editing an operand restarts the trace rather than leaving a stale step.
+    await expect(page.getByTestId('nb-vis-step-text')).toContainText('Step 1 of 8');
+
+    // 0x7F + 1 OVERFLOWS but does not carry: 127 + 1 cannot be +128 signed.
+    await page.getByTestId('nb-input-16').fill('7f');
+    await expect(page.getByTestId('nb-vis-dec')).toHaveText('128');
+    await expect(page.getByTestId('nb-vis-signed')).toHaveText('-128');
+    await expect(page.getByTestId('nb-vis-flag-carry')).toContainText('Carry out: no');
+    await expect(page.getByTestId('nb-vis-flag-overflow')).toContainText('Signed overflow: yes');
+
+    expect(await app.dumpAll()).toEqual(before);
+  });
+
+  test('refuses division by zero in words and draws no table', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/number-conversion/');
+    const before = await app.dumpAll();
+
+    await page.getByTestId('nb-op-picker').selectOption('divide');
+    await page.getByTestId('nb-b-input-10').fill('0');
+
+    await expect(page.getByTestId('nb-vis-error')).toContainText('Divide by zero');
+    await expect(page.getByTestId('nb-vis-error')).not.toContainText('Infinity');
+    await expect(page.getByTestId('nb-vis-table')).toHaveCount(0);
+    await expect(page.getByTestId('nb-vis-step-text')).toHaveCount(0);
+
+    // A divisor again makes the trace come back.
+    await page.getByTestId('nb-b-input-10').fill('2');
+    await expect(page.getByTestId('nb-vis-error')).toHaveCount(0);
+    await expect(page.getByTestId('nb-vis-table')).toBeVisible();
+
+    expect(await app.dumpAll()).toEqual(before);
+  });
+
+  test('signed division truncates toward zero and shows the sign as its own step', async ({
+    app,
+  }) => {
+    const { page } = app;
+    await app.goto('/tools/number-conversion/');
+    const before = await app.dumpAll();
+
+    await page.getByTestId('nb-op-picker').selectOption('divide');
+    await page.getByTestId('nb-op-signed').check();
+    await page.getByTestId('nb-input-10').fill('-7');
+    await page.getByTestId('nb-b-input-10').fill('2');
+
+    // -7 / 2 is -3 (toward zero), not -4 (toward minus infinity).
+    await expect(page.getByTestId('nb-vis-signed')).toHaveText('-3');
+    await expect(page.getByTestId('nb-vis-signed-note')).toContainText("answer's BITS");
+
+    // Ten steps: the magnitudes preamble, eight quotient bits, and the signs.
+    await expect(page.getByTestId('nb-vis-step-text')).toContainText('Step 1 of 10');
+    await expect(page.getByTestId('nb-vis-step-text')).toContainText('magnitudes 7 and 2');
+    for (let i = 0; i < 9; i++) await page.getByTestId('nb-vis-step-next').click();
+    await expect(page.getByTestId('nb-vis-step-text')).toContainText('TOWARD ZERO');
+    await expect(page.getByTestId('nb-vis-step-next')).toBeDisabled();
+
+    // Unsigned is a different answer entirely, from the same bits.
+    await page.getByTestId('nb-op-signed').uncheck();
+    await expect(page.getByTestId('nb-vis-dec')).toHaveText('124');
+
+    expect(await app.dumpAll()).toEqual(before);
+  });
+
+  test('multiplication shows the bits that fall off the width', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/number-conversion/');
+    const before = await app.dumpAll();
+
+    await page.getByTestId('nb-op-picker').selectOption('multiply');
+    await page.getByTestId('nb-input-16').fill('ff');
+    await page.getByTestId('nb-b-input-16').fill('ff');
+
+    // 255 * 255 is 65025; a byte keeps 0x01.
+    await expect(page.getByTestId('nb-vis-hex')).toHaveText('01');
+    await expect(page.getByTestId('nb-vis-flag-truncated')).toContainText('Bits dropped: yes');
+
+    // At the last step there is one partial product per set bit, and seven
+    // columns drawn outside the width for the bits that fell off it.
+    for (let i = 0; i < 7; i++) await page.getByTestId('nb-vis-step-next').click();
+    const table = page.getByTestId('nb-vis-table');
+    await expect(table.locator('tbody th', { hasText: 'a << 7' })).toBeVisible();
+    await expect(table.locator('thead th.outside')).toHaveAttribute('colspan', '7');
+
+    expect(await app.dumpAll()).toEqual(before);
+  });
+
+  test('separates an arithmetic right shift from a logical one', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/number-conversion/');
+    const before = await app.dumpAll();
+
+    await page.getByTestId('nb-input-10').fill('-8');
+    await page.getByTestId('nb-b-input-10').fill('1');
+
+    await page.getByTestId('nb-op-picker').selectOption('shr');
+    await expect(page.getByTestId('nb-vis-signed')).toHaveText('124'); // the sign is gone
+    await expect(page.getByTestId('nb-b-label')).toContainText('Shift amount');
+
+    await page.getByTestId('nb-op-picker').selectOption('sar');
+    await expect(page.getByTestId('nb-vis-signed')).toHaveText('-4'); // -8 halved
+    await expect(page.getByTestId('nb-vis-step-text')).toContainText('sign bit');
+
+    // Past the width the answer is still given, with C's rule named.
+    await page.getByTestId('nb-op-picker').selectOption('shl');
+    await page.getByTestId('nb-b-input-10').fill('8');
+    await expect(page.getByTestId('nb-vis-dec')).toHaveText('0');
+    await expect(page.getByTestId('nb-vis-flag-undefined-in-c')).toContainText(
+      'Undefined in C: yes'
+    );
+
+    expect(await app.dumpAll()).toEqual(before);
+  });
+
+  test('the width governs the trace, and shrinking it truncates both operands', async ({
+    app,
+  }) => {
+    const { page } = app;
+    await app.goto('/tools/number-conversion/');
+    const before = await app.dumpAll();
+
+    await page.getByTestId('nb-width').selectOption('16');
+    await expect(page.getByTestId('nb-vis-step-text')).toContainText('of 16');
+    await expect(page.getByTestId('nb-b-input-2')).toHaveValue('0000000000000011');
+
+    await page.getByTestId('nb-b-input-16').fill('0101');
+    await page.getByTestId('nb-width').selectOption('8');
+    // The high byte is dropped, like a register move — and the trace follows.
+    await expect(page.getByTestId('nb-b-input-16')).toHaveValue('01');
+    await expect(page.getByTestId('nb-vis-step-text')).toContainText('Step 1 of 8');
+
+    expect(await app.dumpAll()).toEqual(before);
+  });
+});
+
 test.describe('photography', () => {
   test('equivalent settings match the plan example, computing writes nothing', async ({ app }) => {
     const { page } = app;
