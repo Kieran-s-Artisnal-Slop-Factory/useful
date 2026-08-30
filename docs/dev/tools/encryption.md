@@ -2,7 +2,7 @@
 
 `/tools/encryption/` — AES-GCM with a password, RSA-OAEP, ECDH key agreement, bcrypt and a one-time pad. A stateless Svelte island over `src/lib/crypto/`; it writes **nothing** to IndexedDB, and there is deliberately no "save this key" control anywhere on it.
 
-_Describes the code as of v0.3.0 (schema v13) — verify against source when in doubt._
+_Describes the code as of v0.4.0 (unreleased; schema v13) — verify against source when in doubt._
 
 ## File map
 

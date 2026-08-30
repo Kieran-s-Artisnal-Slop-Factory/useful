@@ -2,7 +2,7 @@
 
 A square-logo tool at `/tools/logo-generator/`: seeded **generators** (DiceBear avatars or Jdenticon identicons) and a composed **badge** (a Lucide icon or an emoji on a coloured tile). Ported from [retoken](https://github.com/Descent098/retoken)'s icon designer, cut down to the two modes worth keeping.
 
-_Describes the code as of v0.3.0 (schema v13) — verify against source when in doubt._
+_Describes the code as of v0.4.0 (unreleased; schema v13) — verify against source when in doubt._
 
 ## File map
 

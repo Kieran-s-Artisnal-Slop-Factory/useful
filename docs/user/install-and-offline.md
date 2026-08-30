@@ -2,7 +2,7 @@
 
 useful is a website that behaves like an app: your browser can install it to the desktop, dock or home screen, and after the first visit it loads and runs with no network. Pages you have never opened are fetched quietly in the background as you use it, and the heavy optional extras — the background remover's model and the SQL playground's database engines — arrive only when you ask for them.
 
-_Describes the code as of v0.3.0 (schema v13) — verify against source when in doubt._
+_Describes the code as of v0.4.0 (unreleased; schema v13) — verify against source when in doubt._
 
 ## Installing it
 

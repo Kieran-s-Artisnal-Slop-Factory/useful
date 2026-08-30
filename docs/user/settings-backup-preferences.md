@@ -2,7 +2,7 @@
 
 One page looks after the app itself — **Settings**, behind the gear at the foot of the sidebar. It holds appearance, the **preferences** (the defaults the tools fill in for you, and every value the app has remembered), storage, the offline download, backup export/import, and a locked developer section. (Preferences used to be a page of its own; the old address still lands here.) Everything the app knows lives in this browser on this device — the backup file is the only way to copy it anywhere else.
 
-_Describes the code as of v0.3.0 (schema v13) — verify against source when in doubt._
+_Describes the code as of v0.4.0 (unreleased; schema v13) — verify against source when in doubt._
 
 ## Settings
 

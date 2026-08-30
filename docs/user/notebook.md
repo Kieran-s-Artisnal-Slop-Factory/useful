@@ -2,7 +2,7 @@
 
 Keep your notes here, in markdown, linked to each other. Write in a rich editor or in the raw text, whichever you prefer at the moment; drop footnotes in with one key; draw a diagram from a template and see it as you type; paste a screenshot; write `$x^2$` and get real maths. Link one note to another by writing its title in double brackets, and the notebook tells you who links back. When a note has to leave the browser it goes as Markdown, as one HTML file that needs nothing else, or as a PDF through the print dialog.
 
-_Describes the code as of v0.3.0 (schema v13) — verify against source when in doubt._
+_Describes the code as of v0.4.0 (unreleased; schema v13) — verify against source when in doubt._
 
 ## Your notes
 

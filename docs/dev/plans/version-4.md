@@ -1,0 +1,52 @@
+## Improvements to existing systems
+
+- [ ] Placeholder
+  - [ ] text
+    - [ ] Add the option to use an in-browser LLM to generate text via a prompt
+      - [ ] Make downloading the model an explicit opt-in if it's over 10MB
+- [ ] Programming Calculator
+  - [ ] Add a visualizer for operations (e.g. Add/multiply/divide two binary values) with steps
+
+## New systems
+
+- [ ] Playgrounds
+    - [ ] HTTP playground
+        - [ ] httpie/postman clone
+        - [ ] Headers 
+            - [ ] crafting (request) 
+            - [ ] validation (response)
+        - [ ] JSON
+            - [ ] crafting (request) 
+            - [ ] validation (response)
+        - [ ] Forms (urlencoded ones)
+            - [ ] crafting (request) 
+            - [ ] validation (response)
+        - [ ] Files
+            - [ ] sending (request)
+            - [ ] Recieving (response)
+                - [ ] Prompt to download, do not add a viewer
+        - [ ] HTML
+            - [ ] Recieving
+                - [ ] Have a lazy-loaded previewer
+                - [ ] See source (default mode)
+        - [ ] Environments to group/namespace
+            - [ ] Requests
+            - [ ] Secrets
+            - [ ] Variables
+        - [ ] Multi-step request system
+            - [ ] A system that allows you to do multiple steps and record all requests/responses as you go
+                - [ ] e.g. Auth to an endpoint -> Hit a GET on a resource using API key from auth
+                - [ ] Will need to extend variable sytem to allow for getting variables from previous steps
+        - [ ] Variables
+            - [ ] Lookup order: Multi-step --> Environment --> Global
+            - [ ] Jinja style (nunjucks or better alternative)
+                - [ ] `{{varname}}`
+                - [ ] `{{object.varname}}`
+                - [ ] `{{array[index]}}`
+                - [ ] etc.
+        - [ ] Secrets
+            - [ ] Lookup order: Multi-step --> Environment --> Global
+        - [ ] Warning on CORs error, and push someone towards downloading the app version
+    - [ ] Web Playground
+        - [ ] Add the web playground from learn-anywhere
+        - [ ] Allow for normal playground usage, or storage of prior sessions

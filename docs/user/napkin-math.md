@@ -2,7 +2,7 @@
 
 Write a formula once, and get a little calculator for it: named inputs, a live answer, a history of the numbers you have run through it, and code in four languages when you want to take it somewhere else.
 
-_Describes the code as of v0.3.0 (schema v13) — verify against source when in doubt._
+_Describes the code as of v0.4.0 (unreleased; schema v13) — verify against source when in doubt._
 
 ## Writing a formula
 

@@ -1,3 +1,45 @@
+# 0.4.0 (unreleased)
+
+## Other
+
+- **Groundwork for the rest of 0.4.0** (Phase 0). Nothing on screen changes;
+  two modules land that the tools coming after this one mount rather than
+  each growing their own.
+  - **A `{{placeholder}}` engine** (`src/lib/template/engine.ts`). `render()`
+    resolves `{{name}}`, `{{obj.field}}`, `{{arr[0]}}` and combinations of
+    them against an ordered chain of scopes, first hit wins, and `lint()`
+    reads the names a template needs without resolving anything — which is
+    what lets a page say "this needs `token`, `base_url`" and mark the missing
+    ones *before* anything is sent. Hand-rolled rather than nunjucks on
+    purpose: the requirement is lookup, and a request body is not a place for
+    `{% for %}`. **An unresolved name is an error, not an empty string** —
+    sending `Authorization: Bearer` because `{{token}}` quietly resolved to
+    nothing is the classic client bug, and it is silent exactly when it
+    matters. Every failure carries the offset of the placeholder that caused
+    it and the text as written; objects and lists are refused by name rather
+    than interpolated as `[object Object]`. `\{{` writes a literal `{{`, and
+    only an odd run of backslashes escapes, so a JSON body can still carry
+    `"C:\\{{dir}}"` and mean it.
+  - **One sandboxed previewer** (`src/components/SandboxedPreview.svelte`),
+    ported from learn-anywhere's web exercise (same author, MIT) onto this
+    app's own chassis. The frame gets `sandbox="allow-scripts"` and nothing
+    else — never `allow-same-origin`, which together with scripts would let
+    the framed document drop its own sandbox. What it frames is either user
+    code or a stranger's HTML, so it runs with no origin and no way to reach
+    this app's IndexedDB. Its console shim forwards output, uncaught errors
+    and unhandled rejections to the host page over `postMessage`, identified
+    by the sending window and a channel tag rather than by an origin string
+    (an opaque origin arrives as `"null"`, which proves nothing), capped at
+    the last 50 messages; unmounting navigates the frame away so its scripts
+    and timers actually stop.
+
+- **Documentation drift swept.** Sixty-two pages carried an "as of v0.3.0"
+  banner and now read `v0.4.0 (unreleased; schema v13)`. Three pages named a
+  service-worker cache several releases stale against a shipped
+  `useful-cache-v33`: the config playground page said `useful-cache-v16`, the
+  notebook page said `v17` in two places, and the architecture page's data
+  table said `v18`.
+
 # 0.3.0 (2026-08-22)
 
 **Schema v13.** This release migrates the browser database from v12 to v13

@@ -2,7 +2,7 @@
 
 `useful` is a static Astro 7 site whose every page mounts one Svelte 5 island. There is no server: IndexedDB in the visitor's browser is the only copy of the data, a hand-written service worker makes the built site work offline, and the heavy optional pieces (an ML model, two SQL engines, a city dataset) load lazily on demand. This page is the maintainer's mental model — the stack, the runtime picture, the directory map, the cross-cutting systems and where each is documented, the invariants that must not break, and the recipe for adding a tool.
 
-_Describes the code as of v0.3.0 (schema v13) — verify against source when in doubt._
+_Describes the code as of v0.4.0 (unreleased; schema v13) — verify against source when in doubt._
 
 ## The stack
 
@@ -58,7 +58,7 @@ Data lives in four places, deliberately:
 | Store | Holds | Owner |
 | --- | --- | --- |
 | IndexedDB `useful` | Every user row (`STORES` in [types.ts](../../src/lib/db/types.ts)) plus the `sync_outbox` change queue (not in `STORES`, never exported) | [repo.ts](../../src/lib/db/repo.ts), [outbox.ts](../../src/lib/db/outbox.ts) |
-| Cache Storage `useful-cache-v18` (`CACHE_NAME`) | App shell pages, fingerprinted `_astro/` assets, the SQL engines' wasm; purged by prefix on every version bump | [public/sw.js](../../public/sw.js) |
+| Cache Storage `useful-cache-v33` (`CACHE_NAME`) | App shell pages, fingerprinted `_astro/` assets, the SQL engines' wasm; purged by prefix on every version bump | [public/sw.js](../../public/sw.js) |
 | Cache Storage `useful-models-v1` (`MODEL_CACHE`) | The background remover's model + ONNX runtime, ~15.8 MB, filled on an explicit click; never purged by a version bump | [runtime.ts](../../src/lib/bg/runtime.ts) and sw.js, kept in sync by hand |
 | localStorage | `useful-theme`, `useful-sidebar-collapsed`, `useful-test-mode` — presentation and harness flags only, never data | [SettingsApp.svelte](../../src/components/apps/SettingsApp.svelte), [Chrome.svelte](../../src/components/chrome/Chrome.svelte), [testMode.ts](../../src/lib/testMode.ts) |
 
@@ -72,12 +72,14 @@ The live SQL databases live only in their worker's memory; [store.ts](../../src/
 | [src/layouts/Layout.astro](../../src/layouts/Layout.astro) | The single layout: `<head>`, theme/sidebar pre-paint script, the three persistent islands, `<main class="page">`, SW registration (PROD) or teardown (dev). |
 | [src/components/apps/](../../src/components/apps/) | One `*App.svelte` root per page (`TimersApp`, `SchedulerApp`, `SqlPlaygroundApp`, `SettingsApp`, `PreferencesApp`, `HomeApp`, …) plus page-specific sub-components (`CalendarView`, `ZonePicker`). |
 | [src/components/chrome/](../../src/components/chrome/) | App shell islands: `Chrome.svelte`, `CommandPalette.svelte`, `NotificationEngine.svelte`, `OfflineSetup.svelte`, `OfflinePanel.svelte`. |
-| [src/components/](../../src/components/) | Shared widgets: `Card`, `Explainer`, `Icon`, `ColorField`, `CodeEditor`, `SqlEditor`. |
+| [src/components/](../../src/components/) | Shared widgets: `Card`, `Explainer`, `Icon`, `ColorField`, `CodeEditor`, `SqlEditor`, `SandboxedPreview`. |
 | [src/lib/db/](../../src/lib/db/) | The data layer: `types.ts` (entities + `STORES`), `db.ts` (`MIGRATIONS`, `getDB`), `repo.ts` (CRUD), `outbox.ts`, `export.ts` (backup), `persistence.ts` (persistent-storage request). |
 | [src/lib/](../../src/lib/) top level | Cross-cutting modules: `registry.ts`, `paths.ts`, `fuzzy.ts`, `icons.ts`, `markdown.ts` + `prism.ts`, `exportFile.ts`, `dragdrop.ts`, `offline.ts`, `testMode.ts`, `testHook.ts`. |
 | `src/lib/<domain>/` | Pure per-tool logic with co-located `*.test.ts`: `time/` (durations, timezones, `cities.json`, `engine.svelte.ts`), `scheduler/` (`rank`, `recurrence`), `calc/`, `gen/`, `img/`, `raster/`, `svg/`, `bg/`, `sql/`. |
 | [text/](../../src/lib/text/) | Segmentation shared by every text tool: `tokenize.ts` (graphemes, words, sentences, paragraphs, lines, syllables, and the four numbers that all get called length). One layer, so counts, diffs and transformations cannot disagree about where a word starts. |
 | [encode/](../../src/lib/encode/) | `base64.ts` — encode/decode for both alphabets over `TextEncoder`, validation that reports the offset where a string stopped being base64, and `data:` URL parse/build. Exists because `btoa` throws on non-Latin-1 text and `atob` returns rubbish instead of failing. |
+| [template/](../../src/lib/template/) | `engine.ts` — the hand-rolled `{{placeholder}}` resolver: `render(template, scopes)` over an ordered scope chain (first hit wins) and `lint(template)`, which reads the names a template needs without resolving anything. Lookup only — no tags, no filters, no autoescaping. An unresolved name is an error carrying its offset, never an empty string. |
+| [preview/](../../src/lib/preview/) | `document.ts` — the pure half of [SandboxedPreview.svelte](../../src/components/SandboxedPreview.svelte): document assembly, the `</script>` close-tag guard, the injected console shim and the channel check its messages are identified by. Pure so Vitest can reach the parts where a mistake is a security bug. |
 | [src/styles/](../../src/styles/) | `theme.css` (tokens, both themes via `light-dark()`), `global.css` (reset, base elements, layout, shared classes). |
 | [public/](../../public/) | `sw.js`, `manifest.webmanifest`, favicons, and the vendored ML assets under `models/` and `ort/` (with `models/PROVENANCE.txt`). |
 | [tests/local/](../../tests/local/) | The Playwright suite: `*.spec.ts` per area, `helpers/` (`app.ts` fixture, `oracle.ts` typed comparator, `schema.ts` `TABLES` mirror), `fixtures/`, `trust-gate.ts`. |
@@ -106,6 +108,7 @@ Each has its own page. This table is the index.
 These hold across the whole codebase. Each one is a data-loss, offline, or accessibility bug when broken, and each is checked by a test named in [testing.md](testing.md).
 
 - **No server.** No fetch to any origin but our own; the ML assets, the city dataset, the SQL engines and Prism are all vendored or bundled. Adding a sync backend later is meant to be a drop-in on top of `sync_outbox`, not a rewrite.
+- **A preview frame never gets `allow-same-origin`.** [SandboxedPreview.svelte](../../src/components/SandboxedPreview.svelte) is the only iframe that runs foreign markup, and its sandbox is `allow-scripts` alone. The two flags together let a framed document remove its own sandbox, and what it frames is either user code or a stranger's HTML — either one reaching this app's IndexedDB would be a real vulnerability. The frame's origin is opaque, so its `postMessage` traffic arrives as `origin: 'null'` and is identified by `event.source` plus a channel tag instead.
 - **IndexedDB is JSON-only.** Rows are plain JSON shapes: no `Date`, no `Blob`, no class instances, no Svelte proxies. `repo.ts` JSON-round-trips every row (`toPlain`) so a `$state` proxy cannot throw `DataCloneError`, and the backup export/import (`export.ts`) and the typed comparator in [oracle.ts](../../tests/local/helpers/oracle.ts) both depend on it. Images never enter IndexedDB; the SVG editor stores its layer stack as JSON, the SQL playground stores SQL text.
 - **Every write goes through `repo.ts`.** `put`/`patch`/`bulkPut`/`putReconciled`/`putSingleton`/`softDelete`/`softDeleteMany` are the only sanctioned write paths; they stamp `updated_at`, queue the row in the outbox inside the same transaction, and keep deletes soft. Never `getDB().put` from a component. `patch` for edits (it re-reads the row first), `putSingleton` for single-row tables, `putReconciled` for content you did not author (it never stamps `now`).
 - **Page load writes nothing.** Opening a page, rendering a calendar, ticking a timer, scanning due items — none of it may write. Writes happen only as consequences of user actions (or a running timer's deadline passing). `data.spec.ts` "loading a page writes nothing" and `nav.spec.ts` "client-side navigation writes nothing" enforce it, and [testMode.ts](../../src/lib/testMode.ts) explains why writing-on-read is a data-loss risk in its own right.

@@ -2,7 +2,7 @@
 
 Understand, validate and generate JSON and YAML at `/tools/config-playground/` (category **Playgrounds**). Two modes behind one switch. **Parse** takes a real document in a CodeMirror editor: it is parsed on every keystroke, the YAML 1.1 traps are called out as positioned warnings, its schema is extracted into a Field/Type table, and the document is checked back against whatever schema is in hand. **Create** builds the same table by hand and generates seeded sample documents from it. Either way the schema can be saved to a library and turned into a parser or a generator in Python, JavaScript, Go, Rust or a dependency-free web component. The inference, the validator and the generator are hand-rolled over one fourteen-kind type system; on the parsing path JSON is `JSON.parse` and YAML is eemeli's `yaml`, the one library involved.
 
-_Describes the code as of v0.3.0 (schema v13) — verify against source when in doubt._
+_Describes the code as of v0.4.0 (unreleased; schema v13) — verify against source when in doubt._
 
 ## File map
 
@@ -32,7 +32,7 @@ _Describes the code as of v0.3.0 (schema v13) — verify against source when in 
 | [types.ts (db)](../../../src/lib/db/types.ts) | `ConfigFieldKind`, `ConfigFieldType`, `ConfigField`, `ConfigSchema`; `Preferences.config_last_mode` / `config_last_schema_id`; `STORES.config_schemas`. |
 | [db.ts](../../../src/lib/db/db.ts) | v11 migration: `createObjectStore('config_schemas', { keyPath: 'id' })`. |
 | [registry.ts](../../../src/lib/registry.ts) | Tool entry `config-playground` (route, aliases `json` / `yaml` / `yml` / `schema` / `lint` / `prettify` / `faker` / `codegen` …, icon `braces`). |
-| [sw.js](../../../public/sw.js) | `tools/config-playground/` is in the precached `SHELL`; `CACHE_NAME` is `useful-cache-v16`. |
+| [sw.js](../../../public/sw.js) | `tools/config-playground/` is in the precached `SHELL`; `CACHE_NAME` is `useful-cache-v33`. |
 | [helpers/schema.ts](../../../tests/local/helpers/schema.ts) | The `config_schemas` columns and the two preference fields, mirrored for the oracle. |
 | [payload.spec.ts](../../../tests/local/payload.spec.ts) | `YAML parser` (`/yaml/i`) and `CodeMirror` are on the `HEAVY` list the home page and a light tool page must not pull. |
 | [config-playground.spec.ts](../../../tests/local/config-playground.spec.ts) | The Playwright contract for the page. |
