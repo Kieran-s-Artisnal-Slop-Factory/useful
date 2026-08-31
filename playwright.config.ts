@@ -4,6 +4,14 @@ export default defineConfig({
   testDir: './tests/local',
   // retries: 0 on purpose — a flaky data test is an untrustworthy data test.
   retries: 0,
+  // Playwright's default is half the cores, which is 16 here — sixteen browsers
+  // each installing a service worker and precaching the shell, all against ONE
+  // single-threaded static server. That over-subscription was itself a source
+  // of failures: sockets ran out (`net::ERR_NO_BUFFER_SPACE`) and the worker
+  // sometimes took longer than 30 s to claim its page. Eight keeps the run
+  // parallel and the results repeatable, which is the same trade `retries: 0`
+  // already makes.
+  workers: 8,
   timeout: 60_000,
   webServer: {
     // A PRODUCTION build, not the dev server: the service worker only exists in

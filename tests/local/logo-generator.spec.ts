@@ -92,11 +92,17 @@ test.describe('logo generator', () => {
     await app.goto('/tools/logo-generator/');
     await page.getByTestId('logo-tab-badge').click();
 
-    // The icon list arrives with the Lucide chunk, so it fills a beat later.
+    // The icon list arrives with the Lucide chunk, so it fills a beat later —
+    // and the PREVIEW follows the list. Until it does, the avatar from the
+    // previous tab is still on screen: a perfectly valid SVG that happens to
+    // contain `<rect`, so sampling once passed the first assertion on the
+    // wrong picture and failed the second on it.
     await expect(page.getByTestId('logo-icon-count')).toContainText('icons');
+    await expect
+      .poll(() => previewSvg(page), { message: 'the badge preview never replaced the avatar' })
+      .toContain('stroke=');
     const icon = await previewSvg(page);
     expect(icon).toContain('<rect');
-    expect(icon).toContain('stroke=');
 
     await page.getByTestId('logo-icon-filter').fill('anchor');
     await page.getByTestId('logo-icon').filter({ hasText: /^Anchor$/ }).first().click();

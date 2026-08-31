@@ -36,10 +36,30 @@ Three helper files under [tests/local/helpers/](../../tests/local/helpers/):
 
 | Member | What it does |
 |---|---|
-| `goto(path = '/')` | `page.goto`, then waits up to 15 s for `window.__useful` |
-| `call(method, ...args)` | `page.evaluate` of `window.__useful[method](...args)` |
+| `goto(path = '/')` | `page.goto`, then `ready()` |
+| `ready()` | waits up to 15 s for `window.__useful`, then for **every island to have hydrated** |
+| `call(method, ...args)` | waits for the hook, then `page.evaluate` of `window.__useful[method](...args)` |
 | `dumpAll()` / `dump(store)` / `get(store, id)` | `rawDumpAll` / `rawDump` / `rawGet` — raw rows, tombstones and `server_seq` included |
-| `errors` | at teardown the fixture asserts `errors` is `[]`, so any console error or uncaught exception fails the test |
+| `errors` | at teardown the fixture asserts `errors` is `[]`, so any console error or uncaught exception fails the test — minus the platform noise listed below |
+
+**Why `ready()` waits for hydration.** Astro server-renders `client:load`
+islands, so the sidebar, the brand and the palette button are in the HTML from
+the first paint and look perfectly ready while nothing is listening yet. The
+test hook is a separate lazy chunk that regularly lands first, so waiting on
+`window.__useful` alone proved nothing: a `Control+k` or a bare `.count()` on
+the next line was a coin flip decided by machine load. `astro-island` removes
+its `ssr` attribute the moment hydration finishes, so
+`astro-island[ssr]` being empty is the exact signal, and it clears in roughly
+350–960 ms. `call()` waits for the hook on its own account, because a spec
+that navigated by CLICKING is on a new document whose hook may not have arrived
+— which is how `app.dump()` straight after a navigation used to throw.
+
+**Platform noise the fixture ignores.** Chromium aborts a view transition whose
+DOM update runs past its deadline and reports it as an uncaught error;
+`<ClientRouter />` starts one on every client-side navigation, so under load a
+link click trips it while the navigation itself completes correctly. It is
+matched by name in `PLATFORM_NOISE` and excluded. Nothing else is: a real
+`console.error` or a 404 still fails the spec.
 
 **[schema.ts](../../tests/local/helpers/schema.ts)** — `TABLES`, the harness's own mirror of the app schema (`name`, `fieldMerge`, `singleton`, `columns[]` with `type` / `nullable` / `references`), plus `STORE_NAMES`, `tableOf`, `sampleValue` (values chosen to break naive code: quotes, backslash, newline, non-ASCII, `-2147483649`, `62.4999`, both booleans, `[]`) and `buildRow` (a full row with `id`, `updated_at`, `deleted_at: null`, `server_seq: null`, `field_updated_at: {}` for field-merged tables, and every column filled). This mirror is hand-maintained; a store that is not in it is not covered by the generic round-trip loop.
 
@@ -197,6 +217,8 @@ The standing rule from [docs/dev/plans/TODO](plans/TODO): a feature that touches
 - **Drag tests use pointer events, not `dragTo()`.** The app's drag and drop ([dragdrop.ts](../../src/lib/dragdrop.ts)) is pointer-based; Playwright's `dragTo()` drives the HTML5 drag API, a different pipeline no touchscreen has. `pointerDrag` in [scheduler.spec.ts](../../tests/local/scheduler.spec.ts) does press → several `mouse.move` steps → release (the first move crosses the drag threshold; later moves let the drop target update). Touch drags go through a CDP session: `Input.dispatchTouchEvent` with `touchStart` / `touchMove` / `touchEnd`. Canvas drags in the SVG and raster editors call `scrollIntoViewIfNeeded()` first — an earlier download click may have scrolled the canvas off-screen, and mouse events at off-viewport coordinates hit nothing.
 - **Snapshot placement matters.** `before = await app.dumpAll()` taken *after* `goto` cannot see a write the page made while loading; the image-editor and background-remover specs deliberately snapshot first.
 - **`retries: 0`.** A test that passes on retry is a bug report, not a pass. Use `expect.poll` for async saves instead of loosening assertions.
+- **A one-shot action fired too early does NOTHING, and no retrying assertion can recover it.** This was the shape of nearly every flake found in the 0.4.0 sweep, and it always looked like something else. `MathField.insert()` returns silently unless the field is `ready`, so an insert button clicked too soon left the formula empty for good; the image editor's opacity and blend controls act on whatever is selected *right now*, so touching them before an async image add finished edited the previous layer and the failure surfaced three assertions later; the logo generator's badge tab was read while the previous tab's avatar was still on screen, which satisfied `toContain('<rect')` on the wrong picture. **Wait for the app's own statement that it is ready** — the "Loading the formula editor" line going away, "New marks apply to X", the preview actually changing — rather than for a duration. If there is no such statement, that is usually worth adding to the app before the test.
+- **Watch for an `await` between "the UI looks done" and "the state is committed".** `addImageFile` sets `doc` (which makes the canvas visible) and only then `await`s a lazy `exifr` import before adding the layer and selecting it. A helper that returned at the visible canvas therefore let the next action interleave with the tail of the previous one.
 - **`test.slow()` suites** (a11y sweep, offline, payload, background remover, SQL playground, the image editor's model-backed cases) take minutes on first run: wasm engines boot from disk and the model is real, not stubbed.
 - **Fixtures.** [tests/local/fixtures/](../../tests/local/fixtures/) holds `sample.tiff` and `broken.tiff` (generated by [build-image-fixtures.mjs](../../tools/build-image-fixtures.mjs)) and one AVIF photo used by `images.spec.ts`; PNG/JPG/WebP inputs are encoded in-page with a canvas. The other checked-in files there (`png_sample_file_*.png`, the JPG/WebP/TIFF/SVG samples) are not referenced by any spec as of this version.
 - **Environment-dependent case.** `generators.spec.ts`'s camera test accepts either the scan button or the "no camera" note (whichever the machine has) but requires exactly one and that permission state stays `prompt`.

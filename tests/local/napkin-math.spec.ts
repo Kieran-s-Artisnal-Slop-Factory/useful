@@ -17,10 +17,32 @@ import { assertIsolatedDelta, assertInvariants } from './helpers/oracle';
 
 type P = import('@playwright/test').Page;
 
+/**
+ * Wait until the mathfield can actually be driven.
+ *
+ * `MathField.insert()` returns SILENTLY when the component is not `ready`, so
+ * an insert button clicked too early does nothing at all and no amount of
+ * retrying the assertion afterwards recovers. `napkin-no-fields` is not the
+ * signal — that is about the field LIST and is on screen immediately. The
+ * component's own "Loading the formula editor…" line going away is, because it
+ * is rendered from the same `ready` flag `insert()` checks.
+ */
+async function mathFieldReady(page: P) {
+  await expect(page.getByTestId('napkin-formula-loading')).toHaveCount(0, { timeout: 30_000 });
+  await expect(page.getByTestId('napkin-formula')).toBeVisible({ timeout: 30_000 });
+}
+
+/** The LaTeX the mathfield currently holds — proof that an insert landed. */
+function formulaValue(page: P): Promise<string> {
+  return page
+    .locator('[data-testid="napkin-formula"]')
+    .evaluate((el) => (el as HTMLElement & { value: string }).value);
+}
+
 /** Type into the mathfield through its own API, which owns its keystrokes. */
 async function typeFormula(page: P, text: string) {
   const field = page.locator('[data-testid="napkin-formula"]');
-  await expect(field).toBeVisible({ timeout: 30_000 });
+  await mathFieldReady(page);
   // Focus through the element's own API and then WAIT: focus on a custom
   // element is not instant, and without the pause the first keystrokes land
   // nowhere — which shows up as a formula missing its first letter.
@@ -303,8 +325,9 @@ test.describe('napkin math', () => {
     await app.goto('/tools/napkin-math/');
     await expect(page.getByTestId('napkin-no-fields')).toBeVisible({ timeout: 30_000 });
     await page.getByTestId('napkin-name').fill('Rent per year');
+    await mathFieldReady(page);
     await page.getByTestId('napkin-insert-sum').click();
-    await page.waitForTimeout(500);
+    await expect.poll(() => formulaValue(page)).not.toBe('');
 
     await page.getByTestId('napkin-language').selectOption('webcomponent');
     await page.getByTestId('napkin-generate').click();
@@ -420,6 +443,7 @@ test.describe('napkin math', () => {
 
     // A skeleton with bounds already in it: the field list appears at once,
     // which is the whole point of not making someone type `\sum_{x=1}^{n}`.
+    await mathFieldReady(page);
     await page.getByTestId('napkin-insert-sum').click();
     await expect(page.getByTestId('napkin-field')).toHaveCount(1);
     await expect(page.getByTestId('napkin-field').first()).toHaveAttribute('data-name', 'n');
@@ -427,8 +451,11 @@ test.describe('napkin math', () => {
 
     for (const id of ['product', 'integral', 'fraction', 'root']) {
       await page.getByTestId('napkin-new').click();
+      await mathFieldReady(page);
       await page.getByTestId(`napkin-insert-${id}`).click();
-      await page.waitForTimeout(400);
+      // The insert landing is the step that used to be lost, so wait for its
+      // evidence rather than for a duration.
+      await expect.poll(() => formulaValue(page), { message: id }).not.toBe('');
       await expect(page.getByTestId('napkin-formula-error'), id).toHaveCount(0);
     }
   });
@@ -444,8 +471,9 @@ test.describe('napkin math', () => {
       ['integral', '_integrate('],
     ] as const) {
       await page.getByTestId('napkin-new').click();
+      await mathFieldReady(page);
       await page.getByTestId(`napkin-insert-${id}`).click();
-      await page.waitForTimeout(500);
+      await expect.poll(() => formulaValue(page), { message: id }).not.toBe('');
       await page.getByTestId('napkin-generate').click();
       // No refusal, and a real loop in the output.
       await expect(page.getByTestId('napkin-generate-error'), id).toHaveCount(0);
@@ -458,15 +486,15 @@ test.describe('napkin math', () => {
     await app.goto('/tools/napkin-math/');
     await expect(page.getByTestId('napkin-no-fields')).toBeVisible({ timeout: 30_000 });
 
+    await mathFieldReady(page);
     await page.getByTestId('napkin-insert-sum').click();
-    await page.waitForTimeout(500);
+    await expect.poll(() => formulaValue(page)).not.toBe('');
     await page.getByTestId('napkin-generate').click();
     await expect(page.getByTestId('napkin-code')).toContainText('_sum(');
 
     // Generated code describes ONE formula. Leaving it up after the formula
     // changed is a statement about something that no longer exists.
     await page.getByTestId('napkin-insert-fraction').click();
-    await page.waitForTimeout(600);
     await expect(page.getByTestId('napkin-code')).toHaveCount(0);
     await expect(page.getByTestId('napkin-generate-error')).toHaveCount(0);
     await expect(page.getByTestId('napkin-generate-note')).toHaveCount(0);

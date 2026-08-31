@@ -221,6 +221,17 @@ async function scanDue(now: number): Promise<void> {
 
 let stop: (() => void) | null = null;
 
+/**
+ * Stop the tick, if one is running. Exposed for the test hook rather than for
+ * the app: a suite that rebuilds the database at an older schema version has
+ * to stop this first, because every tick reads through repo.ts and so REOPENS
+ * the database — which blocks `indexedDB.deleteDatabase` for as long as the
+ * tab lives. The islands call the disposer `startEngine` returns instead.
+ */
+export function stopEngine(): void {
+  stop?.();
+}
+
 /** Idempotent; returns a disposer. The island calls this from $effect. */
 export function startEngine(): () => void {
   if (stop) return stop;

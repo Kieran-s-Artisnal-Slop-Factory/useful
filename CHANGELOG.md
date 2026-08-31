@@ -44,6 +44,54 @@
 
 ## Other
 
+- **The test suite is trustworthy again.** A full `npm test` had been failing
+  three to seven tests per run, a *different* set every time, and every one of
+  them passed when its spec was run alone — which is exactly the state
+  `retries: 0` exists to prevent. Seven separate causes, each reproduced before
+  it was fixed:
+  - **The fixture drove pages that were not listening yet.** `app.goto()`
+    waited for the test hook, which is its own lazy chunk and regularly lands
+    *before* the islands hydrate. Astro server-renders `client:load` islands,
+    so the sidebar and the palette button are in the HTML from the first paint
+    and look ready while nothing is bound — a `Control+k` on the next line was
+    a coin flip. The fixture now also waits for every `astro-island` to have
+    dropped its `ssr` attribute, which is the moment hydration finishes.
+  - **`app.call()` ran on whatever document was current**, so `app.dump()`
+    straight after a *click* navigation could hit a new page whose hook had not
+    arrived. It waits for the hook now, which fixes the whole class rather than
+    one spec.
+  - **The v6 migration test raced the clock.** The notification engine ticks
+    every second and every tick reopens the database through `repo.ts`, so
+    `deleteDatabase` was blocked by the tab itself; the test then opened at v5
+    against a live v13. The test hook gained `stopEngine()`, and a blocked
+    delete now fails loudly instead of carrying on.
+  - **Three one-shot actions were fired at things that were not ready** — and
+    a control that is not ready does *nothing*, so no retrying assertion could
+    ever recover. `MathField.insert()` returns silently unless the field has
+    loaded; the image editor's opacity and blend controls edit whatever is
+    selected *right now*; the logo generator's badge preview was read while the
+    previous tab's avatar was still on screen, which satisfied one assertion on
+    the wrong picture and failed the next. Each now waits for the app's own
+    statement that it is ready.
+  - **Chromium's view-transition aborts were counted as app errors.** Under
+    load the browser abandons a transition whose DOM update overruns and
+    reports it as an uncaught error; `<ClientRouter />` starts one on every
+    client-side navigation. The navigation still completes and the page is
+    correct, so it is now matched by name and ignored. Nothing else is.
+  - **Sixteen workers against one static server was itself a cause.**
+    Playwright defaults to half the cores, and sixteen browsers installing a
+    service worker and precaching the shell at once ran the machine out of
+    sockets (`net::ERR_NO_BUFFER_SPACE`) and left the worker more than 30
+    seconds to claim its page. Capped at eight — which turned out to be
+    **faster as well as steadier**, 106 s against 114–132 s, because the
+    single-threaded server was the bottleneck all along.
+
+  Along the way this turned up a **real ordering bug in the image editor**: the
+  first image sets the canvas and then reads its EXIF — a lazy import — *before*
+  its layer is added and selected, so a second image picked in that window ends
+  up underneath the first and loses the selection. The tests no longer hide it;
+  the fix is filed separately rather than smuggled in here.
+
 - **Groundwork for the rest of 0.4.0** (Phase 0). Nothing on screen changes;
   two modules land that the tools coming after this one mount rather than
   each growing their own.

@@ -97,11 +97,22 @@ test('a tombstone keeps no payload — deleted content leaves the database', asy
 test('the v6 migration strips payloads from tombstones written by older versions', async ({ app }) => {
   // Rebuild the database as an older version would have left it: a deleted
   // timer whose label and notes are still sitting in the row.
-  await app.call('closeDb'); // an open connection blocks deleteDatabase
+  // Stop the tick BEFORE closing: every tick reads through repo.ts, which
+  // reopens the database, and an open connection blocks deleteDatabase for as
+  // long as the tab lives. Without this the delete is blocked by this very
+  // page, the open at v5 then meets a live v13 database, and the test fails
+  // with a VersionError roughly whenever the machine is busy.
+  await app.call('stopEngine');
+  await app.call('closeDb');
   const fat = await app.page.evaluate(async () => {
-    await new Promise<void>((resolve) => {
+    await new Promise<void>((resolve, reject) => {
       const req = indexedDB.deleteDatabase('useful');
-      req.onsuccess = req.onerror = req.onblocked = () => resolve();
+      req.onsuccess = () => resolve();
+      req.onerror = () => reject(req.error ?? new Error('deleteDatabase failed'));
+      // Never resolve on blocked: continuing would open at v5 against the
+      // database that is still there, and the real cause would be buried.
+      req.onblocked = () =>
+        reject(new Error('deleteDatabase blocked — something still holds a connection'));
     });
     const db = await new Promise<IDBDatabase>((resolve, reject) => {
       const open = indexedDB.open('useful', 5);

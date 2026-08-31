@@ -140,7 +140,10 @@ test.describe('payload discipline', () => {
     const { page } = app;
     await app.goto('/');
     const urls = await watch(page, async () => {
-      await page.goto('/tools/background-remover/');
+      // app.goto, not page.goto: the island has to have hydrated before
+      // `bg-state` exists at all, and the whole point here is to watch the
+      // requests the load makes.
+      await app.goto('/tools/background-remover/');
       await expect(page.getByTestId('bg-state')).toContainText('Not downloaded');
     });
     // The page is allowed to load its own code; the 15MB is not code.

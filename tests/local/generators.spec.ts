@@ -332,8 +332,9 @@ test.describe('regex snippets', () => {
     const { page } = app;
     await app.goto('/tools/regex/');
 
-    // Unfiltered: the full table is on the page.
-    expect(await page.getByTestId('rx-ref-row').count()).toBeGreaterThan(25);
+    // Unfiltered: the full table is on the page. Polled, not counted once —
+    // a bare count is a single sample and cannot wait for anything.
+    await expect.poll(() => page.getByTestId('rx-ref-row').count()).toBeGreaterThan(25);
 
     await page.getByTestId('rx-ref-filter').fill('lookahead');
     await expect(page.getByTestId('rx-ref-row')).toHaveCount(2);

@@ -112,6 +112,17 @@ async function makeSubject(page: P, width: number, height: number): Promise<Buff
 async function importImage(app: { page: P }, name: string, mimeType: string, buffer: Buffer) {
   await app.page.getByTestId('ie-file').setInputFiles({ name, mimeType, buffer });
   await expect(app.page.getByTestId('ie-canvas')).toBeVisible();
+  // The canvas appears as soon as the image is DECODED, but the first image
+  // also reads its EXIF — a lazy `exifr` import — BEFORE its layer is added
+  // and selected. Returning at the canvas therefore let the next
+  // `addImageLayer` interleave with the tail of this one: the first image's
+  // layer landed on top of the second and took the selection back, so a test
+  // that then cropped "the red image" was really cropping under blue. Waiting
+  // for the app to name this file as the target is waiting for `addLayer`.
+  await expect(
+    app.page.getByTestId('ie-target'),
+    `${name} never became the target`
+  ).toContainText(name);
 }
 
 /** Real pointer drag across the canvas in fractions of its box. */
@@ -130,6 +141,26 @@ async function dragOnCanvas(page: P, from: [number, number], to: [number, number
 
 const layerRows = (page: P) => page.getByTestId('ie-layer');
 const rowNamed = (page: P, text: string) => page.getByTestId('ie-layer').filter({ hasText: text });
+
+/**
+ * Add an image layer and wait until it is really the one being edited.
+ *
+ * The file is read and decoded before the layer exists and becomes the
+ * selection, while the panel below — opacity, blend, the tools — is already on
+ * screen acting on the PREVIOUS layer. Carrying straight on therefore edits
+ * the wrong layer, silently, and the failure surfaces somewhere else entirely.
+ * "New marks apply to X" is the app's own statement of what is selected.
+ */
+async function addImageLayer(page: P, name: string, buffer: Buffer) {
+  await page.getByTestId('ie-add-image').setInputFiles({ name, mimeType: 'image/png', buffer });
+  await expect(page.getByTestId('ie-target'), `${name} never became the target`).toContainText(name);
+}
+
+/** Select a layer and wait for the app to agree that it is the target. */
+async function selectLayer(page: P, name: string) {
+  await rowNamed(page, name).getByTestId('ie-layer-select').click();
+  await expect(page.getByTestId('ie-target'), `${name} never became the target`).toContainText(name);
+}
 
 test.describe('image editor', () => {
   test('first image sets the canvas; effects nest under it; export dims + ZERO writes all session', async ({ app }) => {
@@ -207,15 +238,11 @@ test.describe('image editor', () => {
 
     // Base 60×40 blue; a second red 60×40 image layer on top.
     await importImage(app, 'blue.png', 'image/png', await makeImage(page, 'image/png', 60, 40, '#0000ff'));
-    await page.getByTestId('ie-add-image').setInputFiles({
-      name: 'red.png',
-      mimeType: 'image/png',
-      buffer: await makeImage(page, 'image/png', 60, 40, '#ff0000'),
-    });
+    await addImageLayer(page, 'red.png', await makeImage(page, 'image/png', 60, 40, '#ff0000'));
     await expect(layerRows(page)).toHaveCount(2);
 
     // Select the RED image and crop it to its left half (numeric path).
-    await rowNamed(page, 'red.png').getByTestId('ie-layer-select').click();
+    await selectLayer(page, 'red.png');
     await page.getByTestId('ie-tool-crop').click();
     await page.getByTestId('ie-crop-x').fill('0');
     await page.getByTestId('ie-crop-y').fill('0');
@@ -261,11 +288,7 @@ test.describe('image editor', () => {
     await app.goto('/tools/image-editor/');
     const before = await app.dumpAll();
     await importImage(app, 'blue.png', 'image/png', await makeImage(page, 'image/png', 60, 40, '#0000ff'));
-    await page.getByTestId('ie-add-image').setInputFiles({
-      name: 'red.png',
-      mimeType: 'image/png',
-      buffer: await makeImage(page, 'image/png', 60, 40, '#ff0000'),
-    });
+    await addImageLayer(page, 'red.png', await makeImage(page, 'image/png', 60, 40, '#ff0000'));
     // Deselect → the eraser goes to TOP level and erases through both images.
     await page.getByTestId('ie-deselect').click();
     await expect(page.getByTestId('ie-target')).toContainText('top level');
@@ -303,12 +326,10 @@ test.describe('image editor', () => {
     await app.goto('/tools/image-editor/');
     const before = await app.dumpAll();
     await importImage(app, 'grey.png', 'image/png', await makeImage(page, 'image/png', 40, 40, '#808080'));
-    await page.getByTestId('ie-add-image').setInputFiles({
-      name: 'white.png',
-      mimeType: 'image/png',
-      buffer: await makeImage(page, 'image/png', 40, 40, '#ffffff'),
-    });
-    // The white layer is selected (last added). 50% opacity over grey → ~192.
+    // The white layer becomes the selection — waited for, because the opacity
+    // slider below is already on screen editing grey.png until it does.
+    await addImageLayer(page, 'white.png', await makeImage(page, 'image/png', 40, 40, '#ffffff'));
+    // 50% opacity over grey → ~192.
     await page.getByTestId('ie-sel-opacity').fill('50');
     let png = await downloadBytes(page, () => page.getByTestId('ie-download').click());
     let [px] = await probePixels(page, png.bytes, [[20, 20]]);
@@ -344,11 +365,7 @@ test.describe('image editor', () => {
     await page.getByTestId('ie-blank-create').click();
     await expect(rowNamed(page, 'Background')).toHaveCount(1);
     // Add a blue image at the top-left half, then a color fill under it.
-    await page.getByTestId('ie-add-image').setInputFiles({
-      name: 'blue.png',
-      mimeType: 'image/png',
-      buffer: await makeImage(page, 'image/png', 30, 40, '#0000ff'),
-    });
+    await addImageLayer(page, 'blue.png', await makeImage(page, 'image/png', 30, 40, '#0000ff'));
     await page.getByTestId('ie-color').fill('#ff0000');
     await page.getByTestId('ie-add-fill').click();
     await expect(rowNamed(page, 'Color fill')).toHaveAttribute('data-depth', '1');
@@ -413,11 +430,7 @@ test.describe('image editor', () => {
     await page.getByTestId('ie-blank-h').fill('120');
     await page.getByTestId('ie-blank-transparent').check();
     await page.getByTestId('ie-blank-create').click();
-    await page.getByTestId('ie-add-image').setInputFiles({
-      name: 'img.png',
-      mimeType: 'image/png',
-      buffer: await makeImage(page, 'image/png', 80, 60, '#0000ff'),
-    });
+    await addImageLayer(page, 'img.png', await makeImage(page, 'image/png', 80, 60, '#0000ff'));
     await page.getByTestId('ie-tool-move').click();
     await page.getByTestId('ie-zoom-100').click();
     await page.getByTestId('ie-canvas').scrollIntoViewIfNeeded();

@@ -16,6 +16,7 @@ import { patch, put, putReconciled, softDelete } from './db/repo';
 import { exportData, importData, type ExportEnvelope, type ImportMode } from './db/export';
 import { isTestMode } from './testMode';
 import { drainOutbox, enqueue, type OutboxEntry } from './db/outbox';
+import { stopEngine } from './time/engine.svelte';
 
 export interface TestHook {
   rawDump(store: string): Promise<SyncFields[]>;
@@ -33,6 +34,7 @@ export interface TestHook {
   importData(envelope: ExportEnvelope, mode?: ImportMode): Promise<unknown>;
   stores(): string[];
   closeDb(): Promise<void>;
+  stopEngine(): void;
   [extra: string]: unknown;
 }
 
@@ -78,6 +80,10 @@ export function installTestHook(): void {
     // Lets a migration test tear the database down and rebuild it at an older
     // version; an open connection would block deleteDatabase forever.
     closeDb: () => closeDB(),
+    // Paired with closeDb: the notification engine's 1 s tick reopens the
+    // database through repo.ts, so a test that deletes it has to stop the
+    // tick first or the delete is blocked by the tab itself.
+    stopEngine: () => stopEngine(),
   };
   (window as unknown as Record<string, unknown>)['__useful'] = api;
   window.dispatchEvent(new CustomEvent('useful-test-hook-ready'));
