@@ -136,13 +136,13 @@
   });
 </script>
 
-<div class="frame-wrap">
-  <div
-    class="frame-box"
-    style:width={width === null ? null : `${width}px`}
-    style:resize
-    style:height
-  >
+<!-- The height goes on the WRAPPER, not the box. A percentage height only
+     resolves against a parent that has one, and `.frame-wrap` is the element
+     with a parent to measure against — putting `height: 100%` on the box
+     instead silently collapsed it to the iframe's default 150px, which is
+     what the popped-out window rendered as. -->
+<div class="frame-wrap" style:block-size={height}>
+  <div class="frame-box" style:width={width === null ? null : `${width}px`} style:resize>
     <!-- allow="" delegates no permission-policy features (camera, microphone,
          geolocation). The opaque origin already blocks them; saying so in the
          markup means a future edit has to remove a line to weaken it. -->
@@ -162,6 +162,7 @@
   }
 
   .frame-box {
+    block-size: 100%;
     max-width: 100%;
     overflow: hidden; /* `resize` needs a non-visible overflow to take effect. */
     border: 1px solid var(--border-strong-color);

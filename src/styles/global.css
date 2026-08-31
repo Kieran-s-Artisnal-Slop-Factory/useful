@@ -304,6 +304,13 @@ main.page::after {
   text-align: right;
 }
 
+/* A bare page has no fixed topbar to clear, so the space reserved for one is
+   dead band at the top and the same amount of overflow at the bottom of a
+   100dvh child. */
+body.bare {
+  padding-top: 0;
+}
+
 /* A bare page is a viewport onto something, not a sheet to read: no drawing
    frame, no title block, and every pixel of the window given to the content.
    Used by the web playground's popped-out preview. */

@@ -262,6 +262,14 @@ test.describe('web playground', () => {
     await expect(previewFrame).toHaveCount(1);
     await expect(page.getByTestId('wp-console')).toBeVisible();
 
+    // Modal: the editor stays, the inline preview goes, the console remains.
+    await page.getByTestId('wp-layout-modal').click();
+    await expect(page.getByTestId('wp-modal')).toBeVisible();
+    await expect(page.getByTestId(PANE.html)).toBeVisible();
+    await expect(page.locator('.workspace iframe')).toHaveCount(0);
+    await expect(page.getByTestId('wp-console')).toBeVisible();
+    await page.keyboard.press('Escape');
+
     // The buffers survive the round trip, and the preview is rebuilt from them.
     await page.getByTestId('wp-layout-split').click();
     await expect(page.getByTestId(PANE.html).locator('.cm-content')).toContainText('Hello');
@@ -298,6 +306,23 @@ test.describe('web playground', () => {
     await expect(frame).toHaveAttribute('sandbox', 'allow-scripts');
     expect(await frame.getAttribute('sandbox')).not.toContain('allow-same-origin');
 
+    // It fills the window. This collapsed to a 150px strip once, because the
+    // height was set on a box whose parent had no height for a percentage to
+    // resolve against, and the window still "worked" in every other respect.
+    const fills = await popup.evaluate(() => {
+      const el = document.querySelector('iframe[title="Web playground preview"]');
+      const rect = el!.getBoundingClientRect();
+      return {
+        heightRatio: rect.height / window.innerHeight,
+        widthRatio: rect.width / window.innerWidth,
+        top: Math.round(rect.top),
+      };
+    });
+    expect(fills.heightRatio, 'the preview does not fill its window').toBeGreaterThan(0.9);
+    expect(fills.widthRatio).toBeGreaterThan(0.9);
+    // And no band of dead space where a topbar would be on an ordinary page.
+    expect(fills.top).toBe(0);
+
     // Editing here updates the window over there.
     await typeInto(page, 'html', '<h1>Edited while popped out</h1>');
     await expect(popped.locator('h1')).toHaveText('Edited while popped out');
@@ -315,6 +340,66 @@ test.describe('web playground', () => {
     await expect(
       page.frameLocator('iframe[title="Web playground preview"]').locator('h1')
     ).toHaveText('Edited while popped out');
+  });
+
+  test('modal opens the preview over the page and every exit returns to split', async ({
+    app,
+  }) => {
+    const { page } = app;
+    await app.goto('/tools/web-playground/');
+    await typeInto(page, 'html', '<h1>In a modal</h1>');
+
+    await page.getByTestId('wp-layout-modal').click();
+    const dialog = page.getByTestId('wp-modal');
+    await expect(dialog).toBeVisible();
+
+    // A real modal dialog: backdrop, focus trap and Escape come from the
+    // platform rather than from anything hand-rolled here.
+    expect(await dialog.evaluate((el) => (el as HTMLDialogElement).matches(':modal'))).toBe(true);
+    await expect(page.getByTestId('wp-modal-close')).toBeFocused();
+
+    // Near fullscreen, with a margin — not a second page.
+    const box = await dialog.boundingBox();
+    const view = page.viewportSize()!;
+    expect(box!.width).toBeGreaterThan(view.width * 0.9);
+    expect(box!.width).toBeLessThan(view.width);
+    expect(box!.height).toBeGreaterThan(view.height * 0.9);
+    expect(box!.height).toBeLessThan(view.height);
+
+    // The preview is in there, and no longer in the page behind it.
+    await expect(
+      page.frameLocator('[data-testid="wp-modal"] iframe').locator('h1')
+    ).toHaveText('In a modal');
+    await expect(page.locator('.workspace iframe')).toHaveCount(0);
+    await expect(page.getByTestId(PANE.html)).toBeVisible();
+
+    // Escape closes it, and the preview comes back inline.
+    await page.keyboard.press('Escape');
+    await expect(dialog).toHaveCount(0);
+    await expect(page.getByTestId('wp-layout-split')).toHaveAttribute('aria-pressed', 'true');
+    await expect(
+      page.frameLocator('iframe[title="Web playground preview"]').locator('h1')
+    ).toHaveText('In a modal');
+
+    // The corner button is the other way out, and lands in the same place.
+    await page.getByTestId('wp-layout-modal').click();
+    await expect(page.getByTestId('wp-modal')).toBeVisible();
+    await page.getByTestId('wp-modal-close').click();
+    await expect(page.getByTestId('wp-modal')).toHaveCount(0);
+    await expect(page.getByTestId('wp-layout-split')).toHaveAttribute('aria-pressed', 'true');
+
+    // The backdrop is the third way out. Clicking it means clicking OUTSIDE
+    // the dialog's box — in the margin the near-fullscreen sizing leaves — and
+    // such a click is delivered with the dialog itself as its target, which is
+    // what the handler tests for. (`:modal`, asserted above, is also what
+    // makes everything behind the dialog inert: the layout control cannot be
+    // clicked while it is open, so these three exits are the only ones.)
+    await page.getByTestId('wp-layout-modal').click();
+    await expect(page.getByTestId('wp-modal')).toBeVisible();
+    const outside = await page.getByTestId('wp-modal').boundingBox();
+    await page.mouse.click(Math.max(2, outside!.x / 2), Math.max(2, outside!.y / 2));
+    await expect(page.getByTestId('wp-modal')).toHaveCount(0);
+    await expect(page.getByTestId('wp-layout-split')).toHaveAttribute('aria-pressed', 'true');
   });
 
   test('the preview window says so when it has no playground to listen to', async ({ app }) => {

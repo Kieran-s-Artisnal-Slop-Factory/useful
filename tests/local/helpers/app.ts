@@ -14,7 +14,16 @@ const HOOK = '__useful';
  * whichever spec happened to click a link at the wrong moment fail with "the
  * app logged errors". Everything not listed here still fails the test.
  */
-const PLATFORM_NOISE: RegExp[] = [/Transition was aborted because of timeout in DOM update/i];
+const PLATFORM_NOISE: RegExp[] = [
+  /Transition was aborted because of timeout in DOM update/i,
+  // The OS refusing a socket, not the app failing. Eight browser workers, each
+  // with a service worker crawling the shell, against one single-threaded
+  // static server will occasionally exhaust the socket pool — most often on
+  // the specs that sweep every route. Filtering the console line does not hide
+  // anything real: a resource that genuinely failed to load takes its own
+  // test's assertion down with it, visibly. A 404, by contrast, still fails.
+  /net::ERR_NO_BUFFER_SPACE/i,
+];
 
 const isPlatformNoise = (message: string): boolean =>
   PLATFORM_NOISE.some((pattern) => pattern.test(message));

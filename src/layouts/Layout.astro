@@ -63,7 +63,7 @@ const swPath = href('/sw.js');
       })();
     </script>
   </head>
-  <body>
+  <body class:list={{ bare }}>
     <script>
       // Test hook: the chunk is fetched ONLY when the test-mode flag is set on
       // this profile, so a real user never downloads it. See src/lib/testMode.ts.

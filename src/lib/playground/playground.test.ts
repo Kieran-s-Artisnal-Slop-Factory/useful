@@ -4,6 +4,7 @@ import { archiveName, exportFiles, exportIndexHtml } from './export';
 import {
   BLANK,
   hasConsole,
+  isDetached,
   isEmpty,
   isLayout,
   isScriptLang,
@@ -230,8 +231,14 @@ describe('archiveName', () => {
 });
 
 describe('layout', () => {
-  it('offers exactly the four modes, split first', () => {
-    expect(LAYOUTS.map((l) => l.id)).toEqual(['split', 'editor', 'preview', 'popout']);
+  it('offers exactly the five modes, split first', () => {
+    expect(LAYOUTS.map((l) => l.id)).toEqual([
+      'split',
+      'editor',
+      'preview',
+      'modal',
+      'popout',
+    ]);
     for (const layout of LAYOUTS) {
       expect(layout.label).toMatch(/\S/);
       expect(layout.title).toMatch(/\S/);
@@ -240,6 +247,7 @@ describe('layout', () => {
 
   it('knows what a layout string is', () => {
     expect(isLayout('split')).toBe(true);
+    expect(isLayout('modal')).toBe(true);
     expect(isLayout('popout')).toBe(true);
     expect(isLayout('sidebar')).toBe(false);
     expect(isLayout(null)).toBe(false);
@@ -247,10 +255,11 @@ describe('layout', () => {
 
   /** Which panels each mode puts on screen — the whole point of the feature. */
   const table: [Layout, boolean, boolean, boolean, boolean][] = [
-    // layout,    editor, preview, console, single column
+    // layout,    editor, preview inline, console, single column
     ['split', true, true, true, false],
     ['editor', true, false, false, true],
     ['preview', false, true, true, true],
+    ['modal', true, false, true, true],
     ['popout', true, false, true, true],
   ];
 
@@ -269,10 +278,29 @@ describe('layout', () => {
     }
   });
 
-  /** Popout renders no preview HERE, but the document is still built for it. */
-  it('puts the preview elsewhere for popout, not nowhere', () => {
-    expect(showsPreview('popout')).toBe(false);
-    expect(hasConsole('popout')).toBe(true);
+  /**
+   * `modal` and `popout` render no preview in the page FLOW, but the document
+   * is still built — it is shown over the page or in another window. Only
+   * `editor` genuinely has no preview running anywhere, which is why it is the
+   * only mode without a console.
+   */
+  it('tells "somewhere else" apart from "nowhere"', () => {
+    for (const layout of ['modal', 'popout'] as const) {
+      expect(isDetached(layout), layout).toBe(true);
+      expect(showsPreview(layout), layout).toBe(false);
+      expect(hasConsole(layout), layout).toBe(true);
+    }
+    for (const layout of ['split', 'editor', 'preview'] as const) {
+      expect(isDetached(layout), layout).toBe(false);
+    }
+    // The one mode with no preview anywhere is the one with no console.
+    expect(hasConsole('editor')).toBe(false);
+  });
+
+  it('shows the preview in exactly one place at a time', () => {
+    for (const { id } of LAYOUTS) {
+      expect(showsPreview(id) && isDetached(id), id).toBe(false);
+    }
   });
 });
 

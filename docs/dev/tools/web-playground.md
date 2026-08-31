@@ -52,18 +52,39 @@ conditionals in the component:
 | `split` (default) | yes | inline | yes | two |
 | `editor` | yes | — | — | one |
 | `preview` | — | inline | yes | one |
+| `modal` | yes | over the page | yes | one |
 | `popout` | yes | another window | yes | one |
 
-Two invariants fall out of that table and are asserted: **no mode hides both
-panels**, and `popout` is the only one where `showsPreview` is false while
-`hasConsole` stays true — the preview is somewhere else, not nowhere, so the
-document is still built and the log still has a home. Switching back to an
-inline mode rebuilds, because the frame remounts empty and would otherwise sit
-blank until the next keystroke.
+Three invariants fall out of that table and are asserted: **no mode hides both
+panels**, **the preview is in exactly one place at a time**
+(`showsPreview && isDetached` is never true), and `editor` is the only mode
+without a console — because it is the only one with no preview running
+anywhere. `modal` and `popout` are *detached*: the preview is somewhere else,
+not nowhere, so the document is still built and the log still has a home.
+Switching back to an inline mode rebuilds, because the frame remounts empty and
+would otherwise sit blank until the next keystroke.
 
 Layout is session state, not a preference. Everything else on this page is
 forgotten on reload, and a remembered layout would be the only thing that was
 not — changing it therefore writes nothing, which the spec asserts.
+
+### The modal
+
+A native `<dialog>` opened with `showModal()`, sized to the viewport less a
+`1rem` margin so it reads as a sheet over the page rather than a second page.
+The platform supplies the backdrop, the focus trap, Escape-to-close and the
+inertness of everything behind it; none of that is hand-rolled.
+
+That inertness has a consequence worth stating: **the layout control cannot be
+clicked while the modal is open**, so the corner ×, Escape and the backdrop
+are the only ways out. All three go through the dialog's own `close` event, so
+there is exactly one path back to `split`, and `onLayoutChange` needs no branch
+for leaving `modal` — it is unreachable from the UI, and unmounting the dialog
+takes it out of the top layer anyway.
+
+A click on the backdrop is delivered with the *dialog itself* as its target,
+which is what `onModalClick` tests for; a click on the content inside targets
+something else and is left alone.
 
 ### The popped-out preview
 
@@ -153,5 +174,16 @@ Rows are text only (a name, three buffers and a language), so they ride the JSON
 - **TypeScript is stripped, not checked** — see above. Type-checking in the browser means shipping the TypeScript compiler, which is an order of magnitude more than this whole page.
 - **One session at a time.** The library opens a session into the editors; there are no tabs across sessions, and no autosave — Save is explicit, which is what makes "a scratch session writes nothing" true.
 - **A popout cannot be relied on for phones and tablets.** Mobile browsers have no popup windows: they open a tab you have to switch to by hand, or block it outright. The mode says so when it is picked, and a blocked window falls back to `split` with a message rather than leaving an empty pane.
+- **The frame's height goes on `.frame-wrap`, not on `.frame-box`.** A
+  percentage height only resolves against a parent that has one, and the
+  wrapper is the element with a parent to measure against. Setting it on the
+  box instead collapsed the popped-out preview to the iframe's default 150px
+  while every other part of the window worked — which is exactly how it
+  shipped once. The Playwright case asserts the frame fills more than 90% of
+  its window in both axes, so a repeat is caught rather than eyeballed.
+- **A `bare` page also needs `body.bare`.** `body` carries
+  `padding-top: var(--navbar-height)` to clear the fixed topbar; with no topbar
+  that is dead band at the top and the same amount of overflow at the bottom of
+  a `100dvh` child.
 - **The preview reloads wholesale on every rebuild**, so it loses any state the previewed page had built up. Debounced at 500 ms to keep that tolerable while typing.
 - **`sandbox="allow-scripts"` also blocks forms, popups, top-level navigation and pointer lock.** That is the default deny working as intended; adding a flag back means re-reading the decision in [SandboxedPreview.svelte](../../../src/components/SandboxedPreview.svelte), not just adding a word.

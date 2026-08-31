@@ -3,6 +3,7 @@
 ## Features
 
 * Added a **Web Playground** with HTML, CSS, JavaScript, live preview, console output, Emmet, TypeScript support, saved sessions, and ZIP export.
+* Added **preview layouts** to the web playground: side-by-side, editor only, preview only, a near-fullscreen modal, and a popped-out window.
 * Added an **Operation Visualizer** to the programming calculator, showing step-by-step arithmetic, bitwise operations, shifts, carries, and overflow.
 * Added **search, pagination, and scrolling** to link pickers.
 * Expanded **placeholder generators** with more controls, scenes, and 37 FIGlet fonts.
@@ -14,6 +15,7 @@
 
 ## Improvements & Fixes
 
+* Fixed the popped-out web-playground preview rendering as a small blank strip.
 * Fixed flaky browser tests and improved test reliability.
 * Improved service-worker activation and offline asset handling.
 * Improved accessibility across the new tools.

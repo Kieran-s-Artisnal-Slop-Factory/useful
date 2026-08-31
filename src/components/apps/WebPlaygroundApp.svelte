@@ -43,6 +43,7 @@
   import {
     BLANK,
     hasConsole,
+    isDetached,
     isEmpty,
     isSingleColumn,
     LAYOUTS,
@@ -104,6 +105,8 @@
   let popout: Window | null = null;
   let popoutBlocked = $state(false);
   let popoutPoll: ReturnType<typeof setInterval> | undefined;
+  /** The <dialog> for `modal`, while that layout is chosen. */
+  let modalEl = $state<HTMLDialogElement | undefined>();
 
   /** Emmet on the markup tabs: Tab expands, Ctrl-E does too, as in the source. */
   const emmetKeys = keymap.of([
@@ -199,8 +202,34 @@
     popout = null;
   }
 
+  /**
+   * The dialog is opened from an effect rather than from the click, because
+   * the element does not exist until the `{#if}` around it has rendered.
+   * `showModal()` is what brings the backdrop, the focus trap, Escape and the
+   * inertness of the page behind — none of which is worth hand-rolling.
+   */
+  $effect(() => {
+    const dialog = modalEl;
+    if (dialog && !dialog.open) dialog.showModal();
+  });
+
+  /** Every way of closing the dialog ends here, so there is one way back. */
+  function onModalClose() {
+    if (layout === 'modal') layout = 'split';
+    void rebuild();
+  }
+
+  /** A click on the dialog itself is a click on the backdrop, not the content. */
+  function onModalClick(event: MouseEvent) {
+    if (event.target === modalEl) modalEl?.close();
+  }
+
   function onLayoutChange(next: Layout) {
     if (next === layout) return;
+    // No branch for leaving `modal` here: `showModal()` makes everything
+    // outside the dialog inert, so this control cannot be reached while it is
+    // open. The dialog's own close event is the only way out, and unmounting
+    // it takes it out of the top layer on its own.
     layout = next;
     if (next === 'popout') openPopout();
     else closePopout();
@@ -356,7 +385,12 @@
         >
       {/each}
     </div>
-    {#if layout === 'popout'}
+    {#if layout === 'modal'}
+      <span class="muted small" data-testid="wp-modal-note">
+        The preview is over the page. Close it with the ×, with
+        <kbd>Esc</kbd>, or by clicking outside it.
+      </span>
+    {:else if layout === 'popout'}
       <span class="muted small" data-testid="wp-popout-note">
         The preview is in its own window. <strong>Popouts do not work on most
         phones and tablets</strong> — browsers there open a tab you have to switch to
@@ -504,7 +538,11 @@
           />
         {:else}
           <p class="muted small" data-testid="wp-preview-elsewhere">
-            The preview is running in its own window. Anything it logs still arrives below.
+            {#if layout === 'modal'}
+              The preview is open over the page. Anything it logs still arrives below.
+            {:else}
+              The preview is running in its own window. Anything it logs still arrives below.
+            {/if}
           </p>
         {/if}
 
@@ -547,6 +585,36 @@
     </Card>
     {/if}
   </div>
+
+  {#if layout === 'modal'}
+    <!-- svelte-ignore a11y_click_events_have_key_events -->
+    <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+    <dialog
+      class="preview-modal"
+      bind:this={modalEl}
+      data-testid="wp-modal"
+      aria-label="Preview"
+      onclose={onModalClose}
+      onclick={onModalClick}
+    >
+      <div class="modal-inner">
+        <button
+          type="button"
+          class="modal-close"
+          data-testid="wp-modal-close"
+          aria-label="Close the preview"
+          onclick={() => modalEl?.close()}>×</button
+        >
+        <SandboxedPreview
+          {srcdoc}
+          title="Web playground preview"
+          consoleShim
+          height="100%"
+          onConsole={(m) => (messages = m)}
+        />
+      </div>
+    </dialog>
+  {/if}
 
   <Card title="Sessions">
     <div class="stack">
@@ -613,6 +681,64 @@
   .layout-bar {
     align-items: baseline;
     gap: var(--space-3);
+  }
+
+  /* Near fullscreen with a small margin, so it reads as a sheet over the page
+     rather than a second page. The UA stylesheet caps a dialog at 100% minus
+     its own margins, hence the explicit max-* overrides. */
+  .preview-modal {
+    inset: 0;
+    margin: auto;
+    inline-size: calc(100vw - 2rem);
+    block-size: calc(100dvh - 2rem);
+    max-inline-size: none;
+    max-block-size: none;
+    padding: 0;
+    border: 1.5px solid var(--border-strong-color);
+    background: var(--surface-color);
+    color: var(--text-color);
+  }
+
+  .preview-modal::backdrop {
+    background: rgb(0 0 0 / 0.55);
+  }
+
+  .modal-inner {
+    position: relative;
+    block-size: 100%;
+  }
+
+  /* Over the preview, which is someone else's page: it needs its own solid
+     background to stay legible against whatever is behind it. */
+  .modal-close {
+    position: absolute;
+    inset-block-start: var(--space-2);
+    inset-inline-end: var(--space-2);
+    z-index: 1;
+    inline-size: 2rem;
+    block-size: 2rem;
+    display: grid;
+    place-items: center;
+    font-size: 1.25rem;
+    line-height: 1;
+    cursor: pointer;
+    color: var(--text-color);
+    background: var(--surface-color);
+    border: 1px solid var(--border-strong-color);
+    border-radius: var(--radius-md);
+  }
+
+  .modal-close:hover {
+    background: var(--surface-raised-color);
+  }
+
+  .modal-inner :global(.frame-wrap),
+  .modal-inner :global(.frame-box) {
+    block-size: 100%;
+  }
+
+  .modal-inner :global(.frame-box) {
+    border: none;
   }
 
   .layout-label {

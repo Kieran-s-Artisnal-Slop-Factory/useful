@@ -97,9 +97,9 @@ of the code: [plan.md](dev/plans/plan.md) and
 phase list, [version-2.md](dev/plans/version-2.md) is the 0.2.0 plan,
 [version-3.md](dev/plans/version-3.md) is the raw 0.3.0 wish list and
 [version-3-phased.md](dev/plans/version-3-phased.md) the reviewed, phased
-version of it, [far-fetched.md](dev/plans/far-fetched.md) parks what is not
-being built yet, and [TODO](dev/plans/TODO) is the running work list they all
-came from. They record intent at a point in time and are not maintained against
+version of it, [version-4.md](dev/plans/version-4.md) and
+[version-4-phased.md](dev/plans/version-4-phased.md) the same pair for 0.4.0,
+and [TODO](dev/plans/TODO) is the running work list they all came from. They record intent at a point in time and are not maintained against
 the code.
 
 ## Keeping these honest

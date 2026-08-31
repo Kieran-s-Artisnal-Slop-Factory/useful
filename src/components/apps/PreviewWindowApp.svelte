@@ -122,8 +122,12 @@
   }
 
   /* The frame fills the window: no drawing-sheet border out here. */
+  .frame :global(.frame-wrap),
   .frame :global(.frame-box) {
     block-size: 100%;
+  }
+
+  .frame :global(.frame-box) {
     border: none;
   }
 

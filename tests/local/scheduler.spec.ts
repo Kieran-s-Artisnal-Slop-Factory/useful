@@ -507,9 +507,14 @@ async function gotoMonth(app: import('./helpers/app').App, label: string) {
 
 test('a todo due just now raises a DUE banner (no writes)', async ({ app }) => {
   const { page } = app;
-  // The stored due_time is minute-granular: using the CURRENT minute keeps the
-  // parsed due instant at most 59s in the past — always inside the 60s fire
-  // window, whatever second this test runs at.
+  // The stored due_time is minute-granular, so the parsed due instant is the
+  // START of the current minute — already up to 59s in the past when it is
+  // written. The engine only fires while `now - due` is inside its 60s window,
+  // so a write in the last seconds of a minute leaves less than one tick of
+  // margin and the banner never appears at all. Step over the boundary rather
+  // than race it: this is wall-clock, which is what a fixed wait is for.
+  const secondsIn = new Date().getSeconds();
+  if (secondsIn > 45) await page.waitForTimeout((61 - secondsIn) * 1000);
   const due = new Date();
   const pad = (n: number) => String(n).padStart(2, '0');
   await app.call('rawPut', 'todos', {

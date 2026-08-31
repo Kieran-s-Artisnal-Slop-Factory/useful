@@ -13,6 +13,7 @@ _Describes the code as of v0.4.0 (unreleased; schema v14) — verify against sou
    - **Split** — editor and preview side by side. This is how it starts.
    - **Editor** — the code fills the page and the preview is hidden. For when you know what you are writing and want the room.
    - **Preview** — the preview fills the page and the editor is collapsed. For looking at the result properly.
+   - **Modal** — the preview opens over the page, almost fullscreen. Close it with the × in the corner, with <kbd>Esc</kbd>, or by clicking outside it; any of them puts the preview back beside the editor.
    - **Popout** — the preview moves to its own window, so the editor gets the whole of this one. Drag the other window wherever you like, or onto a second screen. Close it, or pick another layout, and the preview comes back.
 5. **Full / Tablet / Mobile** set the preview's width, and you can drag its right-hand edge to any width in between. Picking a preset resets the drag.
 6. **Script language** switches the script tab between JavaScript and TypeScript.
@@ -27,6 +28,7 @@ Saved sessions are part of your backup, so your code travels with the rest of yo
 
 ## Gotchas
 
+- **While the modal is open, the rest of the page is out of reach.** That is what makes it a modal — close it with the ×, <kbd>Esc</kbd> or a click outside before doing anything else. Your code keeps running in it, and whatever it logs is waiting in the Console when you close it.
 - **Popout does not work on most phones and tablets.** Mobile browsers have no separate windows: they open a tab you have to switch to by hand, and some block it outright. If nothing appears, the page says so and puts the preview back beside the editor — switch to **Split** or **Preview** instead.
 - **The popped-out window is only a viewport.** Your code still runs in the same sealed frame it does inline, with no access to this app's data. Anything it logs still appears in the Console beside your code, not in the other window. Closing the playground tab leaves the preview window with nothing to show, and it will tell you so.
 - **Your layout choice is not remembered.** Reloading goes back to Split, like everything else on this page.
