@@ -48,6 +48,16 @@ export interface App {
   goto(path?: string): Promise<void>;
   /** Wait until this document can be driven and its hook answers. */
   ready(): Promise<void>;
+  /**
+   * Allow a console error this test provokes ON PURPOSE.
+   *
+   * The HTTP playground is the case that needs it: fetching a 404 is the
+   * feature, and the browser logs "Failed to load resource" for it whoever
+   * asked. Narrow by pattern and scoped to the one test that calls it —
+   * unlike `PLATFORM_NOISE`, which applies to every spec and so is reserved
+   * for things no test could ever be about.
+   */
+  expectConsoleError(pattern: RegExp): void;
   call<T>(method: string, ...args: unknown[]): Promise<T>;
   dumpAll(): Promise<Record<string, Record<string, unknown>[]>>;
   dump(store: string): Promise<Record<string, unknown>[]>;
@@ -86,9 +96,15 @@ export const test = base.extend<{ app: App }>({
         timeout: 15_000,
       });
 
+    /** Patterns this test said it would provoke. */
+    const expected: RegExp[] = [];
+
     const app: App = {
       page,
       errors,
+      expectConsoleError(pattern: RegExp) {
+        expected.push(pattern);
+      },
       async goto(path = '/') {
         await page.goto(path);
         await app.ready();
@@ -129,7 +145,10 @@ export const test = base.extend<{ app: App }>({
     };
     await app.goto();
     await use(app);
-    expect(errors, 'the app logged errors').toEqual([]);
+    expect(
+      errors.filter((entry) => !expected.some((pattern) => pattern.test(entry))),
+      'the app logged errors'
+    ).toEqual([]);
     await context.close();
   },
 });

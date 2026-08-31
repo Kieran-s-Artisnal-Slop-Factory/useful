@@ -50,6 +50,7 @@ Per tool, under [`dev/tools/`](dev/tools/):
 [SQL playground](dev/tools/sql-playground.md) ·
 [config playground](dev/tools/config-playground.md) ·
 [web playground](dev/tools/web-playground.md) ·
+[HTTP playground](dev/tools/http-playground.md) ·
 [notebook](dev/tools/notebook.md)
 
 ## For users — [`user/`](user/)
@@ -87,6 +88,7 @@ the app.
 | [sql-playground.md](user/sql-playground.md) | Real SQLite and Postgres in the tab |
 | [config-playground.md](user/config-playground.md) | JSON and YAML: validate, prettify, extract a schema, convert between formats, generate samples and code |
 | [web-playground.md](user/web-playground.md) | HTML, CSS and JavaScript with a live preview, a console, and saved sessions |
+| [http-playground.md](user/http-playground.md) | Build a request, send it, read the answer — and why CORS will refuse most of them |
 | [notebook.md](user/notebook.md) | Linked markdown notes — WYSIWYG or source, footnotes, diagrams, drawings, export to Markdown, HTML and PDF |
 
 ## Plans

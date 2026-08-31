@@ -2,6 +2,7 @@
 
 ## Features
 
+* Added an **HTTP Playground**: build a request, send it, and read the response. Flags the headers a browser silently refuses to send, checks a JSON body before sending, shows exactly how a form body is encoded, works out what a response really is from its bytes rather than its Content-Type, previews HTML in a sealed frame, and explains a failed request — including telling CORS apart from mixed content.
 * Added a **Web Playground** with HTML, CSS, JavaScript, live preview, console output, Emmet, TypeScript support, saved sessions, and ZIP export.
 * Added **preview layouts** to the web playground: side-by-side, editor only, preview only, and a near-fullscreen modal.
 * Added an **Operation Visualizer** to the programming calculator, showing step-by-step arithmetic, bitwise operations, shifts, carries, and overflow.

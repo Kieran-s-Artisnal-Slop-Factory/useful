@@ -8,6 +8,13 @@
  * config's health-check URL, and serves dist/ with the same trailing-slash
  * semantics a static host uses.
  *
+ * It also serves a few `/__echo/*` routes for the HTTP playground's spec:
+ * a request needs something real to be sent to, and a SAME-ORIGIN target is
+ * the only kind a browser will let the page talk to without CORS in the way.
+ * That is deliberate — these routes exercise the send path, while the CORS
+ * classifier is unit-tested against synthetic failures where its inputs can
+ * actually be controlled.
+ *
  * Usage: node tools/preview-server.mjs [--port 4330] [--dir dist]
  */
 import { createServer } from 'node:http';
@@ -40,6 +47,93 @@ const MIME = {
   '.woff2': 'font/woff2',
 };
 
+/** Read a request body whole. */
+function readBody(req) {
+  return new Promise((resolve) => {
+    const chunks = [];
+    req.on('data', (c) => chunks.push(c));
+    req.on('end', () => resolve(Buffer.concat(chunks)));
+    req.on('error', () => resolve(Buffer.alloc(0)));
+  });
+}
+
+/**
+ * The echo routes. Returns true when it handled the request.
+ *
+ *   /__echo/json    method, headers and body back as JSON
+ *   /__echo/html    a small HTML document, for the preview toggle
+ *   /__echo/binary  PNG bytes under a LYING `content-type: text/plain`,
+ *                   so the sniffer has something to disagree with
+ *   /__echo/slow    holds the connection open, for the cancel button
+ *   /__echo/broken  claims JSON and is not
+ *   /__echo/status  any status you ask for: /__echo/status/404
+ */
+async function echo(req, res, pathname) {
+  if (!pathname.startsWith('/__echo/')) return false;
+
+  if (pathname === '/__echo/json') {
+    const body = await readBody(req);
+    res
+      .writeHead(200, { 'content-type': 'application/json', 'x-echo': 'yes', 'cache-control': 'no-store' })
+      .end(
+        JSON.stringify({
+          method: req.method,
+          headers: req.headers,
+          query: new URL(req.url, 'http://localhost').search,
+          body: body.toString('utf8'),
+        })
+      );
+    return true;
+  }
+
+  if (pathname === '/__echo/html') {
+    res
+      .writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' })
+      .end('<!doctype html><html><head><title>Echoed</title></head><body><h1>From the server</h1></body></html>');
+    return true;
+  }
+
+  if (pathname === '/__echo/binary') {
+    // A 1x1 PNG. The content-type is a lie on purpose: the viewer names a body
+    // from its MAGIC BYTES, and this is what proves it.
+    const png = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+      'base64'
+    );
+    res
+      .writeHead(200, { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' })
+      .end(png);
+    return true;
+  }
+
+  if (pathname === '/__echo/broken') {
+    res
+      .writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' })
+      .end('{ "almost": true,, }');
+    return true;
+  }
+
+  if (pathname === '/__echo/slow') {
+    // Never answers within a test's patience: the point is to abort it.
+    const timer = setTimeout(() => {
+      res.writeHead(200, { 'content-type': 'text/plain' }).end('too late');
+    }, 30_000);
+    req.on('close', () => clearTimeout(timer));
+    return true;
+  }
+
+  const status = pathname.match(/^\/__echo\/status\/(\d{3})$/);
+  if (status) {
+    res
+      .writeHead(Number(status[1]), { 'content-type': 'text/plain', 'cache-control': 'no-store' })
+      .end(`status ${status[1]}`);
+    return true;
+  }
+
+  res.writeHead(404, { 'content-type': 'text/plain' }).end('no such echo route');
+  return true;
+}
+
 createServer(async (req, res) => {
   try {
     // Keep the raw (still-encoded) pathname for the redirect Location header —
@@ -47,6 +141,7 @@ createServer(async (req, res) => {
     // filesystem lookup.
     const rawPathname = new URL(req.url, 'http://localhost').pathname;
     const pathname = decodeURIComponent(rawPathname);
+    if (await echo(req, res, pathname)) return;
     const filePath = normalize(join(ROOT, pathname));
     // The normalized path must stay inside ROOT (rejects ../ traversal).
     if (filePath !== ROOT && !filePath.startsWith(ROOT + sep)) {

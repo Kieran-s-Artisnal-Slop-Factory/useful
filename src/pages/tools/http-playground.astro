@@ -1,0 +1,8 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import HttpPlaygroundApp from '../../components/apps/HttpPlaygroundApp.svelte';
+---
+
+<Layout title="HTTP playground">
+  <HttpPlaygroundApp client:only="svelte" />
+</Layout>

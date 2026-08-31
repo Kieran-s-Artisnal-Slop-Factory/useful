@@ -173,7 +173,7 @@ nobody answers.
 | 0 | Groundwork: version bump, template engine, shared previewer | — | — | **DONE.** Unblocks 2, 3, 4 |
 | 1 | Programming calculator operation visualizer | — | — | **DONE.** Independent |
 | 2 | Web playground (port from learn-anywhere) | `@codemirror/lang-html`, `-css`, `-javascript`, `@emmetio/codemirror6-plugin`; lazy `sucrase` | **v14** | **DONE.** `web_playgrounds` |
-| 3 | HTTP playground — request/response core | — | — | Stateless; largest single phase |
+| 3 | HTTP playground — request/response core | — | — | **DONE.** Stateless; largest single phase |
 | 4 | HTTP playground — environments, variables, secrets | — | **v15** | `http_requests`, `http_environments`, `http_secrets` (local-only) |
 | 5 | HTTP playground — multi-step flows | — | **v16** | `http_flows` |
 | 6 | Placeholder text via in-browser LLM (opt-in) | TBD per Q4 | — | Severable; may ship as a documented "no" |
@@ -356,7 +356,7 @@ origins, and TS here strips types without checking them).
 
 ---
 
-## Phase 3 — HTTP playground — request/response core
+## Phase 3 — HTTP playground — request/response core — DONE
 
 **Goal:** craft a request, send it, and understand what came back — the
 httpie/Postman core, stateless, with the browser's rules stated instead of

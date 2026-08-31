@@ -97,6 +97,10 @@ export const ICONS: Record<string, string> = {
   notebook:
     '<path d="M2 6h4"/><path d="M2 10h4"/><path d="M2 14h4"/><path d="M2 18h4"/>' +
     '<rect width="16" height="20" x="4" y="2" rx="2"/><path d="M16 2v20"/>',
+  // Lucide "arrow-up-down" — a request going out and an answer coming back,
+  // the HTTP playground.
+  'arrow-up-down':
+    '<path d="m21 16-4 4-4-4"/><path d="M17 20V4"/><path d="m3 8 4-4 4 4"/><path d="M7 4v16"/>',
   // Lucide "code-xml" — angle brackets around a slash, the web playground.
   'code-xml':
     '<path d="m18 16 4-4-4-4"/><path d="m6 8-4 4 4 4"/><path d="m14.5 4-5 16"/>',
