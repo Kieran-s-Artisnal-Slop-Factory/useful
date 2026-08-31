@@ -62,3 +62,33 @@ export function isEmpty(buffers: Buffers): boolean {
 
 /** The filename the script gets, in the editor and in the export. */
 export const scriptName = (lang: ScriptLang): string => (lang === 'ts' ? 'script.ts' : 'script.js');
+
+/** Where the preview sits relative to the editor. */
+export type Layout = 'split' | 'editor' | 'preview' | 'popout';
+
+export const LAYOUTS: { id: Layout; label: string; title: string }[] = [
+  { id: 'split', label: 'Split', title: 'Editor and preview side by side' },
+  { id: 'editor', label: 'Editor', title: 'The code only — the preview is hidden' },
+  { id: 'preview', label: 'Preview', title: 'The preview only — the editor is collapsed' },
+  { id: 'popout', label: 'Popout', title: 'The preview in its own window' },
+];
+
+export const isLayout = (value: unknown): value is Layout =>
+  LAYOUTS.some((layout) => layout.id === value);
+
+/** Is the editor column on screen? */
+export const showsEditor = (layout: Layout): boolean => layout !== 'preview';
+
+/**
+ * Is the preview rendered IN THIS WINDOW? False for `popout`, where it is
+ * rendered in another one — the document still has to be built either way,
+ * because the popout is sent the same string this would have shown.
+ */
+export const showsPreview = (layout: Layout): boolean =>
+  layout === 'split' || layout === 'preview';
+
+/** Is there a preview running anywhere, and so a console worth showing? */
+export const hasConsole = (layout: Layout): boolean => layout !== 'editor';
+
+/** Does the one visible panel get the whole width? */
+export const isSingleColumn = (layout: Layout): boolean => layout !== 'split';

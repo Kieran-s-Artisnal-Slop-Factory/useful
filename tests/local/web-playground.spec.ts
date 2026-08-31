@@ -239,6 +239,93 @@ test.describe('web playground', () => {
     expect(await previewDoc(page), 'the preview was blanked by a syntax error').toBe(lastGood);
   });
 
+  test('the layout control shows the editor, the preview, or both', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/web-playground/');
+    const before = await app.dumpAll();
+    const previewFrame = page.locator('iframe[title="Web playground preview"]');
+
+    // Split is the default: both panels, two columns.
+    await expect(page.getByTestId('wp-layout-split')).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByTestId(PANE.html)).toBeVisible();
+    await expect(previewFrame).toHaveCount(1);
+
+    // Editor only — the preview is gone, and so is the console with it.
+    await page.getByTestId('wp-layout-editor').click();
+    await expect(page.getByTestId(PANE.html)).toBeVisible();
+    await expect(previewFrame).toHaveCount(0);
+    await expect(page.getByTestId('wp-console')).toHaveCount(0);
+
+    // Preview only — the editor is collapsed, the console stays.
+    await page.getByTestId('wp-layout-preview').click();
+    await expect(page.getByTestId(PANE.html)).toHaveCount(0);
+    await expect(previewFrame).toHaveCount(1);
+    await expect(page.getByTestId('wp-console')).toBeVisible();
+
+    // The buffers survive the round trip, and the preview is rebuilt from them.
+    await page.getByTestId('wp-layout-split').click();
+    await expect(page.getByTestId(PANE.html).locator('.cm-content')).toContainText('Hello');
+    await expect(
+      page.frameLocator('iframe[title="Web playground preview"]').locator('h1')
+    ).toHaveText('Hello');
+
+    // Changing layout is view state — it writes nothing.
+    expect(await app.dumpAll()).toEqual(before);
+  });
+
+  test('popout runs the preview in its own window, still sandboxed', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/web-playground/');
+    await typeInto(page, 'html', '<h1>Popped</h1>');
+
+    const [popup] = await Promise.all([
+      page.waitForEvent('popup'),
+      page.getByTestId('wp-layout-popout').click(),
+    ]);
+    await popup.waitForLoadState();
+
+    // The preview left this window and arrived in the other one.
+    await expect(page.locator('iframe[title="Web playground preview"]')).toHaveCount(0);
+    await expect(page.getByTestId('wp-preview-elsewhere')).toBeVisible();
+    await expect(page.getByTestId('wp-popout-note')).toContainText('phones and tablets');
+    const popped = popup.frameLocator('iframe[title="Web playground preview"]');
+    await expect(popped.locator('h1')).toHaveText('Popped');
+
+    // The popup window is same-origin with the app — which is exactly why the
+    // code must NOT be its document. It is not: the frame inside it carries
+    // the same sandbox, so the code still runs with no origin of its own.
+    const frame = popup.locator('iframe[title="Web playground preview"]');
+    await expect(frame).toHaveAttribute('sandbox', 'allow-scripts');
+    expect(await frame.getAttribute('sandbox')).not.toContain('allow-same-origin');
+
+    // Editing here updates the window over there.
+    await typeInto(page, 'html', '<h1>Edited while popped out</h1>');
+    await expect(popped.locator('h1')).toHaveText('Edited while popped out');
+
+    // And its console comes back to sit beside the code that wrote it.
+    await typeInto(page, 'script', "console.log('from the popout');\n");
+    await expect(consoleLines(page).first()).toContainText('from the popout');
+
+    // Closing the window puts the preview back rather than leaving a dead mode.
+    await popup.close();
+    await expect(page.getByTestId('wp-layout-split')).toHaveAttribute('aria-pressed', 'true', {
+      timeout: 15_000,
+    });
+    await expect(page.locator('iframe[title="Web playground preview"]')).toHaveCount(1);
+    await expect(
+      page.frameLocator('iframe[title="Web playground preview"]').locator('h1')
+    ).toHaveText('Edited while popped out');
+  });
+
+  test('the preview window says so when it has no playground to listen to', async ({ app }) => {
+    const { page } = app;
+    // Opened directly rather than by the playground: there is no opener, so
+    // there is nothing to show and the page says which page to go back to.
+    await app.goto('/tools/web-playground/preview/');
+    await expect(page.getByTestId('pw-orphaned')).toBeVisible();
+    await expect(page.getByTestId('pw-orphaned')).toContainText('Popout');
+  });
+
   test('New and Clear reset the scratch buffers without writing', async ({ app }) => {
     const { page } = app;
     await app.goto('/tools/web-playground/');

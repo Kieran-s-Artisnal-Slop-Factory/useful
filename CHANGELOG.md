@@ -38,6 +38,18 @@ build, so export one before downgrading.
   - **Export** writes the three buffers as a `.zip` whose `index.html` links
     its siblings, so the unzipped folder opens in a browser on its own. A
     TypeScript session ships its `.ts` original beside the compiled script.
+  - **Four places to put the preview.** **Split** is how it starts;
+    **Editor** hides the preview and gives the code the whole page;
+    **Preview** does the reverse; and **Popout** moves the preview into its
+    own window so the editor gets all of this one — drag it to a second
+    screen if you have one. Closing that window, or picking another layout,
+    brings the preview back. The popped-out window is only a viewport: your
+    code still runs in the same sealed frame it does inline, with no access
+    to this app's data, and what it logs still appears in the Console beside
+    the code that wrote it. **Popouts do not work on most phones and
+    tablets** — mobile browsers have no separate windows — so the page says
+    so when the mode is picked, and a window the browser refuses to open
+    falls back to Split with an explanation rather than an empty pane.
 
 - **The programming calculator shows its working** (Phase 1). A new
   **Operation visualizer** under the existing Operations table takes a second

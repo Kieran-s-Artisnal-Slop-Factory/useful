@@ -1,0 +1,8 @@
+---
+import Layout from '../../../layouts/Layout.astro';
+import PreviewWindowApp from '../../../components/apps/PreviewWindowApp.svelte';
+---
+
+<Layout title="Web playground preview" bare>
+  <PreviewWindowApp client:only="svelte" />
+</Layout>

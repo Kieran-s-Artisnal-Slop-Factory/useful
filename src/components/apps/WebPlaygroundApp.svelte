@@ -42,13 +42,27 @@
   import { archiveName, exportFiles } from '../../lib/playground/export';
   import {
     BLANK,
+    hasConsole,
     isEmpty,
+    isSingleColumn,
+    LAYOUTS,
     normalizeSession,
+    showsEditor,
+    showsPreview,
     STARTER,
     scriptName,
     type Buffers,
+    type Layout,
     type ScriptLang,
   } from '../../lib/playground/model';
+  import {
+    closeMessage,
+    documentMessage,
+    isPopoutMessage,
+    POPOUT_WINDOW_NAME,
+    popoutFeatures,
+  } from '../../lib/playground/popout';
+  import { href } from '../../lib/paths';
   import { zipBlob } from '../../lib/zip';
   import { copyText, downloadBlob } from '../../lib/exportFile';
   import { all, getSingleton, patch, put, putSingleton, softDelete, withSyncFields } from '../../lib/db/repo';
@@ -82,6 +96,15 @@
   let viewport = $state('full');
   const viewportWidth = $derived(VIEWPORTS.find((v) => v.id === viewport)?.width ?? null);
 
+  // --- layout ---------------------------------------------------------------
+  // Session state, not a preference: the page already forgets everything else
+  // on reload, and a remembered layout would be the only thing that did not.
+  let layout = $state<Layout>('split');
+  /** The popped-out preview window, while one is open. */
+  let popout: Window | null = null;
+  let popoutBlocked = $state(false);
+  let popoutPoll: ReturnType<typeof setInterval> | undefined;
+
   /** Emmet on the markup tabs: Tab expands, Ctrl-E does too, as in the source. */
   const emmetKeys = keymap.of([
     { key: 'Tab', run: expandAbbreviation },
@@ -111,6 +134,79 @@
       css: buffers.css,
       script: compiled.code,
     });
+    sendToPopout();
+  }
+
+  // --- the popped-out preview ----------------------------------------------
+
+  /** Hand the current document to the popout, if one is listening. */
+  function sendToPopout() {
+    if (!popout || popout.closed || !srcdoc) return;
+    try {
+      popout.postMessage(documentMessage(srcdoc), window.location.origin);
+    } catch {
+      /* it went away between the check and the send */
+    }
+  }
+
+  function onPopoutMessage(event: MessageEvent) {
+    // Both windows are ours, so a real origin check is available here — unlike
+    // the sandboxed frame, whose origin is the string "null" and proves nothing.
+    if (event.origin !== window.location.origin) return;
+    if (!popout || event.source !== popout) return;
+    if (!isPopoutMessage(event.data)) return;
+    if (event.data.type === 'ready') sendToPopout();
+    else if (event.data.type === 'console') messages = event.data.messages;
+  }
+
+  function openPopout() {
+    popoutBlocked = false;
+    const opened = window.open(
+      href('/tools/web-playground/preview/'),
+      POPOUT_WINDOW_NAME,
+      popoutFeatures(window.screen.availWidth, window.screen.availHeight)
+    );
+    if (!opened) {
+      // Blocked, or a browser that has no popups to give. Say so and stay put.
+      popoutBlocked = true;
+      layout = 'split';
+      return;
+    }
+    popout = opened;
+    messages = [];
+    clearInterval(popoutPoll);
+    // The window can be closed from its own title bar, which fires nothing we
+    // can hear. Noticing costs one cheap check a second.
+    popoutPoll = setInterval(() => {
+      if (popout?.closed) {
+        popout = null;
+        clearInterval(popoutPoll);
+        if (layout === 'popout') layout = 'split';
+      }
+    }, 1000);
+  }
+
+  function closePopout() {
+    clearInterval(popoutPoll);
+    if (popout && !popout.closed) {
+      try {
+        popout.postMessage(closeMessage(), window.location.origin);
+        popout.close();
+      } catch {
+        /* already gone */
+      }
+    }
+    popout = null;
+  }
+
+  function onLayoutChange(next: Layout) {
+    if (next === layout) return;
+    layout = next;
+    if (next === 'popout') openPopout();
+    else closePopout();
+    // Coming back to an inline preview: the frame remounts empty, so give it
+    // the document again rather than waiting for the next keystroke.
+    if (showsPreview(next)) void rebuild();
   }
 
   function onEdit(key: Tab, doc: string) {
@@ -216,6 +312,7 @@
   }
 
   onMount(async () => {
+    window.addEventListener('message', onPopoutMessage);
     try {
       await refresh();
       const prefs = await getSingleton<Preferences>('preferences');
@@ -228,7 +325,11 @@
     }
   });
 
-  onDestroy(() => clearTimeout(debounce));
+  onDestroy(() => {
+    clearTimeout(debounce);
+    window.removeEventListener('message', onPopoutMessage);
+    closePopout();
+  });
 </script>
 
 <div class="page-header">
@@ -240,7 +341,41 @@
     <p class="banner banner-success" data-testid="wp-notice">{notice}</p>
   {/if}
 
-  <div class="workspace">
+  <div class="row wrap layout-bar">
+    <span class="layout-label" id="wp-layout-label">Layout</span>
+    <div class="seg" role="group" aria-labelledby="wp-layout-label">
+      {#each LAYOUTS as option (option.id)}
+        <button
+          type="button"
+          class="seg-btn"
+          class:on={layout === option.id}
+          aria-pressed={layout === option.id}
+          title={option.title}
+          data-testid={'wp-layout-' + option.id}
+          onclick={() => onLayoutChange(option.id)}>{option.label}</button
+        >
+      {/each}
+    </div>
+    {#if layout === 'popout'}
+      <span class="muted small" data-testid="wp-popout-note">
+        The preview is in its own window. <strong>Popouts do not work on most
+        phones and tablets</strong> — browsers there open a tab you have to switch to
+        by hand, and some block it outright. Switch back to Split if it does not
+        appear.
+      </span>
+    {/if}
+  </div>
+
+  {#if popoutBlocked}
+    <p class="banner banner-danger" data-testid="wp-popout-blocked" role="alert">
+      The browser would not open the preview window — it was blocked, or this
+      browser has no popups. Allow popups for this site and try again; the
+      preview is back beside the editor in the meantime.
+    </p>
+  {/if}
+
+  <div class="workspace" class:single={isSingleColumn(layout)}>
+    {#if showsEditor(layout)}
     <Card title="Editor">
       {#snippet actions()}
         <span class="muted hint">Emmet on HTML and CSS: <kbd>Tab</kbd> expands</span>
@@ -336,32 +471,42 @@
         {/if}
       </div>
     </Card>
+    {/if}
 
-    <Card title="Preview">
+    {#if showsPreview(layout) || hasConsole(layout)}
+    <Card title={showsPreview(layout) ? 'Preview' : 'Console'}>
       {#snippet actions()}
-        <div class="row seg" role="group" aria-label="Preview width">
-          {#each VIEWPORTS as v (v.id)}
-            <button
-              type="button"
-              class="seg-btn"
-              class:on={viewport === v.id}
-              aria-pressed={viewport === v.id}
-              data-testid={'wp-viewport-' + v.id}
-              onclick={() => (viewport = v.id)}>{v.label}</button
-            >
-          {/each}
-        </div>
+        {#if showsPreview(layout)}
+          <div class="row seg" role="group" aria-label="Preview width">
+            {#each VIEWPORTS as v (v.id)}
+              <button
+                type="button"
+                class="seg-btn"
+                class:on={viewport === v.id}
+                aria-pressed={viewport === v.id}
+                data-testid={'wp-viewport-' + v.id}
+                onclick={() => (viewport = v.id)}>{v.label}</button
+              >
+            {/each}
+          </div>
+        {/if}
       {/snippet}
       <div class="stack">
-        <SandboxedPreview
-          {srcdoc}
-          title="Web playground preview"
-          consoleShim
-          width={viewportWidth}
-          resize="horizontal"
-          height="26rem"
-          onConsole={(m) => (messages = m)}
-        />
+        {#if showsPreview(layout)}
+          <SandboxedPreview
+            {srcdoc}
+            title="Web playground preview"
+            consoleShim
+            width={viewportWidth}
+            resize="horizontal"
+            height={layout === 'preview' ? '38rem' : '26rem'}
+            onConsole={(m) => (messages = m)}
+          />
+        {:else}
+          <p class="muted small" data-testid="wp-preview-elsewhere">
+            The preview is running in its own window. Anything it logs still arrives below.
+          </p>
+        {/if}
 
         <div class="console" data-testid="wp-console">
           <div class="row console-head">
@@ -400,6 +545,7 @@
         </Explainer>
       </div>
     </Card>
+    {/if}
   </div>
 
   <Card title="Sessions">
@@ -457,6 +603,28 @@
     .workspace {
       grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     }
+
+    /* One panel on screen takes the whole sheet rather than half of it. */
+    .workspace.single {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+
+  .layout-bar {
+    align-items: baseline;
+    gap: var(--space-3);
+  }
+
+  .layout-label {
+    font-size: var(--font-size-sm);
+    font-weight: 600;
+    color: var(--text-muted-color);
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-label);
+  }
+
+  .layout-bar .muted {
+    flex: 1 1 18rem;
   }
 
   .tabs {

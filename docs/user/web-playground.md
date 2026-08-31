@@ -9,10 +9,15 @@ _Describes the code as of v0.4.0 (unreleased; schema v14) — verify against sou
 1. Type in any of the three tabs — **index.html**, **style.css**, **script.js**. The preview catches up about half a second after you stop typing. Each tab keeps its own undo history, so switching tabs never costs you an undo.
 2. On the HTML and CSS tabs, **Emmet** is on: type an abbreviation like `div.card>h2+p` and press <kbd>Tab</kbd> to expand it.
 3. The **Console** strip below the preview shows anything your code logs, plus any error it throws and any promise it fails to handle. **Clear** empties it; it also clears itself whenever the preview rebuilds.
-4. **Full / Tablet / Mobile** set the preview's width, and you can drag its right-hand edge to any width in between. Picking a preset resets the drag.
-5. **Script language** switches the script tab between JavaScript and TypeScript.
-6. **Copy this tab** puts the current tab on the clipboard. **Export .zip** downloads the whole thing as `index.html`, `style.css` and `script.js` — a folder that opens in a browser on its own.
-7. **Clear all tabs** empties all three (it asks first, unless they are already empty). **New** starts again from the example.
+4. **Layout** decides where the preview goes:
+   - **Split** — editor and preview side by side. This is how it starts.
+   - **Editor** — the code fills the page and the preview is hidden. For when you know what you are writing and want the room.
+   - **Preview** — the preview fills the page and the editor is collapsed. For looking at the result properly.
+   - **Popout** — the preview moves to its own window, so the editor gets the whole of this one. Drag the other window wherever you like, or onto a second screen. Close it, or pick another layout, and the preview comes back.
+5. **Full / Tablet / Mobile** set the preview's width, and you can drag its right-hand edge to any width in between. Picking a preset resets the drag.
+6. **Script language** switches the script tab between JavaScript and TypeScript.
+7. **Copy this tab** puts the current tab on the clipboard. **Export .zip** downloads the whole thing as `index.html`, `style.css` and `script.js` — a folder that opens in a browser on its own.
+8. **Clear all tabs** empties all three (it asks first, unless they are already empty). **New** starts again from the example.
 
 ## Saving your work
 
@@ -22,6 +27,9 @@ Saved sessions are part of your backup, so your code travels with the rest of yo
 
 ## Gotchas
 
+- **Popout does not work on most phones and tablets.** Mobile browsers have no separate windows: they open a tab you have to switch to by hand, and some block it outright. If nothing appears, the page says so and puts the preview back beside the editor — switch to **Split** or **Preview** instead.
+- **The popped-out window is only a viewport.** Your code still runs in the same sealed frame it does inline, with no access to this app's data. Anything it logs still appears in the Console beside your code, not in the other window. Closing the playground tab leaves the preview window with nothing to show, and it will tell you so.
+- **Your layout choice is not remembered.** Reloading goes back to Split, like everything else on this page.
 - **The preview cannot reach the internet.** It runs in a frame with no origin of its own, which is exactly what stops your code reading this app's stored data — and it is also why `fetch` to another site fails there. A page with no origin is refused by every server. This is not something a setting can turn off; use the HTTP playground if you need to call an API.
 - **TypeScript here is stripped, not checked.** The types are removed and the rest runs as written. `const n: number = "hello"` is not an error — it runs, and `n` is the string. You get TypeScript's syntax, not its safety. A genuine *syntax* error does stop the rebuild, and the message appears under the editor while the last working preview stays on screen.
 - **Nothing is saved until you press Save.** Typing, running and exporting all write nothing. That is deliberate — an idle scratchpad should not fill your storage — but it does mean a reload without saving loses the buffers.
