@@ -141,6 +141,35 @@ Two ceilings, and both **say so on the page** rather than quietly rendering some
 
 The grammar is chosen from the declared type first — unlike everywhere else in this tool, and for a reason worth stating: choosing a *decoder* from a stranger's claim is how you get told a PNG is text, while choosing a *colour scheme* from it risks nothing. The bytes are consulted only when the header said nothing usable.
 
+## What this page does and does not download
+
+The default state is a `GET` with no body and no response, so the two biggest
+things the tool can need are **both lazy** (0.4.0 Phase 7's payload pass):
+
+| Chunk | Size | Arrives when |
+| --- | --- | --- |
+| CodeMirror (the JSON body editor) | 348 KB | a JSON body is chosen |
+| Prism grammars (response highlighting) | 44 KB | a response wants colouring |
+
+That took the page from 722 KB to **276 KB**. Both are still reached by the
+service worker's crawl — it scans chunk text for `_astro/…` references, which
+includes the ones a dynamic import leaves behind — so the tool is unchanged
+offline, and [offline.spec.ts](../../../tests/local/offline.spec.ts) opens the
+JSON editor with the network off to prove it.
+
+Neither wait blocks anything. The editor's slot holds a plain `<textarea>`
+bound to the same state until the real one lands, so the body is editable
+immediately and nothing typed is lost. `highlight()` returns uncoloured spans
+until the grammars arrive, so a body is on screen at once and gains colour a
+moment later — which is strictly better than a body that waits for a download.
+
+**Why no test caught this.** `payload.spec.ts` had a `CodeMirror` guard reading
+`/codemirror|lezer/i`, and the bundler names that chunk `dist.<hash>.js` after
+the package's own entry file. The pattern matched nothing, so the guard passed
+on every page for several releases. It now resolves the real filenames out of
+the build (`chunksContaining('@codemirror')`), which is the only precise
+answer — a bare `/dist\./` would fire on unrelated chunks.
+
 ## Variables, environments and the scope chain
 
 Lookup order is fixed: **step → active environment → Global**, first hit wins, secrets ahead of variables at each level. A secret wins its level because it is the more deliberate thing to have created.

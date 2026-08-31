@@ -104,6 +104,12 @@ version of it, [version-4.md](dev/plans/version-4.md) and
 and [TODO](dev/plans/TODO) is the running work list they all came from. They record intent at a point in time and are not maintained against
 the code.
 
+One file there is different: [far-fetched.md](dev/plans/far-fetched.md) is
+maintained. It holds the things that were asked for, taken seriously and **not
+built**, with the measurement that produced each "no" and what would have to
+change for the answer to be different — so a rejected idea gets re-opened on
+new evidence rather than re-argued from scratch.
+
 ## Keeping these honest
 
 A change is not finished while its documentation describes the old behaviour —

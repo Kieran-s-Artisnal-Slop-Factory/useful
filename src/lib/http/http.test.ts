@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { buildBody, checkJson, contentTypeWarning, encodeForm } from './body';
 import { classifyFailure, compareContentType } from './classify';
 import {
@@ -20,7 +20,13 @@ import {
   statusFamily,
 } from './view';
 import { mediaCaution, mediaFor, unrenderableReason } from './media';
-import { chooseSyntax, highlight, HIGHLIGHT_LIMIT, MAX_SPANS } from './highlight';
+import {
+  chooseSyntax,
+  ensureGrammars,
+  highlight,
+  HIGHLIGHT_LIMIT,
+  MAX_SPANS,
+} from './highlight';
 
 const header = (name: string, value = 'v', enabled = true): HeaderRow => ({ name, value, enabled });
 
@@ -763,6 +769,21 @@ describe('choosing a grammar for a textual body', () => {
 
 describe('highlighting', () => {
   const joined = (spans: { text: string }[]) => spans.map((span) => span.text).join('');
+
+  // The grammars are a lazy chunk in the browser (Phase 7's payload pass), so
+  // every case here has to wait for them the way the page does.
+  beforeAll(() => ensureGrammars());
+
+  it('shows the body plain until the grammars have landed', async () => {
+    const { resetGrammarsForTest } = await import('./highlight');
+    resetGrammarsForTest();
+    const early = highlight('{"a":1}', 'json');
+    expect(early.spans).toEqual([{ text: '{"a":1}', cls: '' }]);
+    // Not a refusal — nothing to explain, it is merely early.
+    expect(early.skipped).toBeNull();
+    await ensureGrammars();
+    expect(highlight('{"a":1}', 'json').spans.length).toBeGreaterThan(1);
+  });
 
   /**
    * The property that matters most: whatever the grammar does, the spans put

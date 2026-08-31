@@ -192,7 +192,7 @@ nobody answers.
 | 4 | HTTP playground — environments, variables, secrets | — | **v15** | **DONE.** `http_requests`, `http_environments`, `http_secrets` (local-only) |
 | 5 | HTTP playground — multi-step flows | — | **v16** | **DONE.** `http_flows` |
 | 6 | Placeholder text via in-browser LLM (opt-in) | — | — | **DONE.** Prototyped and rejected; see [far-fetched.md](far-fetched.md) |
-| 7 | Hardening + release | — | — | Last |
+| 7 | Hardening + release | — | — | **DONE.** 0.4.0 dated 2026-08-31 |
 
 Two new tool pages (both under the existing **Playgrounds** category), one
 extended tool, up to three migrations. Migration numbers assume this order;
@@ -652,9 +652,41 @@ bucket.
 
 ---
 
-## Phase 7 — Hardening and release
+## Phase 7 — Hardening and release — DONE
 
 **Goal:** the cross-cutting passes, then cut 0.4.0.
+
+> ### What the passes actually found
+>
+> Two of the six items turned up real defects rather than confirming what was
+> already believed, which is the argument for doing them as passes at all:
+>
+> 1. **The payload pass found 446 KB riding along.** CodeMirror (348 KB) and
+>    Prism (44 KB) were eager on a page whose default state is a `GET` with no
+>    body and no response. Both are now lazy; the page went 722 KB → 276 KB,
+>    and the offline walk proves they are still precached.
+> 2. **And found the guard that should have caught it was inert.**
+>    `payload.spec.ts` matched CodeMirror with `/codemirror|lezer/i`, but the
+>    bundler names that chunk `dist.<hash>.js`. The pattern had matched nothing
+>    for several releases. It now resolves real filenames from the build.
+> 3. **The a11y pass found `--color-warning` was never contrast-checked.**
+>    0.4.0 put warning-coloured *text* on a card for the first time (empty
+>    variables, media size cautions, content-type disagreements); the AA sweep
+>    checked danger and success and not warning. Added — and it passes in both
+>    themes.
+> 4. **The offline walk is now a spec**, not a manual checklist owed from
+>    0.3.0: it downloads the bundles, goes offline, opens both 0.4.0 tools for
+>    the first time, and asserts Send fails with the *offline* diagnosis rather
+>    than the CORS guess.
+> 5. **The security pass became one assertion** instead of five separate ones:
+>    a secret is driven through every persistence path the release added and
+>    the whole database plus the backup envelope are searched for its bytes.
+>    It fails if anyone adds a sixth path and forgets.
+>
+> Item 6's remaining manual step — the fresh-install → airplane-mode walk on a
+> real handset — is still owed. What is recorded here is the emulated
+> equivalent under Playwright, which is not the same thing and is not claimed
+> to be.
 
 **Scope:**
 

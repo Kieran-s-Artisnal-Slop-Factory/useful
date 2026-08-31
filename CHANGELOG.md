@@ -1,4 +1,21 @@
-# 0.4.0 — Unreleased
+# 0.4.0 — August 31st, 2026
+
+> **Your data upgrades itself when you first open this version.** Three
+> migrations run in order — **v14** (web playground sessions), **v15** (HTTP
+> playground saved requests, environments and secrets) and **v16** (HTTP
+> playground flows). They only add stores; nothing existing is rewritten or
+> removed, and no export you already have becomes unreadable. It happens once,
+> on the first page load, and takes no perceptible time.
+>
+> Worth knowing before you upgrade: this app keeps your data **in your
+> browser**, so the upgrade happens per browser and per device. A backup taken
+> from 0.4.0 restores into 0.4.0; an older backup still restores here, and the
+> stores it does not know about are simply left alone.
+>
+> **The one new store that is not in your backup, on purpose:** `http_secrets`.
+> API keys you put in the HTTP playground live on that machine only and are
+> excluded from every export — see the HTTP playground's own page for exactly
+> what that does and does not protect.
 
 ## Features
 
@@ -24,6 +41,7 @@
 ## Improvements & Fixes
 
 * **Decided against** generating placeholder text with an in-browser AI model, after building and running one rather than guessing. A distilgpt2-class model cannot follow a prompt at all — it continues text rather than responding to it — and the smallest model that can is around 115 MB — five times the size of this entire app — while the purpose-built on-device models (LFM2.5) start at 206 MB and their 350M at 246 MB, so picking a better model makes the size worse rather than better. The seeded lorem ipsum and office-speak corpora remain the whole feature: instant, reproducible, and better. The measurements and sample output are written up in `docs/dev/plans/far-fetched.md`, including what would have to change for the answer to be different.
+* **The HTTP playground page got 446 KB lighter.** CodeMirror (348 KB) and the syntax-highlighting grammars (44 KB) were loading with the page even though its default state is a `GET` with no body and no response — they now arrive when a JSON body is chosen and when a response needs colouring. Both are still precached, so the tool is unchanged offline. Found during the release payload pass, along with the reason no test had caught it: the guard that was supposed to watch CodeMirror was matching a filename the bundler never emits, and had been passing on nothing for several releases.
 * Fixed flaky browser tests and improved test reliability.
 * Improved service-worker activation and offline asset handling.
 * Improved accessibility across the new tools.

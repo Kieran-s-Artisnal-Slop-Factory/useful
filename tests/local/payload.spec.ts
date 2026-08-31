@@ -7,12 +7,40 @@
  * install precache. These tests watch the actual network to prove it, because
  * a lazy import is one careless refactor away from becoming eager.
  */
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test, expect } from './helpers/app';
 
 type P = import('@playwright/test').Page;
+
+const HERE = dirname(fileURLToPath(import.meta.url));
+const ASTRO_DIR = join(HERE, '../../dist/_astro');
+
+/**
+ * A pattern matching the built chunks that actually contain `marker`.
+ *
+ * Needed because a bundled chunk is named after its entry file, not its
+ * package: CodeMirror lands in `dist.<hash>.js`, because the package's own
+ * entry is `dist/index.js`. A guard written as `/codemirror/` therefore
+ * matched nothing at all and had been silently passing — found during 0.4.0's
+ * Phase 7 payload pass, when the HTTP playground was seen pulling 348 KB of
+ * editor that no test complained about.
+ *
+ * Matching a bare `/dist\./` instead would be worse: several packages emit
+ * that name, so the guard would fire on unrelated chunks. Reading the build
+ * is the only precise answer, and it costs one directory scan.
+ */
+function chunksContaining(marker: string): RegExp {
+  const names = readdirSync(ASTRO_DIR)
+    .filter((name) => name.endsWith('.js'))
+    .filter((name) => readFileSync(join(ASTRO_DIR, name), 'utf8').includes(marker));
+  if (names.length === 0) throw new Error(`no built chunk contains ${marker}`);
+  return new RegExp(names.map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|'));
+}
+
+/** Resolved once: the scan reads every chunk in the build. */
+const CODEMIRROR_CHUNKS = chunksContaining('@codemirror');
 
 /** How many FIGlet fonts the app ships — read from the catalogue the build
  * script writes, so this stays true when the list changes. */
@@ -28,7 +56,9 @@ const HEAVY = [
   { label: 'SQLite engine', match: /sqlite/i },
   { label: 'Postgres engine', match: /pglite/i },
   { label: 'city dataset', match: /cities/i },
-  { label: 'CodeMirror', match: /codemirror|lezer/i },
+  // Resolved from the build: the chunk is named `dist.<hash>.js`, so the
+  // obvious `/codemirror/` matched nothing. See `chunksContaining`.
+  { label: 'CodeMirror', match: CODEMIRROR_CHUNKS },
   { label: 'YAML parser', match: /yaml/i },
   // The config playground's convert dialog is the only thing that reads TOML,
   // and it imports the parser inside the conversion — so not even that page
@@ -238,6 +268,79 @@ test.describe('payload discipline', () => {
     });
     expect(urls.some((u) => /sqlite/i.test(u)), 'the default engine should load').toBe(true);
     expect(urls.filter((u) => /pglite/i.test(u)), 'Postgres loaded without being picked').toEqual([]);
+  });
+
+  /**
+   * The HTTP playground's default state is a GET with no body, so neither the
+   * editor nor the highlighter is wanted yet — and between them they are
+   * ~390 KB. Both were eager until 0.4.0's Phase 7 payload pass.
+   */
+  test('the HTTP playground brings neither CodeMirror nor Prism until asked', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/');
+    const idle = await watch(page, async () => {
+      await page.goto('/tools/http-playground/');
+      await expect(page.getByTestId('hp-idle')).toBeVisible();
+    });
+    expect(
+      idle.filter((url) => CODEMIRROR_CHUNKS.test(url)),
+      'CodeMirror rode along with a page whose default body is None'
+    ).toEqual([]);
+    expect(idle.filter((url) => /prism/i.test(url)), 'Prism loaded before any response').toEqual([]);
+
+    // The editor arrives when a JSON body is chosen, and the body stays
+    // editable in the meantime.
+    const editing = await watch(page, async () => {
+      await page.getByTestId('hp-method').selectOption('POST');
+      await page.getByTestId('hp-body-kind').selectOption('json');
+      await expect(page.getByTestId('hp-json').locator('.cm-content')).toBeVisible();
+    });
+    expect(editing.some((url) => CODEMIRROR_CHUNKS.test(url)), 'the editor should arrive').toBe(
+      true
+    );
+
+    // Prism arrives with the first response that wants colouring.
+    const responding = await watch(page, async () => {
+      await page.getByTestId('hp-method').selectOption('GET');
+      await page.getByTestId('hp-url').fill('http://127.0.0.1:4330/__echo/css');
+      await page.getByTestId('hp-send').click();
+      await expect(page.getByTestId('hp-body').locator('span.token')).not.toHaveCount(0);
+    });
+    expect(responding.some((url) => /prism/i.test(url)), 'Prism should arrive on demand').toBe(true);
+  });
+
+  /**
+   * Checklist item 8 for the one tool that is *allowed* to call out: it must
+   * do so only when Send is pressed. Everything else on the page — crafting,
+   * variables, secrets, saving — is local.
+   */
+  test('the HTTP playground reaches the network only when Send is pressed', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/http-playground/');
+
+    const target = 'http://127.0.0.1:4330/__echo/json';
+    const crafting = await watch(page, async () => {
+      await page.getByTestId('hp-url').fill(target);
+      await page.getByTestId('hp-header-add').click();
+      await page.getByTestId('hp-header-name-1').fill('X-Test');
+      await page.getByTestId('hp-header-value-1').fill('1');
+      await page.getByTestId('hp-env-card').evaluate((el) => ((el as HTMLDetailsElement).open = true));
+      await page.getByTestId('hp-var-new-name').fill('base_url');
+      await page.getByTestId('hp-var-new-value').fill('https://example.test');
+      await page.getByTestId('hp-var-add').click();
+      await expect(page.getByTestId('hp-var-value-base_url')).toHaveValue('https://example.test');
+    });
+    // Typing a URL is not visiting it. Nothing may go to the target until asked.
+    expect(
+      crafting.filter((url) => url.includes('/__echo/')),
+      'the playground called out before Send was pressed'
+    ).toEqual([]);
+
+    const sending = await watch(page, async () => {
+      await page.getByTestId('hp-send').click();
+      await expect(page.getByTestId('hp-status')).toContainText('200');
+    });
+    expect(sending.filter((url) => url.includes('/__echo/json')).length).toBe(1);
   });
 
   test('the install precache holds the shell only — no model, no engines', async ({ app }) => {

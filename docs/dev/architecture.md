@@ -58,7 +58,7 @@ Data lives in four places, deliberately:
 | Store | Holds | Owner |
 | --- | --- | --- |
 | IndexedDB `useful` | Every user row (`STORES` in [types.ts](../../src/lib/db/types.ts)) plus the `sync_outbox` change queue (not in `STORES`, never exported) | [repo.ts](../../src/lib/db/repo.ts), [outbox.ts](../../src/lib/db/outbox.ts) |
-| Cache Storage `useful-cache-v33` (`CACHE_NAME`) | App shell pages, fingerprinted `_astro/` assets, the SQL engines' wasm; purged by prefix on every version bump | [public/sw.js](../../public/sw.js) |
+| Cache Storage `useful-cache-v38` (`CACHE_NAME`) | App shell pages, fingerprinted `_astro/` assets, the SQL engines' wasm; purged by prefix on every version bump | [public/sw.js](../../public/sw.js) |
 | Cache Storage `useful-models-v1` (`MODEL_CACHE`) | The background remover's model + ONNX runtime, ~15.8 MB, filled on an explicit click; never purged by a version bump | [runtime.ts](../../src/lib/bg/runtime.ts) and sw.js, kept in sync by hand |
 | localStorage | `useful-theme`, `useful-sidebar-collapsed`, `useful-test-mode` — presentation and harness flags only, never data | [SettingsApp.svelte](../../src/components/apps/SettingsApp.svelte), [Chrome.svelte](../../src/components/chrome/Chrome.svelte), [testMode.ts](../../src/lib/testMode.ts) |
 

@@ -23,10 +23,47 @@
  * `global.css` keys off `.token.<name>`, so the inner name still wins the
  * cascade, which is the same result the nested markup produces.
  *
- * Pure module apart from importing the Prism grammars, which must come from
- * [lib/prism.ts](../prism.ts) — see the load-order note there.
+ * **Prism is loaded lazily** (0.4.0 Phase 7, payload pass). The grammars are
+ * 44 KB and are wanted only once a textual response has come back — which
+ * needs a network round trip, so there is always time to fetch them, and a
+ * plain `GET` that returns a PNG never pays for them at all. `highlight()`
+ * stays synchronous and simply returns uncoloured spans until they land; the
+ * caller kicks off `ensureGrammars()` and re-derives when it resolves, so the
+ * body appears immediately and gains colour a moment later rather than
+ * waiting on a download.
+ *
+ * The import must come from [lib/prism.ts](../prism.ts) — see the load-order
+ * note there.
  */
-import Prism from '../prism';
+import type PrismType from 'prismjs';
+
+/** Set once the grammars have landed. Null means "show it plain, for now". */
+let Prism: typeof PrismType | null = null;
+let loading: Promise<void> | null = null;
+
+/**
+ * Fetch the grammars, at most once.
+ *
+ * Resolves either way: a failed chunk load leaves `Prism` null and every body
+ * renders as plain text, which is a worse-looking page and not a broken one.
+ */
+export function ensureGrammars(): Promise<void> {
+  if (Prism) return Promise.resolve();
+  loading ??= import('../prism')
+    .then((module) => {
+      Prism = module.default;
+    })
+    .catch(() => {
+      /* no colours is a fair fallback — never lose the body over them */
+    });
+  return loading;
+}
+
+/** Test seam: forget the loaded grammars. */
+export function resetGrammarsForTest(): void {
+  Prism = null;
+  loading = null;
+}
 
 /** Grammars a response body can be shown in. */
 export type SyntaxLanguage = 'json' | 'markup' | 'css' | 'javascript' | 'markdown';
@@ -141,7 +178,7 @@ function parsesAsJson(text: string): boolean {
 
 /** Does Prism have this grammar loaded? `false` means "render it plain". */
 export function hasGrammar(language: SyntaxLanguage): boolean {
-  return Boolean(Prism.languages[language]);
+  return Boolean(Prism?.languages[language]);
 }
 
 /**
@@ -159,7 +196,9 @@ export function highlight(text: string, language: SyntaxLanguage | null): Highli
     skipped,
   });
 
-  if (text === '' || language === null) return plain(null);
+  // Not loaded yet: show the body now, colour it when the chunk lands. No
+  // `skipped` message — nothing is being declined, it is merely early.
+  if (text === '' || language === null || Prism === null) return plain(null);
   if (text.length > HIGHLIGHT_LIMIT) {
     return plain(
       `Too long to highlight — over ${HIGHLIGHT_LIMIT.toLocaleString('en')} characters. Shown as plain text; the body itself is complete.`

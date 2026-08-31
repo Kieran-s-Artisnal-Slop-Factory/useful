@@ -162,6 +162,11 @@ test.describe('theme contrast (AA)', () => {
           strongBorder: contrast(token('--border-strong-color'), token('--surface-color')),
           danger: contrast(token('--color-danger'), token('--surface-color')),
           success: contrast(token('--color-success'), token('--surface-color')),
+          // 0.4.0 put warning-coloured TEXT on a card for the first time —
+          // the empty-variable notice, the media size caution, the
+          // content-type disagreement. Amber is the colour most likely to
+          // miss AA, so it is checked like the other two rather than assumed.
+          warning: contrast(token('--color-warning'), token('--surface-color')),
         };
       });
 
@@ -171,6 +176,7 @@ test.describe('theme contrast (AA)', () => {
       expect(ratios.mutedOnSurface, 'muted text on card surface').toBeGreaterThanOrEqual(4.5);
       expect(ratios.danger, 'danger text on card surface').toBeGreaterThanOrEqual(4.5);
       expect(ratios.success, 'success text on card surface').toBeGreaterThanOrEqual(4.5);
+      expect(ratios.warning, 'warning text on card surface').toBeGreaterThanOrEqual(4.5);
       // AA for non-text (control boundaries).
       expect(ratios.strongBorder, 'strong border on card surface').toBeGreaterThanOrEqual(3);
     });
@@ -196,5 +202,63 @@ test.describe('keyboard paths', () => {
     await summary.focus();
     await page.keyboard.press('Enter');
     await expect(page.locator('details.explainer').first()).toHaveAttribute('open', '');
+  });
+
+  /**
+   * 0.4.0's hand-driven pass (Phase 7, item 1) over the HTTP playground. The
+   * registry sweep already covers this page for labels and heading order; what
+   * it cannot see is whether the new *interactions* work without a mouse, and
+   * every one of them is a custom control or a disclosure.
+   */
+  test('the HTTP playground is fully operable from the keyboard', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/http-playground/');
+
+    // Every card that starts closed opens with Enter on its summary.
+    for (const id of ['hp-library-card', 'hp-env-card', 'hp-flows-card']) {
+      const summary = page.getByTestId(id).locator('summary').first();
+      await summary.focus();
+      await expect(summary).toBeFocused();
+      await page.keyboard.press('Enter');
+      await expect(page.getByTestId(id)).toHaveAttribute('open', '');
+    }
+
+    // The request can be built with the keyboard alone.
+    await page.getByTestId('hp-url').focus();
+    await page.keyboard.type('https://example.test/{{who}}');
+    await expect(page.getByTestId('hp-add-missing-vars')).toBeVisible();
+
+    // The scaffolding button is reachable and activates with Enter.
+    await page.getByTestId('hp-add-missing-vars').focus();
+    await page.keyboard.press('Enter');
+    await expect(page.getByTestId('hp-var-value-who')).toBeVisible();
+
+    // The jump link is a real button: focusable, and Enter follows it. It also
+    // leaves focus somewhere useful rather than dumping it at the page top.
+    await page.getByTestId('hp-vars-section').evaluate((el) => ((el as HTMLDetailsElement).open = true));
+    const jump = page.getByTestId('hp-vars-jump-who');
+    await jump.focus();
+    await expect(jump).toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect(page.getByTestId('hp-var-value-who')).toBeFocused();
+
+    // Nothing in the new surfaces is a click-only div: every interactive
+    // element carries an accessible name.
+    const unnamed = await page.evaluate(() => {
+      const nodes = [...document.querySelectorAll('button, select, input, textarea, a[href]')];
+      return nodes
+        .filter((el) => (el as HTMLElement).offsetParent !== null)
+        .filter((el) => {
+          const node = el as HTMLElement;
+          const label = node.getAttribute('aria-label') ?? '';
+          const labelled = node.id
+            ? document.querySelector(`label[for="${CSS.escape(node.id)}"]`)?.textContent ?? ''
+            : '';
+          const title = node.getAttribute('title') ?? '';
+          return !(label.trim() || labelled.trim() || title.trim() || node.textContent?.trim());
+        })
+        .map((el) => el.outerHTML.slice(0, 120));
+    });
+    expect(unnamed, 'interactive elements with no accessible name').toEqual([]);
   });
 });

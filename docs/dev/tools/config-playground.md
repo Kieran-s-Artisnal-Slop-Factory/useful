@@ -32,7 +32,7 @@ _Describes the code as of v0.4.0 (unreleased; schema v16) — verify against sou
 | [types.ts (db)](../../../src/lib/db/types.ts) | `ConfigFieldKind`, `ConfigFieldType`, `ConfigField`, `ConfigSchema`; `Preferences.config_last_mode` / `config_last_schema_id`; `STORES.config_schemas`. |
 | [db.ts](../../../src/lib/db/db.ts) | v11 migration: `createObjectStore('config_schemas', { keyPath: 'id' })`. |
 | [registry.ts](../../../src/lib/registry.ts) | Tool entry `config-playground` (route, aliases `json` / `yaml` / `yml` / `schema` / `lint` / `prettify` / `faker` / `codegen` …, icon `braces`). |
-| [sw.js](../../../public/sw.js) | `tools/config-playground/` is in the precached `SHELL`; `CACHE_NAME` is `useful-cache-v33`. |
+| [sw.js](../../../public/sw.js) | `tools/config-playground/` is in the precached `SHELL`; `CACHE_NAME` is `useful-cache-v38`. |
 | [helpers/schema.ts](../../../tests/local/helpers/schema.ts) | The `config_schemas` columns and the two preference fields, mirrored for the oracle. |
 | [payload.spec.ts](../../../tests/local/payload.spec.ts) | `YAML parser` (`/yaml/i`) and `CodeMirror` are on the `HEAVY` list the home page and a light tool page must not pull. |
 | [config-playground.spec.ts](../../../tests/local/config-playground.spec.ts) | The Playwright contract for the page. |

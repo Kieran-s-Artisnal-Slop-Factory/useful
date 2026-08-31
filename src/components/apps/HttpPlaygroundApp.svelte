@@ -22,7 +22,9 @@
    */
   import { onDestroy, onMount, tick } from 'svelte';
   import Card from '../Card.svelte';
-  import CodeEditor from '../CodeEditor.svelte';
+  // Type-only: the real module is a 350 KB CodeMirror chunk, fetched when a
+  // JSON body is actually chosen. See `loadEditor` below.
+  import type CodeEditor from '../CodeEditor.svelte';
   import Explainer from '../Explainer.svelte';
   import SandboxedPreview from '../SandboxedPreview.svelte';
   import EnvironmentsCard from '../http/EnvironmentsCard.svelte';
@@ -103,7 +105,7 @@
     statusFamily,
     type BodyView,
   } from '../../lib/http/view';
-  import { highlight } from '../../lib/http/highlight';
+  import { ensureGrammars, highlight } from '../../lib/http/highlight';
   import { mediaCaution } from '../../lib/http/media';
   import { downloadBlob, copyText } from '../../lib/exportFile';
 
@@ -139,6 +141,16 @@
 
   let jsonLanguage = $state<Extension | undefined>(undefined);
   let jsonEditor = $state<CodeEditor | undefined>();
+  /**
+   * The editor component itself, once its chunk has landed.
+   *
+   * CodeMirror is ~350 KB and this page's default state is a GET with no body
+   * at all, so it must not ride along with the page (0.4.0 Phase 7, payload
+   * pass). It arrives when someone picks a JSON body.
+   */
+  let EditorComponent = $state<typeof CodeEditor | null>(null);
+  /** Prism's grammars, likewise lazy — see lib/http/highlight.ts. */
+  let grammarsReady = $state(false);
 
   // --- Phase 4: environments, variables, secrets ----------------------------
   let environments = $state<HttpEnvironment[]>([]);
@@ -295,7 +307,8 @@
   const highlighted = $derived(
     view === 'binary' || view === 'empty'
       ? { spans: [], skipped: null }
-      : highlight(shownText, choice?.syntax ?? null)
+      : // `grammarsReady` is read so this re-derives the moment Prism lands.
+        highlight(shownText, grammarsReady ? (choice?.syntax ?? null) : null)
   );
   /** Said BEFORE the button is pressed, so the decision is the reader's. */
   const caution = $derived(
@@ -310,6 +323,27 @@
       .catch(() => {
         /* no highlighting is a fair fallback — never block editing on it */
       });
+  });
+
+  /** And the editor itself, for the same reason and at the same moment. */
+  $effect(() => {
+    if (request.bodyKind !== 'json' || EditorComponent) return;
+    void import('../CodeEditor.svelte')
+      .then((module) => (EditorComponent = module.default))
+      .catch(() => {
+        /* the textarea fallback below keeps the body editable */
+      });
+  });
+
+  /**
+   * Prism's grammars, once a response wants colouring. Deliberately AFTER the
+   * response has arrived rather than with the page: the body renders plain
+   * immediately and gains colour when the chunk lands, so nothing waits on a
+   * download it might never need.
+   */
+  $effect(() => {
+    if (!choice?.syntax || grammarsReady) return;
+    void ensureGrammars().then(() => (grammarsReady = true));
   });
 
   function flash(message: string) {
@@ -1021,13 +1055,29 @@
 
           {#if request.bodyKind === 'json'}
             <div class="editor" data-testid="hp-json">
-              <CodeEditor
-                bind:this={jsonEditor}
-                initialDoc={request.bodyText}
-                ariaLabel="JSON request body"
-                language={jsonLanguage}
-                onDocChange={(doc) => (request.bodyText = doc)}
-              />
+              {#if EditorComponent}
+                {@const Editor = EditorComponent}
+                <Editor
+                  bind:this={jsonEditor}
+                  initialDoc={request.bodyText}
+                  ariaLabel="JSON request body"
+                  language={jsonLanguage}
+                  onDocChange={(doc) => (request.bodyText = doc)}
+                />
+              {:else}
+                <!-- The editor is a 350 KB chunk on its way. A textarea in the
+                     meantime, not a spinner: the body stays editable and
+                     nothing is lost when the real editor replaces it, because
+                     it mounts with `initialDoc` set to whatever was typed. -->
+                <label class="visually-hidden" for="hp-json-plain">JSON request body</label>
+                <textarea
+                  id="hp-json-plain"
+                  data-testid="hp-json-plain"
+                  class="mono raw"
+                  rows="6"
+                  bind:value={request.bodyText}
+                ></textarea>
+              {/if}
             </div>
             {#if jsonProblem}
               <p class="error" data-testid="hp-json-error" role="alert">

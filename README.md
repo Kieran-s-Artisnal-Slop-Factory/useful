@@ -45,10 +45,22 @@ An offline-only, local-first app there is no server, no account, and no network 
   writing, and export to Markdown, one self-contained HTML file, or PDF
   through the print dialog.
 - **Playgrounds** — a SQL playground running real SQLite or Postgres in the
-  tab, and a configuration playground that validates, prettifies and extracts
+  tab; a configuration playground that validates, prettifies and extracts
   schemas from JSON/YAML, tabulates a document into the same searchable data
   grid, converts between JSON, YAML, TOML and CSV, generates sample documents,
-  and emits parsers and generators in four languages or as a web component.
+  and emits parsers and generators in four languages or as a web component; a
+  web playground with HTML, CSS and JavaScript or TypeScript over a live
+  sandboxed preview, a console, Emmet, saved sessions and ZIP export; and an
+  HTTP playground — build a request, send it, read what came back, with the
+  headers a browser silently refuses to send flagged as you type, the response
+  identified from its **bytes** rather than its `Content-Type` (images, PDF,
+  video and audio previewable behind a button; JSON, HTML, XML, CSS,
+  JavaScript and Markdown syntax-highlighted), `{{variables}}` resolved from
+  environments at send time with **secrets kept out of every backup and
+  export**, saved requests that stay templates, multi-step flows that carry a
+  token from one response into the next request, and a failed request
+  explained rather than shrugged at — CORS told apart from mixed content, and
+  from a host that has already answered you.
 
 Everything runs locally: no account, no server, no telemetry.
 

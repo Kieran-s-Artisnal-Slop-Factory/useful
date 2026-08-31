@@ -940,6 +940,59 @@ test.describe('http playground', () => {
     expect(JSON.stringify(afterSave)).toContain('flow-token-abc');
   });
 
+  /**
+   * 0.4.0's security pass (Phase 7, item 4), as one assertion instead of five.
+   *
+   * The individual specs each prove one path keeps a secret out of storage.
+   * This one drives a secret through EVERY path the release added — resolved
+   * into a live request, saved into a request template, echoed back by the
+   * server, recorded by a flow, exported as an environment, exported as a
+   * backup — and then asserts the value appears nowhere in the whole database
+   * or the backup envelope. It fails if anyone adds a sixth path and forgets.
+   */
+  test('a secret survives no path into storage, whatever it is put through', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/http-playground/');
+
+    const VALUE = 'sk-live-TOUCHES-EVERYTHING-4242';
+    await addSecret(page, 'token', VALUE);
+
+    // 1. Resolved into a live request whose server echoes headers straight back.
+    await page.getByTestId('hp-url').fill(`${ECHO}/json`);
+    await page.getByTestId('hp-header-name-0').fill('Authorization');
+    await page.getByTestId('hp-header-value-0').fill('Bearer {{token}}');
+    await page.getByTestId('hp-send').click();
+    await expect(page.getByTestId('hp-body')).toContainText(VALUE); // live view: real
+
+    // 2. Saved as a request template.
+    await saveCurrentAs(page, 'Carries the secret');
+
+    // 3. Recorded by a flow, against that same echoing route.
+    await page.getByTestId('hp-flows-card').evaluate((el) => ((el as HTMLDetailsElement).open = true));
+    await page.getByTestId('hp-flow-new').fill('Everything');
+    await page.getByTestId('hp-flow-add').click();
+    await page.getByTestId('hp-step-remove-1').click();
+    await page.getByTestId('hp-step-request-0').selectOption({ label: 'Carries the secret' });
+    await page.getByTestId('hp-flow-run').click();
+    await expect(page.getByTestId('hp-step-status-0')).toContainText('200');
+
+    // Now: every store, read raw, tombstones and all.
+    const everything = await app.call<Record<string, unknown[]>>('rawDumpAll');
+    expect(
+      JSON.stringify(everything),
+      'the secret reached an exported store'
+    ).not.toContain(VALUE);
+
+    // And the backup envelope, which is the file that leaves the machine.
+    const backup = await app.call<unknown>('exportData');
+    expect(JSON.stringify(backup), 'the secret reached the backup').not.toContain(VALUE);
+
+    // It really is still there and still working — this is not passing
+    // because the secret was quietly lost somewhere.
+    const secretsStore = await app.call<{ value: string }[]>('rawDump', 'http_secrets');
+    expect(secretsStore.map((row) => row.value)).toContain(VALUE);
+  });
+
   test('the URL is checked before anything is attempted', async ({ app }) => {
     const { page } = app;
     await app.goto('/tools/http-playground/');
