@@ -69,6 +69,8 @@ export interface Preferences extends SyncFields {
   config_last_mode?: 'parse' | 'create';
   /** The config-playground schema to reopen. */
   config_last_schema_id?: string;
+  /** The web playground session to reopen. Written on save/open, read on load. */
+  web_last_playground_id?: string;
   /** The notebook note to reopen. */
   notebook_last_note_id?: string;
   /** Which editor face the notebook shows: WYSIWYG, source or preview. */
@@ -348,6 +350,25 @@ export interface ConfigSchema extends SyncFields {
 }
 
 /**
+ * A saved web-playground session: three buffers, a name, and which language
+ * the script is written in. All text, which is why it rides the JSON data
+ * layer and a backup byte-identically — the same reasoning as the SQL
+ * playground storing SQL rather than a database.
+ *
+ * Code in a backup is the POINT here, not a leak: the same stance `notes`
+ * takes. Nothing is trusted on read — `normalizeSession` in
+ * src/lib/playground/model.ts squares up a hand-edited row.
+ */
+export interface WebPlayground extends SyncFields {
+  name: string;
+  html: string;
+  css: string;
+  script: string;
+  /** 'js' or 'ts'. TypeScript is stripped, never type-checked. */
+  lang: string;
+}
+
+/**
  * A notebook note. Folders are notes too: `parent_id` points at another note
  * (Q16), so a note can hold children and the sidebar is one tree. The body is
  * markdown text rendered through src/lib/markdown.ts (sanitized); images live
@@ -458,6 +479,7 @@ export const STORES: Record<string, StoreDef> = {
   // note_id: a note has to find its images — to show them, and to take them
   // with it when it goes.
   note_assets: { indexes: [{ name: 'note_id' }] },
+  web_playgrounds: { indexes: [] },
 };
 
 export type StoreName = keyof typeof STORES;

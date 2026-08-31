@@ -39,6 +39,7 @@ export const TABLES: TableMeta[] = [
       { name: 'sql_last_engine', type: 'text', nullable: true, references: null },
       { name: 'config_last_mode', type: 'text', nullable: true, references: null },
       { name: 'config_last_schema_id', type: 'text', nullable: true, references: null },
+    { name: 'web_last_playground_id', type: 'text', nullable: true, references: null },
       { name: 'notebook_last_note_id', type: 'text', nullable: true, references: null },
       { name: 'notebook_mode', type: 'text', nullable: true, references: null },
       { name: 'offline_prompt_seen', type: 'boolean', nullable: true, references: null },
@@ -192,6 +193,18 @@ export const TABLES: TableMeta[] = [
     columns: [
       { name: 'name', type: 'text', nullable: false, references: null },
       { name: 'model', type: 'json', nullable: false, references: null },
+    ],
+  },
+  {
+    name: 'web_playgrounds',
+    fieldMerge: false,
+    singleton: false,
+    columns: [
+      { name: 'name', type: 'text', nullable: false, references: null },
+      { name: 'html', type: 'text', nullable: false, references: null },
+      { name: 'css', type: 'text', nullable: false, references: null },
+      { name: 'script', type: 'text', nullable: false, references: null },
+      { name: 'lang', type: 'text', nullable: false, references: null },
     ],
   },
   {

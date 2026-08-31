@@ -2,7 +2,7 @@
 
 **Hashing** (under Generators, or Ctrl/Cmd+K) computes twelve digests of the same text at once — MD5, SHA-1, the SHA-2 family, SHA-3 and SHAKE — plus HMAC, with optional salt and pepper. Everything happens in the tab: nothing you type is uploaded or saved.
 
-_Describes the code as of v0.4.0 (unreleased; schema v13) — verify against source when in doubt._
+_Describes the code as of v0.4.0 (unreleased; schema v14) — verify against source when in doubt._
 
 ## Using it
 

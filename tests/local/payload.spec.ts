@@ -54,6 +54,9 @@ const HEAVY = [
   // point of the worker is that it never runs on the main thread — a stray
   // import would be a frozen tab, not just a slow page.
   { label: 'bcryptjs', match: /bcrypt/i },
+  // The TypeScript stripper, wanted only when the web playground is switched
+  // to TS — never by a JavaScript session, and never by any other page.
+  { label: 'sucrase', match: /sucrase/i },
   // The FIGfont renderer, ~50 KB, wanted by exactly one page. Anchored on the
   // chunk filename rather than the word: `/figlet/standard.flf` is a font
   // file the service worker precaches, and it is not this.

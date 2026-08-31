@@ -28,6 +28,22 @@ export default defineConfig({
       __VUE_OPTIONS_API__: 'false',
       __VUE_PROD_DEVTOOLS__: 'false',
       __VUE_PROD_HYDRATION_MISMATCH_DETAILS__: 'false'
+    },
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks(id) {
+            // Name the web playground's TypeScript stripper after its package.
+            // Rollup otherwise names the chunk after the package's own entry
+            // file — `esm.<hash>.js` — and `payload.spec.ts`'s job is to watch
+            // the network for a chunk called `sucrase`, which would then never
+            // match and pass vacuously forever. Returning undefined for
+            // everything else leaves the default chunking exactly as it was.
+            if (id.includes('node_modules/sucrase/')) return 'sucrase';
+            return undefined;
+          }
+        }
+      }
     }
   }
 });

@@ -159,8 +159,8 @@ nobody answers.
 | Q2 | Multi-step variable extraction: free-form template paths into recorded responses (`{{steps.auth.response.json.token}}`), or explicit extraction rules (pick a value, name it)? | Phase 5 | **Explicit rules.** A rule is visible, testable, and names its source; a deep template path into a response body couples every later step to a payload shape nobody wrote down |
 | Q3 | The TODO's CORS "push towards the app version" — there is no app version. Build a desktop wrapper this release? | Phase 3 | **No.** Ship the honest explainer (decision 6); a Tauri wrapper whose webview fetches without CORS is real work with its own release train, filed under out-of-scope for 0.4.0 |
 | Q4 | Which model and runtime for placeholder LLM text? `onnxruntime-web` is already a dependency, but the smallest coherent English generators are ~80 MB+ quantized; below that, output quality drops under what the seeded corpora already produce | Phase 6 | **Prototype first, gate on quality.** Try a distilgpt2-class ONNX model, self-hosted next to the app; if nothing at a tolerable size beats the corpora, the phase ships as a documented "no" — 0.3.0's Q11 already reached that verdict once, and the burden of proof is on the model |
-| Q5 | Web playground PNG screenshot export — learn-anywhere does it via a second, *non-sandboxed* iframe plus a new dependency (`modern-screenshot`) | Phase 2 | **Defer.** The zip export covers "get my work out"; a deliberate sandbox exception plus a dependency is a poor trade for a screenshot. Revisit on request |
-| Q6 | Web playground Emmet support (`@emmetio/codemirror6-plugin`, MIT, small) | Phase 2 | **Include.** It is the single highest-value editor affordance for HTML/CSS scratch work, and it is already proven in the source being ported |
+| Q5 | Web playground PNG screenshot export — learn-anywhere does it via a second, *non-sandboxed* iframe plus a new dependency (`modern-screenshot`) | Phase 2 | **ANSWERED: deferred, as defaulted.** The zip export covers "get my work out"; a deliberate sandbox exception plus a dependency is a poor trade for a screenshot. Revisit on request |
+| Q6 | Web playground Emmet support (`@emmetio/codemirror6-plugin`, MIT, small) | Phase 2 | **ANSWERED: included, as defaulted.** It is the single highest-value editor affordance for HTML/CSS scratch work, and it is already proven in the source being ported |
 | Q7 | Saved HTTP requests: one store shared with flows, or separate `http_requests` / `http_flows`? | Phase 4 | **Separate stores.** A request is a reusable atom; a flow references requests by id or inlines a copy. Two small stores beat one polymorphic one — same reasoning as `napkin_templates` / `napkin_calculations` |
 | Q8 | Programming calculator: division visualization — restoring long division is the honest algorithm but the step table gets long. Include division, or ship add/sub/mul/shifts first? | Phase 1 | **Include division** (and modulo — they are the same trace). The TODO names it, the trace is capped by bit width, and truncation-toward-zero on signed division is exactly the trap worth visualizing |
 
@@ -172,7 +172,7 @@ nobody answers.
 |-------|------|----------|----|-------|
 | 0 | Groundwork: version bump, template engine, shared previewer | — | — | **DONE.** Unblocks 2, 3, 4 |
 | 1 | Programming calculator operation visualizer | — | — | **DONE.** Independent |
-| 2 | Web playground (port from learn-anywhere) | `@codemirror/lang-html`, `-css`, `-javascript`, `@emmetio/codemirror6-plugin`; lazy `sucrase` | **v14** | `web_playgrounds` |
+| 2 | Web playground (port from learn-anywhere) | `@codemirror/lang-html`, `-css`, `-javascript`, `@emmetio/codemirror6-plugin`; lazy `sucrase` | **v14** | **DONE.** `web_playgrounds` |
 | 3 | HTTP playground — request/response core | — | — | Stateless; largest single phase |
 | 4 | HTTP playground — environments, variables, secrets | — | **v15** | `http_requests`, `http_environments`, `http_secrets` (local-only) |
 | 5 | HTTP playground — multi-step flows | — | **v16** | `http_flows` |
@@ -300,7 +300,7 @@ user page leads with carry vs overflow.
 
 ---
 
-## Phase 2 — Web playground
+## Phase 2 — Web playground — DONE
 
 **Goal:** the learn-anywhere web playground, living here — HTML/CSS/JS(/TS)
 tabs, live sandboxed preview, console, sessions.

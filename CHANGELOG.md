@@ -1,6 +1,43 @@
 # 0.4.0 (unreleased)
 
+**Schema v14.** This release migrates the browser database from v13 to v14
+(the `web_playgrounds` store for the web playground). Your data is carried
+across in place; a backup exported from 0.4.0 will not import into an older
+build, so export one before downgrading.
+
 ## Features
+
+- **A web playground** (Phase 2). HTML, CSS and JavaScript in three editor
+  tabs under **Playgrounds**, with the page rendering beside them as you type,
+  a console strip, and a library of saved sessions. Ported from
+  learn-anywhere's web exercise — same author, MIT — onto this app's own
+  editor, cards, theme and data layer, so there is one editor chassis here
+  rather than two.
+  - **The preview has no origin of its own.** It runs in a frame with
+    `sandbox="allow-scripts"` and nothing else — never `allow-same-origin`,
+    which alongside scripts would let the framed document remove its own
+    sandbox. That is what stops the code you are writing from reading this
+    app's stored data, and it is also why `fetch` to another site fails in
+    there: a page with no origin is refused by every server. The spec proves
+    it from the inside rather than by inspection.
+  - **The console strip catches what the preview says**, including uncaught
+    errors and unhandled rejections, capped at the last 50 messages and with
+    very long lines truncated. Its messages are identified by the window that
+    sent them plus a channel tag — an opaque origin arrives as the string
+    `"null"`, so comparing origins would prove nothing.
+  - **Emmet on the HTML and CSS tabs**, and all three editors stay mounted, so
+    each tab keeps its own undo history across a switch.
+  - **TypeScript is stripped, not checked.** Types are removed and the rest
+    runs as written, so `const n: number = "hello"` is not an error — it runs.
+    The page says so plainly, and a test pins the claim so it cannot quietly
+    become untrue. The stripper is fetched only when the language is switched.
+    A syntax error leaves the last working preview up rather than blanking it.
+  - **Nothing is written until Save names a session.** Typing, running and
+    exporting write nothing at all; Save is exactly one row and the remembered
+    id, and reopening on a later visit writes nothing either.
+  - **Export** writes the three buffers as a `.zip` whose `index.html` links
+    its siblings, so the unzipped folder opens in a browser on its own. A
+    TypeScript session ships its `.ts` original beside the compiled script.
 
 - **The programming calculator shows its working** (Phase 1). A new
   **Operation visualizer** under the existing Operations table takes a second

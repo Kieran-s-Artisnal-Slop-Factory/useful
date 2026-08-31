@@ -178,6 +178,14 @@ const MIGRATIONS: Migration[] = [
       db.createObjectStore('compose_projects', { keyPath: 'id' });
     }
   },
+  // v14: web_playgrounds — the web playground's saved sessions. Three text
+  // buffers, a name and a language: no indexes, because the library lists
+  // every row and there is nothing else to look one up by.
+  (db) => {
+    if (!db.objectStoreNames.contains('web_playgrounds')) {
+      db.createObjectStore('web_playgrounds', { keyPath: 'id' });
+    }
+  },
 ];
 
 export const DB_VERSION = MIGRATIONS.length;

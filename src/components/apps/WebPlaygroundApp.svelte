@@ -1,0 +1,606 @@
+<script lang="ts">
+  /**
+   * The web playground — HTML, CSS and JavaScript (or TypeScript) with a live
+   * preview, a console, and a library of saved sessions.
+   *
+   * Ported from learn-anywhere's `WebExercise` (same author, MIT) onto this
+   * app's own chassis, per the 0.4.0 plan's decision 3: its logic — the tab
+   * model, the debounce, the srcdoc assembly — but riding this app's
+   * `CodeEditor`, `Card`, theme tokens, `zip.ts` and `repo.ts` rather than
+   * growing a second editor stack beside the SQL and config playgrounds.
+   *
+   * Three things are load-bearing:
+   *
+   * **All three editors stay mounted**, hidden by tab rather than swapped out,
+   * so each keeps its buffer, its cursor and — the part people notice — its
+   * undo history when the tab changes.
+   *
+   * **The preview is the app's one sandboxed previewer**
+   * ([SandboxedPreview.svelte](../SandboxedPreview.svelte)): an `srcdoc`
+   * iframe with `sandbox="allow-scripts"` and no `allow-same-origin`, so the
+   * code someone is writing runs with no origin and cannot reach this app's
+   * IndexedDB. It also cannot fetch across origins, which is the first thing
+   * the user page says about it.
+   *
+   * **Nothing is written until Save names it.** A scratch session lives in
+   * memory; the data suite asserts that typing writes zero rows. Saving is one
+   * row in `web_playgrounds`, and the id is remembered in `preferences` so a
+   * reload reopens it — reading only, never writing on load.
+   */
+  import { onDestroy, onMount } from 'svelte';
+  import { keymap } from '@codemirror/view';
+  import { html as htmlLang } from '@codemirror/lang-html';
+  import { css as cssLang } from '@codemirror/lang-css';
+  import { javascript } from '@codemirror/lang-javascript';
+  import { abbreviationTracker, expandAbbreviation } from '@emmetio/codemirror6-plugin';
+  import Card from '../Card.svelte';
+  import CodeEditor from '../CodeEditor.svelte';
+  import Explainer from '../Explainer.svelte';
+  import SandboxedPreview from '../SandboxedPreview.svelte';
+  import { buildPreviewDocument, type ConsoleMessage } from '../../lib/preview/document';
+  import { compileScript } from '../../lib/playground/compile';
+  import { archiveName, exportFiles } from '../../lib/playground/export';
+  import {
+    BLANK,
+    isEmpty,
+    normalizeSession,
+    STARTER,
+    scriptName,
+    type Buffers,
+    type ScriptLang,
+  } from '../../lib/playground/model';
+  import { zipBlob } from '../../lib/zip';
+  import { copyText, downloadBlob } from '../../lib/exportFile';
+  import { all, getSingleton, patch, put, putSingleton, softDelete, withSyncFields } from '../../lib/db/repo';
+  import type { Preferences, WebPlayground } from '../../lib/db/types';
+
+  type Tab = 'html' | 'css' | 'script';
+
+  /** The buffers are plain, not `$state`: the editors own the text and tell us. */
+  const buffers: Buffers = { ...STARTER };
+
+  let active = $state<Tab>('html');
+  let lang = $state<ScriptLang>('js');
+  let srcdoc = $state('');
+  let tsError = $state<string | null>(null);
+  let messages = $state<ConsoleMessage[]>([]);
+  let sessions = $state<WebPlayground[]>([]);
+  let currentId = $state<string | null>(null);
+  let name = $state('');
+  let notice = $state<string | null>(null);
+  let loading = $state(true);
+
+  let htmlEditor: CodeEditor | undefined = $state();
+  let cssEditor: CodeEditor | undefined = $state();
+  let scriptEditor: CodeEditor | undefined = $state();
+
+  const VIEWPORTS = [
+    { id: 'full', label: 'Full', width: null as number | null },
+    { id: 'tablet', label: 'Tablet', width: 768 },
+    { id: 'mobile', label: 'Mobile', width: 375 },
+  ];
+  let viewport = $state('full');
+  const viewportWidth = $derived(VIEWPORTS.find((v) => v.id === viewport)?.width ?? null);
+
+  /** Emmet on the markup tabs: Tab expands, Ctrl-E does too, as in the source. */
+  const emmetKeys = keymap.of([
+    { key: 'Tab', run: expandAbbreviation },
+    { key: 'Ctrl-e', run: expandAbbreviation },
+  ]);
+
+  let debounce: ReturnType<typeof setTimeout> | undefined;
+
+  function flash(message: string) {
+    notice = message;
+  }
+
+  /**
+   * Rebuild the preview document. A TypeScript syntax error leaves the LAST
+   * GOOD preview up and shows the message instead — a preview that blanks on
+   * every half-typed generic is worse than no preview at all.
+   */
+  async function rebuild() {
+    const compiled = await compileScript(buffers.script, lang);
+    if (!compiled.ok) {
+      tsError = compiled.error;
+      return;
+    }
+    tsError = null;
+    srcdoc = buildPreviewDocument({
+      html: buffers.html,
+      css: buffers.css,
+      script: compiled.code,
+    });
+  }
+
+  function onEdit(key: Tab, doc: string) {
+    buffers[key] = doc;
+    notice = null;
+    clearTimeout(debounce);
+    debounce = setTimeout(() => void rebuild(), 500);
+  }
+
+  function setBuffers(next: Buffers) {
+    buffers.html = next.html;
+    buffers.css = next.css;
+    buffers.script = next.script;
+    htmlEditor?.setText(next.html);
+    cssEditor?.setText(next.css);
+    scriptEditor?.setText(next.script);
+    tsError = null;
+    clearTimeout(debounce);
+    void rebuild();
+  }
+
+  async function refresh() {
+    sessions = (await all<WebPlayground>('web_playgrounds')).sort((a, b) =>
+      a.name.localeCompare(b.name)
+    );
+  }
+
+  /** `remember: false` on the load path, so opening a page writes nothing. */
+  async function open(row: WebPlayground, opts: { remember?: boolean } = {}) {
+    const session = normalizeSession(row);
+    currentId = row.id;
+    name = session.name;
+    lang = session.lang;
+    setBuffers(session.buffers);
+    if (opts.remember !== false) {
+      await putSingleton<Partial<Preferences>>('preferences', { web_last_playground_id: row.id });
+    }
+  }
+
+  async function save() {
+    const body = {
+      name: name.trim() || 'Untitled',
+      lang,
+      html: buffers.html,
+      css: buffers.css,
+      script: buffers.script,
+    };
+    if (currentId) {
+      await patch<WebPlayground>('web_playgrounds', currentId, body);
+    } else {
+      const row = await put<WebPlayground>('web_playgrounds', withSyncFields(body));
+      currentId = row.id;
+      await putSingleton<Partial<Preferences>>('preferences', { web_last_playground_id: row.id });
+    }
+    name = body.name;
+    await refresh();
+    flash('Session saved.');
+  }
+
+  function scratch(next: Buffers) {
+    currentId = null;
+    name = '';
+    setBuffers(next);
+  }
+
+  function newSession() {
+    scratch({ ...STARTER });
+    flash('New scratch session — nothing is saved until you name it and press Save.');
+  }
+
+  function resetToBlank() {
+    // Nothing to lose, nothing to ask about.
+    if (!isEmpty(buffers) && !confirm('Clear all three tabs? Anything unsaved here goes with them.'))
+      return;
+    scratch({ ...BLANK });
+  }
+
+  async function remove(row: WebPlayground) {
+    if (!confirm(`Delete “${row.name}”?`)) return;
+    await softDelete('web_playgrounds', row.id);
+    await refresh();
+    if (currentId === row.id) scratch({ ...BLANK });
+    flash('Session deleted.');
+  }
+
+  async function exportZip() {
+    const compiled = await compileScript(buffers.script, lang);
+    if (!compiled.ok) {
+      flash('Fix the TypeScript error first — the export ships the compiled script.');
+      return;
+    }
+    const files = exportFiles(buffers, lang, compiled.code);
+    downloadBlob(zipBlob(files), archiveName(name || 'playground'));
+    flash(`Downloaded ${archiveName(name || 'playground')}`);
+  }
+
+  async function copyTab() {
+    flash((await copyText(buffers[active])) ? 'Copied.' : 'Copy failed.');
+  }
+
+  function onLangChange() {
+    void rebuild();
+  }
+
+  onMount(async () => {
+    try {
+      await refresh();
+      const prefs = await getSingleton<Preferences>('preferences');
+      const last = prefs?.web_last_playground_id ?? null;
+      const row = last ? sessions.find((s) => s.id === last) : undefined;
+      if (row) await open(row, { remember: false });
+      else setBuffers(buffers);
+    } finally {
+      loading = false;
+    }
+  });
+
+  onDestroy(() => clearTimeout(debounce));
+</script>
+
+<div class="page-header">
+  <h1>Web playground</h1>
+</div>
+
+<div class="stack">
+  {#if notice}
+    <p class="banner banner-success" data-testid="wp-notice">{notice}</p>
+  {/if}
+
+  <div class="workspace">
+    <Card title="Editor">
+      {#snippet actions()}
+        <span class="muted hint">Emmet on HTML and CSS: <kbd>Tab</kbd> expands</span>
+      {/snippet}
+      <div class="stack">
+        <div class="tabs" role="tablist" aria-label="Source files">
+          <button
+            class="tab"
+            class:on={active === 'html'}
+            role="tab"
+            aria-selected={active === 'html'}
+            data-testid="wp-tab-html"
+            onclick={() => (active = 'html')}>index.html</button
+          >
+          <button
+            class="tab"
+            class:on={active === 'css'}
+            role="tab"
+            aria-selected={active === 'css'}
+            data-testid="wp-tab-css"
+            onclick={() => (active = 'css')}>style.css</button
+          >
+          <button
+            class="tab"
+            class:on={active === 'script'}
+            role="tab"
+            aria-selected={active === 'script'}
+            data-testid="wp-tab-script"
+            onclick={() => (active = 'script')}>{scriptName(lang)}</button
+          >
+        </div>
+
+        <!-- Every editor stays mounted: hiding rather than unmounting is what
+             keeps each tab's undo history alive across a tab switch. -->
+        <div class="pane" hidden={active !== 'html'} data-testid="wp-pane-html">
+          <CodeEditor
+            bind:this={htmlEditor}
+            initialDoc={buffers.html}
+            ariaLabel="HTML source"
+            extensions={[emmetKeys, htmlLang(), abbreviationTracker()]}
+            onDocChange={(doc) => onEdit('html', doc)}
+          />
+        </div>
+        <div class="pane" hidden={active !== 'css'} data-testid="wp-pane-css">
+          <CodeEditor
+            bind:this={cssEditor}
+            initialDoc={buffers.css}
+            ariaLabel="CSS source"
+            extensions={[emmetKeys, cssLang(), abbreviationTracker({ syntax: 'css' })]}
+            onDocChange={(doc) => onEdit('css', doc)}
+          />
+        </div>
+        <div class="pane" hidden={active !== 'script'} data-testid="wp-pane-script">
+          <CodeEditor
+            bind:this={scriptEditor}
+            initialDoc={buffers.script}
+            ariaLabel="Script source"
+            extensions={[javascript({ typescript: true })]}
+            onDocChange={(doc) => onEdit('script', doc)}
+          />
+        </div>
+
+        {#if tsError}
+          <p class="error mono" data-testid="wp-ts-error" role="alert">
+            TypeScript: {tsError}
+          </p>
+        {/if}
+
+        <div class="row wrap">
+          <label class="inline" for="wp-lang">Script language</label>
+          <select
+            id="wp-lang"
+            data-testid="wp-lang"
+            class="narrow"
+            bind:value={lang}
+            onchange={onLangChange}
+          >
+            <option value="js">JavaScript</option>
+            <option value="ts">TypeScript</option>
+          </select>
+          <button class="btn btn-sm" data-testid="wp-copy" onclick={copyTab}>Copy this tab</button>
+          <button class="btn btn-sm" data-testid="wp-export" onclick={exportZip}>Export .zip</button>
+          <button class="btn btn-sm btn-danger reset" data-testid="wp-reset" onclick={resetToBlank}
+            >Clear all tabs</button
+          >
+        </div>
+
+        {#if lang === 'ts'}
+          <p class="muted small" data-testid="wp-ts-note">
+            TypeScript here is <strong>stripped, not checked</strong>. Types are removed and the
+            rest runs as written, so a wrong type is a bug the preview will happily show you.
+          </p>
+        {/if}
+      </div>
+    </Card>
+
+    <Card title="Preview">
+      {#snippet actions()}
+        <div class="row seg" role="group" aria-label="Preview width">
+          {#each VIEWPORTS as v (v.id)}
+            <button
+              type="button"
+              class="seg-btn"
+              class:on={viewport === v.id}
+              aria-pressed={viewport === v.id}
+              data-testid={'wp-viewport-' + v.id}
+              onclick={() => (viewport = v.id)}>{v.label}</button
+            >
+          {/each}
+        </div>
+      {/snippet}
+      <div class="stack">
+        <SandboxedPreview
+          {srcdoc}
+          title="Web playground preview"
+          consoleShim
+          width={viewportWidth}
+          resize="horizontal"
+          height="26rem"
+          onConsole={(m) => (messages = m)}
+        />
+
+        <div class="console" data-testid="wp-console">
+          <div class="row console-head">
+            <span class="muted hint">Console</span>
+            <button class="btn btn-sm" data-testid="wp-console-clear" onclick={() => (messages = [])}
+              >Clear</button
+            >
+          </div>
+          {#if messages.length === 0}
+            <p class="muted small" data-testid="wp-console-empty">
+              Nothing logged yet. <code>console.log</code>, uncaught errors and unhandled
+              rejections all arrive here.
+            </p>
+          {:else}
+            <ul>
+              {#each messages as message, i (i)}
+                <li data-testid="wp-console-line" data-level={message.level}>
+                  <span class="level">{message.level}</span>
+                  {message.text}
+                </li>
+              {/each}
+            </ul>
+          {/if}
+        </div>
+
+        <Explainer summary="Why the preview cannot reach the internet" testid="wp-explainer-sandbox">
+          <p>
+            The preview runs in a frame with <code>sandbox="allow-scripts"</code> and nothing else,
+            which gives it no origin of its own. That is what stops the code you are writing from
+            reading this app's stored data — and it is also why <code>fetch</code> to another site
+            fails there: a page with no origin is refused by every server's cross-origin rules.
+          </p>
+          <p>
+            Everything runs in your browser. Nothing you type here is sent anywhere.
+          </p>
+        </Explainer>
+      </div>
+    </Card>
+  </div>
+
+  <Card title="Sessions">
+    <div class="stack">
+      <div class="row wrap">
+        <label class="inline" for="wp-name">Name</label>
+        <input
+          id="wp-name"
+          data-testid="wp-name"
+          type="text"
+          placeholder="Untitled"
+          bind:value={name}
+        />
+        <button class="btn btn-primary" data-testid="wp-save" onclick={save}>Save</button>
+        <button class="btn" data-testid="wp-new" onclick={newSession}>New</button>
+      </div>
+      <p class="muted small" data-testid="wp-scratch-note">
+        {#if currentId}
+          Editing a saved session — Save updates it.
+        {:else}
+          This is a scratch session. Nothing is stored until you press Save.
+        {/if}
+      </p>
+
+      {#if loading}
+        <p class="muted">Loading…</p>
+      {:else if sessions.length === 0}
+        <p class="muted small" data-testid="wp-library-empty">No saved sessions yet.</p>
+      {:else}
+        <ul class="library" data-testid="wp-library">
+          {#each sessions as row (row.id)}
+            <li data-testid="wp-session" data-id={row.id} class:on={currentId === row.id}>
+              <button class="link" data-testid="wp-open" onclick={() => open(row)}>{row.name}</button>
+              <span class="muted small">{scriptName(normalizeSession(row).lang)}</span>
+              <button class="btn btn-sm btn-danger" data-testid="wp-delete" onclick={() => remove(row)}
+                >Delete</button
+              >
+            </li>
+          {/each}
+        </ul>
+      {/if}
+    </div>
+  </Card>
+</div>
+
+<style>
+  .workspace {
+    display: grid;
+    gap: var(--space-4);
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+  }
+
+  @media (min-width: 72rem) {
+    .workspace {
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    }
+  }
+
+  .tabs {
+    display: flex;
+    gap: var(--space-1);
+    border-bottom: 1px solid var(--border-color);
+  }
+
+  .tab {
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    padding: var(--space-1) var(--space-3);
+    cursor: pointer;
+    color: var(--text-muted-color);
+    font: inherit;
+    font-weight: 600;
+    font-size: var(--font-size-sm);
+    font-family: var(--font-mono);
+  }
+
+  .tab:hover {
+    color: var(--text-color);
+  }
+
+  .tab.on {
+    color: var(--color-primary-strong);
+    border-bottom-color: var(--color-primary);
+  }
+
+  .pane[hidden] {
+    display: none;
+  }
+
+  .seg {
+    display: inline-flex;
+    gap: 0;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+  }
+
+  .seg-btn {
+    background: none;
+    border: none;
+    padding: var(--space-1) var(--space-2);
+    font: inherit;
+    font-size: var(--font-size-sm);
+    color: var(--text-muted-color);
+    cursor: pointer;
+  }
+
+  .seg-btn.on {
+    background: var(--color-primary);
+    color: var(--color-on-primary);
+  }
+
+  .console {
+    border: 1px solid var(--border-color);
+    padding: var(--space-2) var(--space-3);
+  }
+
+  .console-head {
+    justify-content: space-between;
+  }
+
+  .console ul {
+    list-style: none;
+    padding: 0;
+    margin: var(--space-2) 0 0;
+    max-height: 10rem;
+    overflow-y: auto;
+    font-family: var(--font-mono);
+    font-size: var(--font-size-sm);
+  }
+
+  .console li {
+    padding: 2px 0;
+    border-top: 1px solid var(--border-color);
+    word-break: break-word;
+  }
+
+  .console li[data-level='error'] {
+    color: var(--color-danger);
+  }
+
+  .console li[data-level='warn'] {
+    color: var(--color-warning);
+  }
+
+  .level {
+    display: inline-block;
+    min-width: 4ch;
+    color: var(--text-muted-color);
+    text-transform: uppercase;
+    font-size: var(--font-size-eyebrow);
+  }
+
+  .library {
+    list-style: none;
+    padding: 0;
+    display: grid;
+    gap: var(--space-1);
+  }
+
+  .library li {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-2);
+    border: 1px solid var(--border-color);
+  }
+
+  .library li.on {
+    border-color: var(--color-primary);
+  }
+
+  .library .link {
+    margin-right: auto;
+  }
+
+  .mono {
+    font-family: var(--font-mono);
+    font-size: var(--font-size-sm);
+  }
+
+  .small {
+    font-size: var(--font-size-sm);
+  }
+
+  .inline {
+    display: inline;
+    margin-bottom: 0;
+  }
+
+  .narrow {
+    width: auto;
+  }
+
+  .error {
+    color: var(--color-danger);
+  }
+
+  .reset {
+    margin-left: auto;
+  }
+</style>

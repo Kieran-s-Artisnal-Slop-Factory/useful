@@ -2,7 +2,7 @@
 
 A layered photo editor under **Images** in the sidebar (or Ctrl/Cmd+K), for annotating and touching up a picture: crop, rotate, draw, arrows, text, blur, background removal, and a metadata panel. Nothing is ever baked in — every mark is a layer, so deleting a crop un-crops and deleting a background mask brings the background back. It is deliberately **session-only**: the whole document lives in this browser tab and is gone the moment you leave, so exporting is the only way to keep anything.
 
-_Describes the code as of v0.4.0 (unreleased; schema v13) — verify against source when in doubt._
+_Describes the code as of v0.4.0 (unreleased; schema v14) — verify against source when in doubt._
 
 ## Starting
 

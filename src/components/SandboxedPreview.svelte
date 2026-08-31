@@ -23,7 +23,7 @@
    * The document assembly, the close-tag guard and the console shim are pure
    * and live in that module, where Vitest can reach them.
    */
-  import { onDestroy, onMount } from 'svelte';
+  import { onDestroy, onMount, untrack } from 'svelte';
   import {
     appendMessage,
     injectConsoleShim,
@@ -67,12 +67,11 @@
   /** The last document written, so `reload()` can re-run an unchanged one. */
   let written = '';
 
-  function write(document: string) {
-    if (!frame) return;
+  function write(target: HTMLIFrameElement, document: string, shim: boolean) {
     messages = [];
     onConsole?.(messages);
-    written = consoleShim ? injectConsoleShim(document) : document;
-    frame.srcdoc = written;
+    written = shim ? injectConsoleShim(document) : document;
+    target.srcdoc = written;
   }
 
   /** Re-run the current document, even though nothing about it changed. */
@@ -103,11 +102,21 @@
     onConsole?.(messages);
   }
 
+  // The dependencies are named here and the work is untracked, deliberately.
+  // `write()` reads `onConsole`, and a parent that passes an inline arrow —
+  // which is the normal way to pass one — hands over a NEW function identity
+  // on every render. Tracked, that made the effect depend on its own side
+  // effect: write -> onConsole -> parent re-renders -> new identity -> write,
+  // until Svelte gave up with `effect_update_depth_exceeded` and the preview
+  // never got a document at all. `frame` stays tracked so the first run after
+  // the binding lands still fires.
   $effect(() => {
     const next = srcdoc;
-    // Read so a change of shim mode rebuilds too.
-    void consoleShim;
-    if (frame) write(next);
+    const shim = consoleShim;
+    const target = frame;
+    untrack(() => {
+      if (target) write(target, next, shim);
+    });
   });
 
   onMount(() => {

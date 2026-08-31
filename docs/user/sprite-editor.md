@@ -2,7 +2,7 @@
 
 Draw pixel art on a grid of characters. Each character in the grid stands for a colour, and the legend says which — so a sprite is really a little picture written as text.
 
-_Describes the code as of v0.4.0 (unreleased; schema v13) — verify against source when in doubt._
+_Describes the code as of v0.4.0 (unreleased; schema v14) — verify against source when in doubt._
 
 ## Drawing
 

@@ -97,6 +97,9 @@ export const ICONS: Record<string, string> = {
   notebook:
     '<path d="M2 6h4"/><path d="M2 10h4"/><path d="M2 14h4"/><path d="M2 18h4"/>' +
     '<rect width="16" height="20" x="4" y="2" rx="2"/><path d="M16 2v20"/>',
+  // Lucide "code-xml" — angle brackets around a slash, the web playground.
+  'code-xml':
+    '<path d="m18 16 4-4-4-4"/><path d="m6 8-4 4 4 4"/><path d="m14.5 4-5 16"/>',
   // Lucide "braces" — curly brackets, the config playground.
   braces:
     '<path d="M8 3H7a2 2 0 0 0-2 2v5a2 2 0 0 1-2 2 2 2 0 0 1 2 2v5c0 1.1.9 2 2 2h1"/>' +

@@ -86,6 +86,10 @@ Everything runs locally: no account, no server, no telemetry.
   engine id (`sqlite` / `pglite`): the editor buffer and an optional SQL
   snapshot of the database. The live database is in a Web Worker's memory; only
   the SQL needed to rebuild it is stored
+- `web_playgrounds` — a saved web-playground session: a name, the HTML, CSS
+  and script buffers, and which language the script is in. Text only, so it
+  rides backups byte-identically. **Your code is in your backup** — that is the
+  point, the same as notes, but worth knowing before you share a backup file
 - `config_schemas` — a config-playground schema: its name, format (`json` /
   `yaml`), the Field/Type table as a JSON tree, and the parse-mode document
   text it was extracted from. Text only, so it rides backups byte-identically

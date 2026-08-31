@@ -19,6 +19,19 @@ const PLATFORM_NOISE: RegExp[] = [/Transition was aborted because of timeout in 
 const isPlatformNoise = (message: string): boolean =>
   PLATFORM_NOISE.some((pattern) => pattern.test(message));
 
+/**
+ * Did this come from inside a sandboxed preview frame?
+ *
+ * The web playground (and, from Phase 3, the HTTP playground) runs foreign
+ * code in an `srcdoc` iframe on purpose. Code failing in there is the tool's
+ * SUBJECT MATTER — the console strip exists to show it — not this app
+ * misbehaving, and a spec that deliberately throws in the preview must not
+ * fail on it. A srcdoc document has no URL of its own, so both its errors and
+ * its console lines are stamped `about:srcdoc`, which nothing in the app is.
+ */
+const isFromPreviewFrame = (where: string | undefined): boolean =>
+  Boolean(where?.includes('about:srcdoc'));
+
 /** The app under test, with a raw view of its database. */
 export interface App {
   page: Page;
@@ -36,14 +49,27 @@ export const test = base.extend<{ app: App }>({
   app: async ({ browser }, use) => {
     const context = await browser.newContext();
     // Set BEFORE the first navigation: the app reads the flag once at startup.
-    await context.addInitScript((key) => localStorage.setItem(key, '1'), 'useful-test-mode');
+    // The try/catch is load-bearing: an init script runs in EVERY frame, and
+    // the web playground's preview is sandboxed without `allow-same-origin`,
+    // where merely touching localStorage throws. Only the top document reads
+    // the flag, so failing quietly in a frame is exactly right.
+    await context.addInitScript((key) => {
+      try {
+        localStorage.setItem(key, '1');
+      } catch {
+        /* a sandboxed frame has no storage — not our business */
+      }
+    }, 'useful-test-mode');
     const page = await context.newPage();
     const errors: string[] = [];
     page.on('console', (m) => {
-      if (m.type() === 'error' && !isPlatformNoise(m.text())) errors.push('console: ' + m.text());
+      if (m.type() !== 'error') return;
+      if (isPlatformNoise(m.text()) || isFromPreviewFrame(m.location().url)) return;
+      errors.push('console: ' + m.text());
     });
     page.on('pageerror', (e) => {
-      if (!isPlatformNoise(e.message)) errors.push('pageerror: ' + e.message);
+      if (isPlatformNoise(e.message) || isFromPreviewFrame(e.stack)) return;
+      errors.push('pageerror: ' + e.message);
     });
 
     const hookReady = () =>

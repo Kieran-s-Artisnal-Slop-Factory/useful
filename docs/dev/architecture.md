@@ -2,7 +2,7 @@
 
 `useful` is a static Astro 7 site whose every page mounts one Svelte 5 island. There is no server: IndexedDB in the visitor's browser is the only copy of the data, a hand-written service worker makes the built site work offline, and the heavy optional pieces (an ML model, two SQL engines, a city dataset) load lazily on demand. This page is the maintainer's mental model — the stack, the runtime picture, the directory map, the cross-cutting systems and where each is documented, the invariants that must not break, and the recipe for adding a tool.
 
-_Describes the code as of v0.4.0 (unreleased; schema v13) — verify against source when in doubt._
+_Describes the code as of v0.4.0 (unreleased; schema v14) — verify against source when in doubt._
 
 ## The stack
 
@@ -79,6 +79,7 @@ The live SQL databases live only in their worker's memory; [store.ts](../../src/
 | [text/](../../src/lib/text/) | Segmentation shared by every text tool: `tokenize.ts` (graphemes, words, sentences, paragraphs, lines, syllables, and the four numbers that all get called length). One layer, so counts, diffs and transformations cannot disagree about where a word starts. |
 | [encode/](../../src/lib/encode/) | `base64.ts` — encode/decode for both alphabets over `TextEncoder`, validation that reports the offset where a string stopped being base64, and `data:` URL parse/build. Exists because `btoa` throws on non-Latin-1 text and `atob` returns rubbish instead of failing. |
 | [template/](../../src/lib/template/) | `engine.ts` — the hand-rolled `{{placeholder}}` resolver: `render(template, scopes)` over an ordered scope chain (first hit wins) and `lint(template)`, which reads the names a template needs without resolving anything. Lookup only — no tags, no filters, no autoescaping. An unresolved name is an error carrying its offset, never an empty string. |
+| [playground/](../../src/lib/playground/) | The web playground's pure parts: the session model and its `normalizeSession` guard, the lazy Sucrase type-stripper (`compileScript`, which returns a syntax error rather than throwing so the last good preview can stay up), and the standalone file set the `.zip` export writes. |
 | [preview/](../../src/lib/preview/) | `document.ts` — the pure half of [SandboxedPreview.svelte](../../src/components/SandboxedPreview.svelte): document assembly, the `</script>` close-tag guard, the injected console shim and the channel check its messages are identified by. Pure so Vitest can reach the parts where a mistake is a security bug. |
 | [src/styles/](../../src/styles/) | `theme.css` (tokens, both themes via `light-dark()`), `global.css` (reset, base elements, layout, shared classes). |
 | [public/](../../public/) | `sw.js`, `manifest.webmanifest`, favicons, and the vendored ML assets under `models/` and `ort/` (with `models/PROVENANCE.txt`). |

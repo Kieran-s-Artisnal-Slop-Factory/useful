@@ -5,7 +5,7 @@ must not break; [`user/`](user/) explains how to use it and what will surprise
 you. Both describe the code as it is — when a page and the source disagree, the
 source is right and the page is a bug.
 
-_Describes the code as of v0.4.0 (unreleased; schema v13) — verify against source when in doubt._
+_Describes the code as of v0.4.0 (unreleased; schema v14) — verify against source when in doubt._
 
 ## For maintainers — [`dev/`](dev/)
 
@@ -49,6 +49,7 @@ Per tool, under [`dev/tools/`](dev/tools/):
 [napkin math](dev/tools/napkin-math.md) ·
 [SQL playground](dev/tools/sql-playground.md) ·
 [config playground](dev/tools/config-playground.md) ·
+[web playground](dev/tools/web-playground.md) ·
 [notebook](dev/tools/notebook.md)
 
 ## For users — [`user/`](user/)
@@ -85,6 +86,7 @@ the app.
 | [sprite-editor.md](user/sprite-editor.md) | Pixel art on a character grid |
 | [sql-playground.md](user/sql-playground.md) | Real SQLite and Postgres in the tab |
 | [config-playground.md](user/config-playground.md) | JSON and YAML: validate, prettify, extract a schema, convert between formats, generate samples and code |
+| [web-playground.md](user/web-playground.md) | HTML, CSS and JavaScript with a live preview, a console, and saved sessions |
 | [notebook.md](user/notebook.md) | Linked markdown notes — WYSIWYG or source, footnotes, diagrams, drawings, export to Markdown, HTML and PDF |
 
 ## Plans
