@@ -25,7 +25,7 @@
  */
 
 import { lint, render, type Resolution, type TemplateError } from '../template/engine';
-import type { Chain } from './env';
+import type { Chain, ScopeOrigin } from './env';
 import { MASK } from './secrets';
 import type { HttpRequest } from './model';
 
@@ -41,6 +41,11 @@ export interface ResolvedField extends Resolution {
   field: FieldRef;
   /** True when the winning scope is a secret one — never display `value`. */
   secret: boolean;
+  /**
+   * The table this value is edited in, or `null` when there is not one — the
+   * step scope of a flow run has no row to go and look at.
+   */
+  origin: ScopeOrigin | null;
 }
 
 export interface ResolveProblem extends TemplateError {
@@ -132,6 +137,7 @@ export function resolveRequest(request: HttpRequest, chain: Chain): ResolveResul
         ...resolution,
         field: slot.field,
         secret: chain.secretScopes.has(resolution.scope),
+        origin: chain.owners.get(resolution.scope) ?? null,
       });
     }
     for (const error of result.errors) problems.push({ ...error, field: slot.field });

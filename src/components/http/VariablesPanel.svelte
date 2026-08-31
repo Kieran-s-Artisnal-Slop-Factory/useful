@@ -17,6 +17,7 @@
    */
   import { MASK } from '../../lib/http/secrets';
   import type { ResolveResult } from '../../lib/http/resolve';
+  import type { ScopeOrigin } from '../../lib/http/env';
   import type { HttpRequest } from '../../lib/http/model';
 
   let {
@@ -24,11 +25,17 @@
     preview,
     /** Names the chain could supply, for the "did you mean" nudge. */
     available,
+    /**
+     * Take the reader to the row this value is edited in. Only offered when
+     * the resolution has an `origin` — a flow's step scope has no row.
+     */
+    onJump,
   }: {
     resolved: ResolveResult;
     /** The request as it will go out, secrets masked. */
     preview: HttpRequest;
     available: string[];
+    onJump: (name: string, origin: ScopeOrigin) => void;
   } = $props();
 
   const used = $derived(resolved.resolutions);
@@ -108,7 +115,20 @@
         <tbody>
           {#each used as item, i (i)}
             <tr data-testid="hp-vars-row">
-              <td class="mono">{item.path}</td>
+              <td class="mono">
+                {#if item.origin}
+                  <!-- The root name, not the path: `user.id` and `user.name`
+                       are two placeholders and one row to go and look at. -->
+                  <button
+                    class="jump"
+                    data-testid={'hp-vars-jump-' + item.name}
+                    onclick={() => onJump(item.name, item.origin!)}
+                    title={`Show where ${item.name} is set`}
+                  >
+                    {item.path}
+                  </button>
+                {:else}{item.path}{/if}
+              </td>
               <td>{item.field.label}</td>
               <td data-testid="hp-vars-scope">{item.scope}</td>
               <td class="mono">
@@ -183,6 +203,23 @@
   .where {
     color: var(--text-muted-color);
     margin-right: var(--space-2);
+  }
+
+  /* A link in behaviour, so it looks like one — but a button, because it
+     moves focus within this page rather than going anywhere. */
+  .jump {
+    background: none;
+    border: 0;
+    padding: 0;
+    font: inherit;
+    color: var(--color-primary-strong);
+    cursor: pointer;
+    text-decoration: underline;
+    text-underline-offset: 0.2em;
+  }
+
+  .jump:hover {
+    color: var(--color-primary);
   }
 
   .masked {

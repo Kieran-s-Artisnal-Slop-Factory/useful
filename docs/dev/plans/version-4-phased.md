@@ -173,7 +173,7 @@ nobody answers.
 | Q1 | Secrets: persist values in a local-only store (survives reload, never exported), or keep them in memory only (re-enter every session)? | Phase 4 | **ANSWERED: local-only store, as defaulted.** `http_secrets` exists, is absent from `STORES`, and is written through `src/lib/http/secrets.ts` rather than `repo.ts` — which cannot reach it, because `StoreName` does not include it. Deletion is a hard delete, not a tombstone, because a tombstone keeps the value. A spec creates a secret, exports a backup and asserts the value's bytes are absent |
 | Q2 | Multi-step variable extraction: free-form template paths into recorded responses (`{{steps.auth.response.json.token}}`), or explicit extraction rules (pick a value, name it)? | Phase 5 | **ANSWERED: explicit rules, as defaulted.** A rule names its source (`body` / `header` / `status`), its path and the name it produces. Body paths go through the same template engine the requests use, so there is one path syntax and one set of error messages; a rule that finds nothing reports it rather than yielding an empty string |
 | Q3 | The TODO's CORS "push towards the app version" — there is no app version. Build a desktop wrapper this release? | Phase 3 | **No.** Ship the honest explainer (decision 6); a Tauri wrapper whose webview fetches without CORS is real work with its own release train, filed under out-of-scope for 0.4.0 |
-| Q4 | Which model and runtime for placeholder LLM text? `onnxruntime-web` is already a dependency, but the smallest coherent English generators are ~80 MB+ quantized; below that, output quality drops under what the seeded corpora already produce | Phase 6 | **Prototype first, gate on quality.** Try a distilgpt2-class ONNX model, self-hosted next to the app; if nothing at a tolerable size beats the corpora, the phase ships as a documented "no" — 0.3.0's Q11 already reached that verdict once, and the burden of proof is on the model |
+| Q4 | Which model and runtime for placeholder LLM text? | Phase 6 | **ANSWERED: none — prototyped and rejected, as the default allowed for.** distilgpt2 int8 (81 MB) was actually run through `onnxruntime-web` with a hand-written BPE tokenizer and a KV-cached sampling loop. It cannot follow a prompt (it is a base LM) and degenerates into loops even with few-shot framing and a repetition penalty, at ~2.2 s per 70 tokens. The smallest model that CAN follow a prompt is SmolLM2-135M-Instruct at 115 MB against a 22.4 MB app; the purpose-built on-device family (LFM2.5) starts at 206 MB and its 350M at 246 MB, so a better model makes the size case worse, not better. Evidence and the transcripts are in [far-fetched.md](far-fetched.md) |
 | Q5 | Web playground PNG screenshot export — learn-anywhere does it via a second, *non-sandboxed* iframe plus a new dependency (`modern-screenshot`) | Phase 2 | **ANSWERED: deferred, as defaulted.** The zip export covers "get my work out"; a deliberate sandbox exception plus a dependency is a poor trade for a screenshot. Revisit on request |
 | Q6 | Web playground Emmet support (`@emmetio/codemirror6-plugin`, MIT, small) | Phase 2 | **ANSWERED: included, as defaulted.** It is the single highest-value editor affordance for HTML/CSS scratch work, and it is already proven in the source being ported |
 | Q7 | Saved HTTP requests: one store shared with flows, or separate `http_requests` / `http_flows`? | Phase 4 | **ANSWERED: separate stores, as defaulted.** `http_requests` and `http_flows`; a step carries either a `request_id` or its own inline copy |
@@ -191,7 +191,7 @@ nobody answers.
 | 3 | HTTP playground — request/response core | — | — | **DONE.** Stateless; largest single phase |
 | 4 | HTTP playground — environments, variables, secrets | — | **v15** | **DONE.** `http_requests`, `http_environments`, `http_secrets` (local-only) |
 | 5 | HTTP playground — multi-step flows | — | **v16** | **DONE.** `http_flows` |
-| 6 | Placeholder text via in-browser LLM (opt-in) | TBD per Q4 | — | Severable; may ship as a documented "no" |
+| 6 | Placeholder text via in-browser LLM (opt-in) | — | — | **DONE.** Prototyped and rejected; see [far-fetched.md](far-fetched.md) |
 | 7 | Hardening + release | — | — | Last |
 
 Two new tool pages (both under the existing **Playgrounds** category), one
@@ -555,7 +555,7 @@ the user page shows the auth example end to end.
 
 ---
 
-## Phase 6 — Placeholder text via in-browser LLM (opt-in)
+## Phase 6 — Placeholder text via in-browser LLM (opt-in) — DONE: a documented NO
 
 **Goal:** the TODO's "in-browser LLM to generate text via a prompt" on the
 placeholders page — **gated on Q4's quality bar, and severable**.
@@ -565,6 +565,50 @@ magnitude larger than the whole app, and a seeded corpus is better
 placeholder text anyway"). The TODO asks again, so it gets a real prototype
 this time instead of a verdict from the armchair — but the phase is written
 so that "still no" is a shippable outcome.
+
+> ### Outcome: still no, and now with the receipts
+>
+> **The prototype was built and run.** `Xenova/distilgpt2`
+> `decoder_model_merged_quantized.onnx` (81.0 MB) through the
+> `onnxruntime-web` this repo already ships, with a hand-written GPT-2
+> byte-level BPE tokenizer and a KV-cached sampling loop. The pipeline was
+> verified correct before it was judged — a plain continuation prompt
+> produced fluent, grammatical English, which does not happen with a broken
+> tokenizer or a mismanaged cache.
+>
+> It fails on three counts, and the first is fatal on its own:
+>
+> 1. **It cannot follow a prompt.** distilgpt2 is a base LM with no
+>    instruction tuning. Asked to "write a short product description for a
+>    ceramic coffee mug", it emitted sixty newlines. That is the model class,
+>    not a tuning problem — and "generate text via a prompt" is the feature.
+> 2. **Output degenerates.** With few-shot framing, a repetition penalty and
+>    tuned sampling, every case still collapsed into a loop; the few-shot
+>    case reproduced one of its own examples verbatim.
+> 3. **Size.** The smallest model that *can* follow a prompt is
+>    SmolLM2-135M-Instruct at 111.8 MB (q4f16) + a 3.4 MB tokenizer —
+>    **five times the entire 22.4 MB app**, seven times the largest existing
+>    opt-in download, for filler text. Measured, not estimated. The
+>    purpose-built on-device models are *bigger*: LFM2.5-350M is 246.5 MB at
+>    q4f16 and 283 MB at the wasm-safe q4, and even LFM2.5-230M is 206 MB.
+>
+> Speed was ~2.2 s per 70 tokens on a fast desktop CPU: about five seconds a
+> paragraph, against instant-and-seeded for the corpora.
+>
+> Nothing shipped. Scope items 2–4 below were never reached, which is what
+> the gate was for. The transcripts, the size table and the conditions that
+> would flip the answer are in [far-fetched.md](far-fetched.md).
+>
+> **What was NOT tested:** the output quality of the models that *can* follow
+> a prompt — SmolLM2-135M-Instruct and LFM2.5-230M/350M. They would almost
+> certainly produce good filler; the distilgpt2 quality findings say nothing
+> about them. They are ruled out on size alone, because the plan's bar is
+> explicitly *"at a size someone would plausibly download"* and 115–246 MB
+> for lorem-ipsum replacement is not it. **That is a judgement, not a
+> measurement, and it is recorded as one.** If the project decides it is
+> willing to be an order of magnitude larger for this feature, the delivery
+> machinery already exists (the background remover's opt-in pattern) and
+> scope items 2–4 become ordinary work.
 
 **Scope:**
 

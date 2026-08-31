@@ -36,6 +36,12 @@
     onRemoveVariable,
     onSetSecret,
     onRemoveSecret,
+    /**
+     * A row to go to, set when someone clicks a placeholder in the pre-send
+     * panel. `nonce` is what makes clicking the SAME row twice work — the
+     * value is otherwise unchanged, so nothing would re-run.
+     */
+    highlight = null,
   }: {
     environments: EnvView[];
     secrets: HttpSecret[];
@@ -49,6 +55,7 @@
     onRemoveVariable: (id: string, name: string) => void;
     onSetSecret: (environmentId: string | null, name: string, value: string) => void;
     onRemoveSecret: (secretId: string) => void;
+    highlight?: { name: string; secret: boolean; nonce: number } | null;
   } = $props();
 
   let newEnvName = $state('');
@@ -75,6 +82,40 @@
   $effect(() => {
     void editingId;
     revealed = null;
+  });
+
+  /** The id of a row, built the same way by the markup and by the jump. */
+  const rowId = (name: string, secret: boolean): string =>
+    `${secret ? 'hp-secret-row' : 'hp-var-row'}-${name}`;
+
+  /**
+   * Take the reader to a row and make it obvious which one.
+   *
+   * `getElementById` rather than a selector, because a variable name is
+   * user-supplied and may contain characters that would need CSS escaping.
+   *
+   * The flash is two pulses of a CSS animation, restarted by removing and
+   * re-adding the class — assigning the same class name again is a no-op to
+   * the browser, so a second click on the same row would do nothing visible.
+   * Under `prefers-reduced-motion` the scroll still happens and the animation
+   * does not; that is handled in the stylesheet rather than here, so there is
+   * one place that decides.
+   */
+  $effect(() => {
+    const target = highlight;
+    if (!target) return;
+    // Read `nonce` so a repeat click on the same row re-runs this.
+    void target.nonce;
+    const element = document.getElementById(rowId(target.name, target.secret));
+    if (!element) return;
+    element.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    element.classList.remove('flash');
+    // Force a reflow so the removal lands before the class goes back on.
+    void element.offsetWidth;
+    element.classList.add('flash');
+    // Focus the field, so the jump ends somewhere you can immediately type —
+    // and so the keyboard path arrives in the same place the pointer one does.
+    element.querySelector<HTMLElement>('input, button')?.focus({ preventScroll: true });
   });
 
   const asText = (value: unknown): string =>
@@ -184,7 +225,7 @@
         </thead>
         <tbody>
           {#each variables as [name, value] (name)}
-            <tr data-testid="hp-var-row">
+            <tr data-testid="hp-var-row" id={rowId(name, false)}>
               <th scope="row" class="mono">{name}</th>
               <td>
                 <label class="visually-hidden" for={'hp-var-value-' + name}>Value of {name}</label>
@@ -268,7 +309,7 @@
         </thead>
         <tbody>
           {#each scopeSecrets as row (row.id)}
-            <tr data-testid="hp-secret-row">
+            <tr data-testid="hp-secret-row" id={rowId(row.name, true)}>
               <th scope="row" class="mono">{row.name}</th>
               <td class="mono" data-testid={'hp-secret-value-' + row.name}>
                 {revealed === row.id ? row.value : MASK}
@@ -359,6 +400,33 @@
     letter-spacing: var(--tracking-label);
     color: var(--text-muted-color);
     margin: 0 0 var(--space-2);
+  }
+
+  /* Two pulses, then gone. `:global` because the class is added imperatively
+     by the jump rather than appearing in this component's markup, so Svelte's
+     scoper never sees it and would prune the rule. */
+  :global(tr.flash > *) {
+    animation: flash 0.55s ease-in-out 2;
+  }
+
+  @keyframes flash {
+    0%,
+    100% {
+      background-color: transparent;
+    }
+    50% {
+      background-color: var(--color-primary-soft);
+    }
+  }
+
+  /* The scroll still happens; only the pulsing stops. Someone who has asked
+     for less motion still needs to be shown which row they landed on, so the
+     highlight becomes a steady one rather than nothing. */
+  @media (prefers-reduced-motion: reduce) {
+    :global(tr.flash > *) {
+      animation: none;
+      background-color: var(--color-primary-soft);
+    }
   }
 
   .facts {

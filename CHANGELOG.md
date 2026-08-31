@@ -23,6 +23,7 @@
 
 ## Improvements & Fixes
 
+* **Decided against** generating placeholder text with an in-browser AI model, after building and running one rather than guessing. A distilgpt2-class model cannot follow a prompt at all — it continues text rather than responding to it — and the smallest model that can is around 115 MB — five times the size of this entire app — while the purpose-built on-device models (LFM2.5) start at 206 MB and their 350M at 246 MB, so picking a better model makes the size worse rather than better. The seeded lorem ipsum and office-speak corpora remain the whole feature: instant, reproducible, and better. The measurements and sample output are written up in `docs/dev/plans/far-fetched.md`, including what would have to change for the answer to be different.
 * Fixed flaky browser tests and improved test reliability.
 * Improved service-worker activation and offline asset handling.
 * Improved accessibility across the new tools.

@@ -35,11 +35,26 @@ import type { HttpEnvironment } from '../db/types';
 export const GLOBAL_ID = 'global';
 export const GLOBAL_NAME = 'Global';
 
+/** Where a scope's values are actually edited, when they are editable at all. */
+export interface ScopeOrigin {
+  environmentId: string;
+  /** True for the secrets table, false for the variables table. */
+  secret: boolean;
+}
+
 /** A `Scope` list plus the knowledge of which of them must never be shown. */
 export interface Chain {
   scopes: Scope[];
   /** `Scope.name`s whose resolved values are masked in every preview. */
   secretScopes: Set<string>;
+  /**
+   * Which table each scope's values live in, so a UI can offer to take
+   * someone to the row a value came from.
+   *
+   * The step scope is deliberately absent: it is ephemeral, so there is no
+   * row to go to, and the absence is what tells a caller not to offer.
+   */
+  owners: Map<string, ScopeOrigin>;
 }
 
 /** What a secret scope is called where the reader can see it. */
@@ -112,7 +127,9 @@ export function buildChain(input: ChainInput): Chain {
   const { environments, secrets, activeId } = input;
   const scopes: Scope[] = [];
   const secretScopes = new Set<string>();
+  const owners = new Map<string, ScopeOrigin>();
 
+  // No owner recorded: the step scope exists only for the run.
   if (input.step) {
     scopes.push({ name: input.stepName ?? 'earlier steps', values: input.step });
   }
@@ -126,6 +143,8 @@ export function buildChain(input: ChainInput): Chain {
     const shaped = normalizeEnvironment(active);
     const name = secretScopeName(shaped.name);
     secretScopes.add(name);
+    owners.set(name, { environmentId: shaped.id, secret: true });
+    owners.set(shaped.name, { environmentId: shaped.id, secret: false });
     scopes.push({ name, values: secretValues(secrets, shaped.id) });
     scopes.push({ name: shaped.name, values: shaped.values });
   }
@@ -133,10 +152,12 @@ export function buildChain(input: ChainInput): Chain {
   const globalEnv = globalOf(environments);
   const globalSecretName = secretScopeName(GLOBAL_NAME);
   secretScopes.add(globalSecretName);
+  owners.set(globalSecretName, { environmentId: GLOBAL_ID, secret: true });
+  owners.set(GLOBAL_NAME, { environmentId: GLOBAL_ID, secret: false });
   scopes.push({ name: globalSecretName, values: secretValues(secrets, null) });
   scopes.push({ name: GLOBAL_NAME, values: globalEnv.values });
 
-  return { scopes, secretScopes };
+  return { scopes, secretScopes, owners };
 }
 
 /** Every name the chain can supply, deduplicated, in lookup order. */

@@ -533,6 +533,47 @@ test.describe('http playground', () => {
     await expect(page.getByTestId('hp-send')).toBeEnabled();
   });
 
+  test('a placeholder links to the row it is set in', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/http-playground/');
+
+    await page.getByTestId('hp-url').fill('{{base_url}}/things/{{slug}}');
+    await page.getByTestId('hp-add-missing-vars').click();
+    await page.getByTestId('hp-vars-section').evaluate((el) => ((el as HTMLDetailsElement).open = true));
+    // Shut the card again, so the jump has to open it to get anywhere.
+    await page.getByTestId('hp-env-card').evaluate((el) => ((el as HTMLDetailsElement).open = false));
+
+    await page.getByTestId('hp-vars-jump-slug').click();
+
+    await expect(page.getByTestId('hp-env-card')).toHaveAttribute('open', /.*/);
+    const row = page.locator('#hp-var-row-slug');
+    await expect(row).toBeVisible();
+    // Two pulses, and the row is really the one animating.
+    expect(
+      await row.evaluate((el) =>
+        [...el.children].flatMap((c) => c.getAnimations()).map((a) => a.effect?.getTiming().iterations)
+      )
+    ).toContain(2);
+    // It lands somewhere you can immediately type, by pointer or keyboard.
+    await expect(page.getByTestId('hp-var-value-slug')).toBeFocused();
+  });
+
+  test('jumping to a secret goes to its row without revealing it', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/http-playground/');
+
+    await addSecret(page, 'api_key', 'sk-live-STILL-HIDDEN');
+    await page.getByTestId('hp-header-value-0').fill('Bearer {{api_key}}');
+    await page.getByTestId('hp-vars-section').evaluate((el) => ((el as HTMLDetailsElement).open = true));
+    await page.getByTestId('hp-env-card').evaluate((el) => ((el as HTMLDetailsElement).open = false));
+
+    await page.getByTestId('hp-vars-jump-api_key').click();
+
+    await expect(page.locator('#hp-secret-row-api_key')).toBeVisible();
+    // Being taken to a secret is not the same as being shown one.
+    await expect(page.getByTestId('hp-secret-value-api_key')).not.toContainText('sk-live');
+  });
+
   test('the button does not offer a name a secret already covers', async ({ app }) => {
     const { page } = app;
     await app.goto('/tools/http-playground/');

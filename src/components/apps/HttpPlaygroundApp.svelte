@@ -53,6 +53,7 @@
     GLOBAL_NAME,
     normalizeEnvironment,
     selectableEnvironments,
+    type ScopeOrigin,
   } from '../../lib/http/env';
   import {
     allSecrets,
@@ -180,6 +181,31 @@
   const usesVariables = $derived(requiredNames(request).length > 0);
   /** Names this request needs that nothing supplies — what the button creates. */
   const unknown = $derived(unknownNames(request, chain));
+  /** The row the Environments card should scroll to and flash, if any. */
+  let jumpTarget = $state<{ name: string; secret: boolean; nonce: number } | null>(null);
+  let jumpCount = 0;
+
+  /**
+   * Take the reader from a placeholder in the pre-send panel to the row it is
+   * actually set in.
+   *
+   * The card is a `<details>`, and a closed one cannot be scrolled to — so it
+   * is opened here, imperatively, before the state change that triggers the
+   * scroll. `Card` deliberately treats its `open` prop as a seed rather than
+   * a binding ("a disclosure is a glance, not a preference"), and reaching
+   * for the element by test id is a smaller intrusion than making a component
+   * used on forty pages carry a two-way binding for this one caller.
+   */
+  function jumpToVariable(name: string, origin: ScopeOrigin) {
+    editingEnvId = origin.environmentId;
+    document
+      .querySelector<HTMLDetailsElement>('[data-testid="hp-env-card"]')
+      ?.setAttribute('open', '');
+    // A fresh nonce every time, so clicking the same name twice flashes twice.
+    jumpCount += 1;
+    jumpTarget = { name, secret: origin.secret, nonce: jumpCount };
+  }
+
   /** Where the button would put them, named on the button itself. */
   const targetEnvName = $derived(
     envViews.find((env) => env.id === (activeEnvId ?? GLOBAL_ID))?.name ?? GLOBAL_NAME
@@ -1124,7 +1150,12 @@
 
       <details class="section" open={usesVariables} data-testid="hp-vars-section">
         <summary>Variables</summary>
-        <VariablesPanel resolved={resolved} preview={preview} available={inScope} />
+        <VariablesPanel
+          resolved={resolved}
+          preview={preview}
+          available={inScope}
+          onJump={jumpToVariable}
+        />
       </details>
 
       <div class="stack explainers">
@@ -1160,6 +1191,7 @@
       onRemoveVariable={removeVariable}
       onSetSecret={setSecret}
       onRemoveSecret={removeSecret}
+      highlight={jumpTarget}
     />
   </Card>
 

@@ -32,6 +32,14 @@ Two corpora, and the licence question is why there are exactly two:
 
 The traditional opening is only offered for the corpus it belongs to: the generator ignores `startWithLorem` for office speak and the page hides the checkbox there.
 
+### There is no third, AI-generated corpus
+
+Asked for twice — 0.3.0's Q11 and 0.4.0's Phase 6 — and rejected twice, the second time **after building it**. A distilgpt2-class ONNX model (81 MB) was run through the `onnxruntime-web` this repo already ships, with a hand-written GPT-2 BPE tokenizer and a KV-cached sampling loop.
+
+It cannot follow a prompt: it is a base LM, so "write a product description for a coffee mug" yields either sixty newlines or `" a coffee mug for a coffee mug for a coffee mug…"`. The smallest instruction-tuned model that *can* is ~115 MB (SmolLM2-135M-Instruct) — five times this entire application, and the purpose-built on-device family starts at 206 MB (LFM2.5-230M q4) — and generation runs at about five seconds a paragraph against instant for the corpora, while losing the seeded reproducibility that makes a re-generate a no-op diff.
+
+Full transcripts, the measured size table, and the conditions that would flip the answer are in [far-fetched.md](../plans/far-fetched.md).
+
 ## Images
 
 Nine generators, all SVG-first, all seeded. SVG because a placeholder is mostly flat colour and geometry — it stays a few kilobytes at any size, where a 4000-pixel PNG of a grey rectangle is megabytes of nothing — and because the PNG/JPG exports then rasterize the same document through [convert.ts](../../../src/lib/img/convert.ts) rather than having a second drawing path.
