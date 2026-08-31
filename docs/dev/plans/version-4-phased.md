@@ -110,13 +110,28 @@ are the part that ages.
    *server's* HTML (HTTP playground), and either one reaching this app's
    IndexedDB would be a real vulnerability, not a theoretical one. The console
    shim talks to the parent over `postMessage` with the source checked. Both
-   playgrounds share this one previewer component.
+   playgrounds share this one previewer component. *(One exception, found by
+   building it: **Chrome will not start its PDF viewer inside a sandboxed
+   frame at any setting** — verified against `allow-scripts`,
+   `allow-same-origin`, both, the full permissive set and the empty string. So
+   the PDF preview is a separate, deliberately unsandboxed frame in the HTTP
+   playground rather than a mode on the shared component, which stays
+   single-purpose. A PDF is a plugin document with no scripting bridge to the
+   embedder, the page states the trade where the button is, and a spec asserts
+   the exception did not spread to the HTML preview.)*
 5. **Received files are sniffed, not trusted.** The HTTP response viewer names
    a body's type from its magic bytes through the existing
    [sniff.ts](../../../src/lib/encode/sniff.ts), exactly like the base64 tool
    — a `Content-Type` header is a claim; the bytes are the evidence. Binary
    bodies prompt to download with the sniffed extension and get no viewer, as
-   the TODO says.
+   the TODO says. *(Amended after Phase 5: the download stays unconditional
+   and the sniffed-not-declared rule is untouched — the blob handed to any
+   viewer carries the SNIFFED type, so a `Content-Type` still cannot choose a
+   decoder. What changed is "no viewer": image, PDF, video and audio now get
+   an opt-in preview, because the browser's own decoders are the ones already
+   running on every page you visit and making people save a file to look at a
+   JPEG was friction with nothing bought by it. Formats that sniff cleanly and
+   render nowhere — TIFF, HEIC, Matroska — get a stated reason instead.)*
 6. **CORS gets honesty, not a workaround.** There is no desktop build of this
    app, and installing the PWA does not change fetch's rules — an installed
    PWA is still a browser page. So the TODO's "push someone towards
@@ -155,13 +170,13 @@ nobody answers.
 
 | # | Question | Needed by | Default if unanswered |
 |---|----------|-----------|-----------------------|
-| Q1 | Secrets: persist values in a local-only store (survives reload, never exported), or keep them in memory only (re-enter every session)? | Phase 4 | **Local-only store** (`http_secrets`, excluded from `STORES` like `sync_outbox`), values masked in the UI, with the storage location stated on the page. Memory-only sounds safer but in practice pushes people to paste keys into the *variables* table, which DOES ride backups — the worse outcome |
-| Q2 | Multi-step variable extraction: free-form template paths into recorded responses (`{{steps.auth.response.json.token}}`), or explicit extraction rules (pick a value, name it)? | Phase 5 | **Explicit rules.** A rule is visible, testable, and names its source; a deep template path into a response body couples every later step to a payload shape nobody wrote down |
+| Q1 | Secrets: persist values in a local-only store (survives reload, never exported), or keep them in memory only (re-enter every session)? | Phase 4 | **ANSWERED: local-only store, as defaulted.** `http_secrets` exists, is absent from `STORES`, and is written through `src/lib/http/secrets.ts` rather than `repo.ts` — which cannot reach it, because `StoreName` does not include it. Deletion is a hard delete, not a tombstone, because a tombstone keeps the value. A spec creates a secret, exports a backup and asserts the value's bytes are absent |
+| Q2 | Multi-step variable extraction: free-form template paths into recorded responses (`{{steps.auth.response.json.token}}`), or explicit extraction rules (pick a value, name it)? | Phase 5 | **ANSWERED: explicit rules, as defaulted.** A rule names its source (`body` / `header` / `status`), its path and the name it produces. Body paths go through the same template engine the requests use, so there is one path syntax and one set of error messages; a rule that finds nothing reports it rather than yielding an empty string |
 | Q3 | The TODO's CORS "push towards the app version" — there is no app version. Build a desktop wrapper this release? | Phase 3 | **No.** Ship the honest explainer (decision 6); a Tauri wrapper whose webview fetches without CORS is real work with its own release train, filed under out-of-scope for 0.4.0 |
 | Q4 | Which model and runtime for placeholder LLM text? `onnxruntime-web` is already a dependency, but the smallest coherent English generators are ~80 MB+ quantized; below that, output quality drops under what the seeded corpora already produce | Phase 6 | **Prototype first, gate on quality.** Try a distilgpt2-class ONNX model, self-hosted next to the app; if nothing at a tolerable size beats the corpora, the phase ships as a documented "no" — 0.3.0's Q11 already reached that verdict once, and the burden of proof is on the model |
 | Q5 | Web playground PNG screenshot export — learn-anywhere does it via a second, *non-sandboxed* iframe plus a new dependency (`modern-screenshot`) | Phase 2 | **ANSWERED: deferred, as defaulted.** The zip export covers "get my work out"; a deliberate sandbox exception plus a dependency is a poor trade for a screenshot. Revisit on request |
 | Q6 | Web playground Emmet support (`@emmetio/codemirror6-plugin`, MIT, small) | Phase 2 | **ANSWERED: included, as defaulted.** It is the single highest-value editor affordance for HTML/CSS scratch work, and it is already proven in the source being ported |
-| Q7 | Saved HTTP requests: one store shared with flows, or separate `http_requests` / `http_flows`? | Phase 4 | **Separate stores.** A request is a reusable atom; a flow references requests by id or inlines a copy. Two small stores beat one polymorphic one — same reasoning as `napkin_templates` / `napkin_calculations` |
+| Q7 | Saved HTTP requests: one store shared with flows, or separate `http_requests` / `http_flows`? | Phase 4 | **ANSWERED: separate stores, as defaulted.** `http_requests` and `http_flows`; a step carries either a `request_id` or its own inline copy |
 | Q8 | Programming calculator: division visualization — restoring long division is the honest algorithm but the step table gets long. Include division, or ship add/sub/mul/shifts first? | Phase 1 | **Include division** (and modulo — they are the same trace). The TODO names it, the trace is capped by bit width, and truncation-toward-zero on signed division is exactly the trap worth visualizing |
 
 ---
@@ -174,8 +189,8 @@ nobody answers.
 | 1 | Programming calculator operation visualizer | — | — | **DONE.** Independent |
 | 2 | Web playground (port from learn-anywhere) | `@codemirror/lang-html`, `-css`, `-javascript`, `@emmetio/codemirror6-plugin`; lazy `sucrase` | **v14** | **DONE.** `web_playgrounds` |
 | 3 | HTTP playground — request/response core | — | — | **DONE.** Stateless; largest single phase |
-| 4 | HTTP playground — environments, variables, secrets | — | **v15** | `http_requests`, `http_environments`, `http_secrets` (local-only) |
-| 5 | HTTP playground — multi-step flows | — | **v16** | `http_flows` |
+| 4 | HTTP playground — environments, variables, secrets | — | **v15** | **DONE.** `http_requests`, `http_environments`, `http_secrets` (local-only) |
+| 5 | HTTP playground — multi-step flows | — | **v16** | **DONE.** `http_flows` |
 | 6 | Placeholder text via in-browser LLM (opt-in) | TBD per Q4 | — | Severable; may ship as a documented "no" |
 | 7 | Hardening + release | — | — | Last |
 
@@ -393,6 +408,17 @@ discovered.
       runs with no origin and no access to this app;
     - text bodies shown; **binary bodies get a download prompt** with the
       sniffed extension **and no viewer**, exactly as the TODO specifies;
+      *(amended after Phase 5: "no viewer" was too broad. Binary still always
+      gets the download, and now also gets an opt-in preview for the handful
+      of formats a browser genuinely renders — image, PDF, video, audio —
+      chosen from the sniffed bytes and decoded only on a press. TIFF, HEIC
+      and Matroska sniff cleanly and paint nowhere, so they get a stated
+      reason instead of a button. See `src/lib/http/media.ts`.)*
+    - *(added after Phase 5: textual bodies are syntax-highlighted for JSON,
+      HTML/XML, CSS, JavaScript and Markdown — via `Prism.tokenize` into
+      plain-text spans rather than `Prism.highlight` into an HTML string,
+      because this is the one place a stranger's bytes reach the DOM. See
+      `src/lib/http/highlight.ts`.)*
     - size, timing, and a stored-truncation note when Phase 5 later records
       it (decision 7).
 5. **The CORS card** (decision 6, Q3): an opaque `TypeError` from fetch gets
@@ -428,7 +454,7 @@ a browser can escape it).
 
 ---
 
-## Phase 4 — HTTP playground — environments, variables, secrets
+## Phase 4 — HTTP playground — environments, variables, secrets — DONE
 
 **Goal:** stop retyping — named requests, environments to group them, and
 `{{variables}}` resolved at send time.
@@ -481,7 +507,7 @@ user page's secrets paragraph is written first, not last.
 
 ---
 
-## Phase 5 — HTTP playground — multi-step flows
+## Phase 5 — HTTP playground — multi-step flows — DONE
 
 **Goal:** the TODO's multi-step system — auth against one endpoint, use the
 token on the next, with everything recorded.

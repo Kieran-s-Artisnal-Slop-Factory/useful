@@ -186,6 +186,46 @@ const MIGRATIONS: Migration[] = [
       db.createObjectStore('web_playgrounds', { keyPath: 'id' });
     }
   },
+  // v15 — 0.4.0 Phase 4 (HTTP playground): environments, saved requests, and
+  // secrets. Three stores in one migration because they are one feature, but
+  // NOT three stores of the same kind:
+  //
+  //   http_environments, http_requests  — ordinary, exported, in STORES
+  //   http_secrets                      — LOCAL-ONLY, deliberately not in
+  //                                       STORES, so it is in no backup
+  //
+  // The split is the feature. An API key that reached a backup file would sit
+  // in a downloads folder forever, and the only structural way to promise it
+  // never does is to keep it out of the set the exporter walks. sync_outbox
+  // set the precedent in v2; this is the first time it protects a user.
+  (db) => {
+    if (!db.objectStoreNames.contains('http_environments')) {
+      db.createObjectStore('http_environments', { keyPath: 'id' });
+    }
+    if (!db.objectStoreNames.contains('http_requests')) {
+      const store = db.createObjectStore('http_requests', { keyPath: 'id' });
+      store.createIndex('environment_id', 'environment_id');
+    }
+    if (!db.objectStoreNames.contains('http_secrets')) {
+      const store = db.createObjectStore('http_secrets', { keyPath: 'id' });
+      store.createIndex('environment_id', 'environment_id');
+    }
+  },
+  // v16 — 0.4.0 Phase 5 (HTTP playground): multi-step flows. Steps, their
+  // extraction rules and the LAST run's records, all in JSON columns on one
+  // row. No indexes: the library lists every flow and there is nothing else
+  // to look one up by.
+  //
+  // A recorded run is safe to back up by construction rather than by care:
+  // the request on each record is masked when the record is BUILT, so the
+  // secret was never in the row to begin with. Response bodies are capped at
+  // 256 KB on the way in for the same class of reason — a recorded download
+  // would otherwise take the backup file with it.
+  (db) => {
+    if (!db.objectStoreNames.contains('http_flows')) {
+      db.createObjectStore('http_flows', { keyPath: 'id' });
+    }
+  },
 ];
 
 export const DB_VERSION = MIGRATIONS.length;

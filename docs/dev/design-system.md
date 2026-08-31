@@ -2,7 +2,7 @@
 
 Every colour, size, line weight and radius in the app comes from one file: [theme.css](../../src/styles/theme.css) declares the tokens, [global.css](../../src/styles/global.css) spends them on base elements and a small set of utility classes, and components spend them again in scoped `<style>` blocks. There is no second palette, no per-tool colour, and no theme-switching CSS: both schemes are written into every token with `light-dark()`, so the whole switch is one `color-scheme` value on `<html>`. The shell that consumes all of this is documented separately in [app-shell-navigation.md](app-shell-navigation.md).
 
-_Describes the code as of v0.4.0 (unreleased; schema v14) — verify against source when in doubt._
+_Describes the code as of v0.4.0 (unreleased; schema v16) — verify against source when in doubt._
 
 ## File map
 

@@ -19,6 +19,8 @@ import {
   prettyJson,
   statusFamily,
 } from './view';
+import { mediaCaution, mediaFor, unrenderableReason } from './media';
+import { chooseSyntax, highlight, HIGHLIGHT_LIMIT, MAX_SPANS } from './highlight';
 
 const header = (name: string, value = 'v', enabled = true): HeaderRow => ({ name, value, enabled });
 
@@ -597,5 +599,228 @@ describe('send', () => {
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.failure.kind).toBe('aborted');
+  });
+});
+
+describe('a host that has already answered', () => {
+  const context = {
+    url: 'https://cdn.test/data.csv',
+    pageOrigin: 'https://app.test',
+    online: true,
+  };
+
+  /**
+   * The case that sent a real user looking for a bug in this app: one URL
+   * from a host works and the next one does not, because the server attaches
+   * the CORS header per file type. "Most likely CORS" was true and useless —
+   * they had just watched a request to that very host succeed.
+   */
+  it('stops guessing once the origin is proven, and names the per-resource case', () => {
+    const failure = classifyFailure(new TypeError('Failed to fetch'), {
+      ...context,
+      provenOrigins: ['https://cdn.test'],
+    });
+    expect(failure.kind).toBe('cors');
+    expect(failure.guess).toBe(false);
+    expect(failure.title).toContain('only for this resource');
+    expect(failure.detail).toContain('already answered');
+    expect(failure.detail).toContain('per resource');
+    // And it says the request is not the thing to go looking at.
+    expect(failure.detail).toContain('Nothing about the request you just built is wrong');
+  });
+
+  it('still guesses when the origin has proven nothing', () => {
+    const failure = classifyFailure(new TypeError('Failed to fetch'), context);
+    expect(failure.guess).toBe(true);
+    expect(failure.title).toBe('Most likely CORS');
+    // The per-resource possibility is raised even on first contact, because
+    // it is the one that makes people blame the client.
+    expect(failure.detail).toContain('per resource');
+  });
+
+  it('does not credit a different origin on the same host tree', () => {
+    const failure = classifyFailure(new TypeError('Failed to fetch'), {
+      ...context,
+      // A different scheme and a different subdomain are different origins.
+      provenOrigins: ['http://cdn.test', 'https://other.cdn.test'],
+    });
+    expect(failure.guess).toBe(true);
+  });
+
+  /** A proven origin must not override the things that are FACTS. */
+  it('never overrides mixed content, offline or an abort', () => {
+    const proven = { provenOrigins: ['http://cdn.test'] };
+    expect(
+      classifyFailure(new TypeError('x'), {
+        ...context,
+        url: 'http://cdn.test/a',
+        ...proven,
+      }).kind
+    ).toBe('mixed-content');
+    expect(
+      classifyFailure(new TypeError('x'), { ...context, online: false, ...proven }).kind
+    ).toBe('offline');
+    const abort = new Error('stopped');
+    abort.name = 'AbortError';
+    expect(classifyFailure(abort, { ...context, ...proven }).kind).toBe('aborted');
+  });
+});
+
+describe('previewing a binary body', () => {
+  it('offers a viewer only for formats a browser really renders', () => {
+    expect(mediaFor('image/png')?.kind).toBe('image');
+    expect(mediaFor('image/jpeg')?.kind).toBe('image');
+    expect(mediaFor('image/gif')?.kind).toBe('image');
+    expect(mediaFor('image/webp')?.kind).toBe('image');
+    expect(mediaFor('image/avif')?.kind).toBe('image');
+    expect(mediaFor('application/pdf')?.kind).toBe('pdf');
+    expect(mediaFor('video/mp4')?.kind).toBe('video');
+    expect(mediaFor('video/webm')?.kind).toBe('video');
+    expect(mediaFor('audio/mpeg')?.kind).toBe('audio');
+    expect(mediaFor('audio/wav')?.kind).toBe('audio');
+    expect(mediaFor('audio/flac')?.kind).toBe('audio');
+  });
+
+  /**
+   * The list is short on purpose. Every one of these sniffs cleanly and none
+   * of them paints, so a preview button would open on a blank box and read as
+   * a bug in the tool rather than a gap in the browser.
+   */
+  it('refuses the formats that sniff cleanly and still will not paint', () => {
+    for (const mime of ['image/tiff', 'image/heic', 'image/heif', 'video/x-matroska']) {
+      expect(mediaFor(mime), mime).toBeNull();
+      expect(unrenderableReason(mime), mime).toBeTruthy();
+    }
+  });
+
+  it('has nothing to explain about a format nobody expects to see', () => {
+    expect(mediaFor('application/zip')).toBeNull();
+    expect(unrenderableReason('application/zip')).toBeNull();
+    expect(mediaFor(null)).toBeNull();
+  });
+
+  it('warns about size before the decode, not after', () => {
+    expect(mediaCaution('image', 1024)).toBeNull();
+    expect(mediaCaution('image', 12 * 1024 * 1024)).toContain('12.0 MB');
+    expect(mediaCaution('video', 12 * 1024 * 1024)).toBeNull();
+    expect(mediaCaution('video', 100 * 1024 * 1024)).toContain('memory');
+  });
+
+  it('puts the offer on the view choice, and names the button in the reason', () => {
+    const choice = chooseView(PNG, 'text/plain', 'image/png', 'png', '');
+    expect(choice.view).toBe('binary');
+    expect(choice.media?.kind).toBe('image');
+    expect(choice.reason).toContain('Show image');
+    // The download never goes away — a preview is an addition, not a swap.
+    expect(choice.filename).toBe('response.png');
+  });
+
+  it('carries the reason a media-shaped body still has no preview', () => {
+    const tiff = bytes(0x49, 0x49, 0x2a, 0x00, 1, 2, 3, 4);
+    const choice = chooseView(tiff, null, 'image/tiff', 'tiff', '');
+    expect(choice.media).toBeNull();
+    expect(choice.unrenderable).toContain('no mainstream browser');
+  });
+});
+
+describe('choosing a grammar for a textual body', () => {
+  it('reads the declared type first, including the +xml and +json suffixes', () => {
+    expect(chooseSyntax('application/json', '')).toBe('json');
+    expect(chooseSyntax('application/vnd.api+json', '')).toBe('json');
+    expect(chooseSyntax('text/html; charset=utf-8', '')).toBe('markup');
+    expect(chooseSyntax('application/xml', '')).toBe('markup');
+    expect(chooseSyntax('application/vnd.custom+xml', '')).toBe('markup');
+    expect(chooseSyntax('text/css', '')).toBe('css');
+    expect(chooseSyntax('application/javascript', '')).toBe('javascript');
+    expect(chooseSyntax('text/javascript', '')).toBe('javascript');
+    expect(chooseSyntax('text/markdown', '')).toBe('markdown');
+  });
+
+  it('falls back to the bytes only where the header said nothing useful', () => {
+    expect(chooseSyntax(null, '{"a":1}')).toBe('json');
+    expect(chooseSyntax('text/plain', '[1,2]')).toBe('json');
+    expect(chooseSyntax('text/plain', '<?xml version="1.0"?><a/>')).toBe('markup');
+    // A declared type that is not a guess-worthy one is respected as-is.
+    expect(chooseSyntax('text/csv', '{"a":1}')).toBeNull();
+    expect(chooseSyntax('text/plain', 'just words')).toBeNull();
+  });
+
+  it('names the grammar on the view choice', () => {
+    const css = 'a { color: red }';
+    expect(chooseView(text(css), 'text/css', 'text/plain', 'txt', css).syntax).toBe('css');
+    const html = '<!doctype html><p>hi</p>';
+    expect(chooseView(text(html), 'text/html', 'text/plain', 'txt', html).syntax).toBe('markup');
+    const json = '{"a":1}';
+    expect(chooseView(text(json), 'application/json', 'text/plain', 'txt', json).syntax).toBe('json');
+  });
+
+  /** Half a document tokenises into nonsense; colouring it dresses up the break. */
+  it('does not colour a body that claims JSON and does not parse', () => {
+    const broken = '{ "almost": true,, }';
+    expect(chooseView(text(broken), 'application/json', 'text/plain', 'txt', broken).syntax).toBeNull();
+  });
+});
+
+describe('highlighting', () => {
+  const joined = (spans: { text: string }[]) => spans.map((span) => span.text).join('');
+
+  /**
+   * The property that matters most: whatever the grammar does, the spans put
+   * back together must be the body byte for byte. A highlighter that drops a
+   * character is worse than none, because nothing on screen says it did.
+   */
+  it('never changes the text it was given', () => {
+    for (const [language, source] of [
+      ['json', '{"a":[1,2,{"b":"c"}],"d":null}'],
+      ['markup', '<!doctype html><p class="x">hi &amp; bye</p>'],
+      ['css', '.a > .b { color: #fff; /* c */ }'],
+      ['javascript', 'const f = (x) => `a${x}b`; // done'],
+      ['markdown', '# Title\n\nSome *text* and `code`.\n'],
+    ] as const) {
+      expect(joined(highlight(source, language).spans), language).toBe(source);
+    }
+  });
+
+  it('actually classifies something', () => {
+    const spans = highlight('{"a":1}', 'json').spans;
+    expect(spans.some((span) => span.cls.includes('property'))).toBe(true);
+    expect(spans.some((span) => span.cls.includes('number'))).toBe(true);
+  });
+
+  /** The safety property: a span carries text and a class, never markup. */
+  it('keeps a stranger’s markup as text, never as structure', () => {
+    const hostile = '<img src=x onerror="alert(1)">';
+    const spans = highlight(hostile, 'markup').spans;
+    expect(joined(spans)).toBe(hostile);
+    for (const span of spans) {
+      expect(span.cls).toMatch(/^(|token[a-z0-9 -]*)$/);
+    }
+  });
+
+  it('hands back one plain span when there is no grammar to use', () => {
+    expect(highlight('anything', null)).toEqual({ spans: [{ text: 'anything', cls: '' }], skipped: null });
+    expect(highlight('', 'json')).toEqual({ spans: [], skipped: null });
+  });
+
+  it('declines a body too long to colour, and says so', () => {
+    const huge = '"'.padEnd(HIGHLIGHT_LIMIT + 1, 'a') + '"';
+    const result = highlight(huge, 'json');
+    expect(result.spans).toHaveLength(1);
+    expect(result.spans[0]!.text).toBe(huge);
+    expect(result.skipped).toContain('Too long to highlight');
+  });
+
+  it('declines a body that tokenises into more spans than a page can hold', () => {
+    // Alternating punctuation and numbers: dense by construction.
+    const dense = '[' + Array.from({ length: MAX_SPANS }, (_, i) => i).join(',') + ']';
+    const result = highlight(dense, 'json');
+    expect(result.skipped).toContain('densely tokenised');
+    expect(result.spans[0]!.text).toBe(dense);
+  });
+
+  /** Thousands of one-character text nodes is a real cost; folding is not cosmetic. */
+  it('folds neighbouring runs that share a class', () => {
+    const spans = highlight('   \n\t  ', 'json').spans;
+    expect(spans).toHaveLength(1);
   });
 });

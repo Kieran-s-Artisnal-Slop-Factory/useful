@@ -69,6 +69,58 @@ export const blankRequest = (): HttpRequest => ({
 /** Does this method carry a body? GET and HEAD cannot, and `fetch` throws. */
 export const carriesBody = (method: Method): boolean => !BODYLESS_METHODS.includes(method);
 
+const asString = (value: unknown, fallback = ''): string =>
+  typeof value === 'string' ? value : fallback;
+
+/**
+ * Re-shape a request read from a store.
+ *
+ * Nothing read back is trusted. The generic data suite writes an ARRAY into
+ * every json column, a backup can be hand-edited, and a row written by an
+ * older version has whatever shape that version used. Every field is checked
+ * and defaulted here so the rest of the tool can treat an `HttpRequest` as
+ * the thing its type says it is — the same stance `normalizeProject` takes in
+ * the Compose tool.
+ */
+export function normalizeRequest(raw: unknown): HttpRequest {
+  const blank = blankRequest();
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return blank;
+  const value = raw as Record<string, unknown>;
+
+  const method = METHODS.includes(value.method as Method) ? (value.method as Method) : blank.method;
+  const bodyKind = (['none', 'json', 'form', 'multipart', 'text'] as BodyKind[]).includes(
+    value.bodyKind as BodyKind
+  )
+    ? (value.bodyKind as BodyKind)
+    : 'none';
+
+  const rows = <T>(input: unknown, shape: (item: Record<string, unknown>) => T): T[] =>
+    Array.isArray(input)
+      ? input
+          .filter((item): item is Record<string, unknown> => typeof item === 'object' && item !== null)
+          .map(shape)
+      : [];
+
+  return {
+    method,
+    url: asString(value.url),
+    headers: rows(value.headers, (item) => ({
+      name: asString(item.name),
+      value: asString(item.value),
+      // Absent means enabled: a row nobody has touched is a row to send.
+      enabled: item.enabled !== false,
+    })),
+    bodyKind,
+    bodyText: asString(value.bodyText),
+    bodyContentType: asString(value.bodyContentType, blank.bodyContentType),
+    fields: rows(value.fields, (item) => ({
+      name: asString(item.name),
+      value: asString(item.value),
+      enabled: item.enabled !== false,
+    })),
+  };
+}
+
 export type UrlProblem = { message: string } | null;
 
 /**

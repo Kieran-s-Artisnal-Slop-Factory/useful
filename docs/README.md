@@ -5,7 +5,7 @@ must not break; [`user/`](user/) explains how to use it and what will surprise
 you. Both describe the code as it is — when a page and the source disagree, the
 source is right and the page is a bug.
 
-_Describes the code as of v0.4.0 (unreleased; schema v14) — verify against source when in doubt._
+_Describes the code as of v0.4.0 (unreleased; schema v16) — verify against source when in doubt._
 
 ## For maintainers — [`dev/`](dev/)
 

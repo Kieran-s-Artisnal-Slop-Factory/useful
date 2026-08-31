@@ -71,6 +71,14 @@ export interface Preferences extends SyncFields {
   config_last_schema_id?: string;
   /** The web playground session to reopen. Written on save/open, read on load. */
   web_last_playground_id?: string;
+  /**
+   * The HTTP playground environment that is active. An id, never a value —
+   * a preference row rides backups, so the environment it names may as well
+   * be one, and the secrets it scopes still do not.
+   */
+  http_active_environment_id?: string;
+  /** The saved HTTP request to reopen. Written on save/open, read on load. */
+  http_last_request_id?: string;
   /** The notebook note to reopen. */
   notebook_last_note_id?: string;
   /** Which editor face the notebook shows: WYSIWYG, source or preview. */
@@ -448,6 +456,66 @@ export interface ComposeProject extends SyncFields {
   model: unknown;
 }
 
+/**
+ * A named set of `{{variable}}` values for the HTTP playground.
+ *
+ * `values` is a plain name → JSON value map, shaped on read rather than
+ * trusted: the generic data suite writes an ARRAY into every json column and
+ * a backup can be hand-edited, so `normalizeEnvironment` re-shapes it every
+ * time — the same stance `compose_projects.model` takes.
+ *
+ * **These values ride backups.** That is deliberate and it is the whole
+ * reason secrets live somewhere else: a base URL belongs in a backup, an API
+ * key does not, and the only way to keep that promise is to give them
+ * different homes. See `HttpSecret`, which has no interface here because it
+ * is not part of the exported schema at all.
+ */
+export interface HttpEnvironment extends SyncFields {
+  name: string;
+  /** Variable name → JSON value. Shape enforced on read, never on trust. */
+  values: unknown;
+}
+
+/**
+ * A saved HTTP request.
+ *
+ * The whole request model lives in one json column rather than seven typed
+ * ones, for the reason `compose_projects` does: the model is already
+ * JSON-native, and spreading it across columns buys nothing but a conversion
+ * step on both sides.
+ *
+ * **A saved request keeps its `{{placeholders}}` unresolved.** It is a
+ * template, not a snapshot of one send — which is what makes it safe to back
+ * up even when the value it will resolve to is a secret.
+ */
+export interface HttpSavedRequest extends SyncFields {
+  name: string;
+  /** The environment it is grouped under, or null for ungrouped. */
+  environment_id: string | null;
+  /** An `HttpRequest`. Shape enforced on read, never on trust. */
+  request: unknown;
+}
+
+/**
+ * An ordered set of HTTP requests run one after another, with values carried
+ * from each response into the next request.
+ *
+ * `last_run` holds the most recent run's records and nothing older — history
+ * beyond that is out of scope for 0.4.0. **A record is safe to back up by
+ * construction**: the request on it is masked when the record is built, so a
+ * secret was never written into the row, and response bodies are capped at
+ * 256 KB on the way in so a recorded download cannot take the backup with it.
+ */
+export interface HttpFlow extends SyncFields {
+  name: string;
+  /** The environment the flow runs against, or null for Global alone. */
+  environment_id: string | null;
+  /** `FlowStep[]`. Shape enforced on read, never on trust. */
+  steps: unknown;
+  /** `FlowRun | null`. Shape enforced on read, never on trust. */
+  last_run: unknown;
+}
+
 export const STORES: Record<string, StoreDef> = {
   // singleton: one logical row under repo.SINGLETON_ID, so every device
   // converges on the same row if sync ever lands. fieldMerge: two devices
@@ -480,6 +548,14 @@ export const STORES: Record<string, StoreDef> = {
   // with it when it goes.
   note_assets: { indexes: [{ name: 'note_id' }] },
   web_playgrounds: { indexes: [] },
+  http_environments: { indexes: [] },
+  // environment_id: a request is listed under the environment it belongs to,
+  // and goes with it when that environment is deleted.
+  http_requests: { indexes: [{ name: 'environment_id' }] },
+  http_flows: { indexes: [] },
+  // NOTE: `http_secrets` is deliberately absent. It is created by the same
+  // migration but is LOCAL-ONLY — not here, so not in the export set, so not
+  // in any backup. See src/lib/http/secrets.ts; the precedent is sync_outbox.
 };
 
 export type StoreName = keyof typeof STORES;

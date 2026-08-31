@@ -2,7 +2,7 @@
 
 **Crontab** (under Generators, or Ctrl/Cmd+K) reads a cron expression back to you in English, shows when it will next run, and tells you where the line goes and what will bite you. Nothing is uploaded or saved.
 
-_Describes the code as of v0.4.0 (unreleased; schema v14) — verify against source when in doubt._
+_Describes the code as of v0.4.0 (unreleased; schema v16) — verify against source when in doubt._
 
 ## The two things that catch everyone
 

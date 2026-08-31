@@ -81,6 +81,10 @@ const SIGNATURES: Signature[] = [
   { offset: 4, pattern: ascii('ftypmif1'), mime: 'image/heif', extension: 'heif', label: 'HEIF image' },
   { offset: 4, pattern: ascii('ftypisom'), mime: 'video/mp4', extension: 'mp4', label: 'MP4 video' },
   { offset: 4, pattern: ascii('ftypmp42'), mime: 'video/mp4', extension: 'mp4', label: 'MP4 video' },
+  { offset: 4, pattern: ascii('ftypmp41'), mime: 'video/mp4', extension: 'mp4', label: 'MP4 video' },
+  // The M4A brand carries a trailing space — the ISO brand field is four
+  // bytes wide and "M4A" is three.
+  { offset: 4, pattern: ascii('ftypM4A '), mime: 'audio/mp4', extension: 'm4a', label: 'M4A audio' },
   { offset: 0, pattern: ascii('%PDF-'), mime: 'application/pdf', extension: 'pdf', label: 'PDF document' },
   { offset: 0, pattern: [0x50, 0x4b, 0x03, 0x04], mime: 'application/zip', extension: 'zip', label: 'ZIP archive' },
   { offset: 0, pattern: [0x1f, 0x8b], mime: 'application/gzip', extension: 'gz', label: 'gzip archive' },
@@ -88,7 +92,11 @@ const SIGNATURES: Signature[] = [
   { offset: 0, pattern: ascii('wOFF'), mime: 'font/woff', extension: 'woff', label: 'WOFF font' },
   { offset: 0, pattern: ascii('OggS'), mime: 'audio/ogg', extension: 'ogg', label: 'Ogg audio' },
   { offset: 0, pattern: ascii('ID3'), mime: 'audio/mpeg', extension: 'mp3', label: 'MP3 audio' },
+  { offset: 0, pattern: ascii('fLaC'), mime: 'audio/flac', extension: 'flac', label: 'FLAC audio' },
 ];
+
+/** The EBML header WebM and Matroska share; the DocType tells them apart. */
+const EBML = [0x1a, 0x45, 0xdf, 0xa3];
 
 function matches(bytes: Uint8Array, signature: Signature): boolean {
   const { offset, pattern } = signature;
@@ -121,9 +129,28 @@ export function sniff(bytes: Uint8Array): FileKind | null {
       return { mime: signature.mime, extension: signature.extension, label: signature.label };
     }
   }
+  const ebml = sniffEbml(bytes);
+  if (ebml) return ebml;
   if (looksLikeSvg(bytes)) return { mime: 'image/svg+xml', extension: 'svg', label: 'SVG image' };
   if (looksLikeText(bytes)) return { mime: 'text/plain', extension: 'txt', label: 'Text' };
   return null;
+}
+
+/**
+ * WebM and Matroska share one magic number and differ only in the `DocType`
+ * string a little further in, so this cannot be a plain signature row. The
+ * DocType lives inside the EBML header, which is small — reading the first
+ * 64 bytes for it is enough, and a file whose header does not name either one
+ * is reported as Matroska, the container the magic number actually attests to.
+ */
+function sniffEbml(bytes: Uint8Array): FileKind | null {
+  if (bytes.length < EBML.length) return null;
+  for (let i = 0; i < EBML.length; i += 1) if (bytes[i] !== EBML[i]) return null;
+  const header = decoder.decode(bytes.subarray(0, 64));
+  if (header.includes('webm')) {
+    return { mime: 'video/webm', extension: 'webm', label: 'WebM video' };
+  }
+  return { mime: 'video/x-matroska', extension: 'mkv', label: 'Matroska video' };
 }
 
 function head(bytes: Uint8Array, length = 512): string {

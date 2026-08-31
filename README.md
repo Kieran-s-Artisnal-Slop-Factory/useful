@@ -100,6 +100,22 @@ Everything runs locally: no account, no server, no telemetry.
   secrets** — environment variables, database passwords, inline config content
   — and this store rides the plain-JSON backup like every other, which the
   page says out loud
+- `http_environments` — a named set of `{{variable}}` values for the HTTP
+  playground, as one JSON map. One environment has the fixed id `global` and
+  is always in scope. **These values ride backups**, which is the point — a
+  base URL belongs in a backup
+- `http_requests` — a saved HTTP request: its name, the environment it is
+  grouped under, and the whole request model as one JSON column. Requests
+  keep their `{{placeholders}}` **unresolved**, so a saved request is a
+  template rather than a snapshot of one send — which is what makes it safe
+  to back up even when a placeholder will resolve to a secret
+- `http_flows` — an ordered set of HTTP requests run one after another, with
+  the extraction rules that carry a value from one response into the next
+  request, plus the **last run's** records (nothing older). A record is safe
+  to back up by construction: the request on it is masked when the record is
+  built, so the secret was never in the row, and response bodies are capped at
+  256 KB on the way in — the live view shows everything, only the stored copy
+  is cut
 - `notes` — field-merged; a notebook note: title, markdown body, aliases (old
   titles kept so `[[links]]` keep resolving), tags, and a `parent_id` pointing
   at another note — folders are notes, so the sidebar is one tree. Backlinks
@@ -112,6 +128,16 @@ Everything runs locally: no account, no server, no telemetry.
 Every table also carries bookkeeping fields (`id`, `updated_at`,
 `deleted_at`, `server_seq`) that power soft deletes and keep the door open
 to adding a sync backend later without a data migration.
+
+One store is deliberately **not** in that list, and not in `STORES`:
+
+- `http_secrets` — secret values for the HTTP playground. Local-only, the way
+  `sync_outbox` is: the backup exporter walks `STORES`, so a store that is not
+  in it cannot reach a backup file even by mistake. Written through
+  [`src/lib/http/secrets.ts`](src/lib/http/secrets.ts) rather than `repo.ts`,
+  and deleted for real rather than tombstoned, because a tombstone keeps the
+  value. They are still unencrypted rows in this browser's IndexedDB — what
+  they will not do is leave the machine.
 
 ## Quickstart
 

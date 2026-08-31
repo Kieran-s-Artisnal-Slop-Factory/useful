@@ -2,7 +2,7 @@
 
 `useful` is a static Astro 7 site whose every page mounts one Svelte 5 island. There is no server: IndexedDB in the visitor's browser is the only copy of the data, a hand-written service worker makes the built site work offline, and the heavy optional pieces (an ML model, two SQL engines, a city dataset) load lazily on demand. This page is the maintainer's mental model — the stack, the runtime picture, the directory map, the cross-cutting systems and where each is documented, the invariants that must not break, and the recipe for adding a tool.
 
-_Describes the code as of v0.4.0 (unreleased; schema v14) — verify against source when in doubt._
+_Describes the code as of v0.4.0 (unreleased; schema v16) — verify against source when in doubt._
 
 ## The stack
 
@@ -10,7 +10,7 @@ _Describes the code as of v0.4.0 (unreleased; schema v14) — verify against sou
 | --- | --- | --- |
 | Static site | Astro 7, `@astrojs/svelte`, `<ClientRouter />` view transitions | [astro.config.mjs](../../astro.config.mjs), [Layout.astro](../../src/layouts/Layout.astro) |
 | UI | Svelte 5 runes (`$state`/`$derived`/`$effect`), one root component per page mounted `client:only="svelte"` | [src/components/apps/](../../src/components/apps/) |
-| Persistence | IndexedDB via `idb` 8, database `useful` (`DB_NAME`), `DB_VERSION` = 13 | [db.ts](../../src/lib/db/db.ts), [repo.ts](../../src/lib/db/repo.ts) |
+| Persistence | IndexedDB via `idb` 8, database `useful` (`DB_NAME`), `DB_VERSION` = 16 | [db.ts](../../src/lib/db/db.ts), [repo.ts](../../src/lib/db/repo.ts) |
 | Offline | Hand-written service worker, precache + background crawl + runtime caching, registered only in production builds | [public/sw.js](../../public/sw.js), [offline.ts](../../src/lib/offline.ts) |
 | Styling | Plain CSS custom properties, `light-dark()` for both themes in one place | [theme.css](../../src/styles/theme.css), [global.css](../../src/styles/global.css) |
 | Heavy work | Module Web Workers for the SQL engines; `onnxruntime-web` (single-threaded wasm) for the background remover | [src/lib/sql/](../../src/lib/sql/), [runtime.ts](../../src/lib/bg/runtime.ts) |

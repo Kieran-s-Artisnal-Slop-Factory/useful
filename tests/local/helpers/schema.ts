@@ -40,6 +40,8 @@ export const TABLES: TableMeta[] = [
       { name: 'config_last_mode', type: 'text', nullable: true, references: null },
       { name: 'config_last_schema_id', type: 'text', nullable: true, references: null },
     { name: 'web_last_playground_id', type: 'text', nullable: true, references: null },
+      { name: 'http_active_environment_id', type: 'text', nullable: true, references: null },
+      { name: 'http_last_request_id', type: 'text', nullable: true, references: null },
       { name: 'notebook_last_note_id', type: 'text', nullable: true, references: null },
       { name: 'notebook_mode', type: 'text', nullable: true, references: null },
       { name: 'offline_prompt_seen', type: 'boolean', nullable: true, references: null },
@@ -207,6 +209,40 @@ export const TABLES: TableMeta[] = [
       { name: 'lang', type: 'text', nullable: false, references: null },
     ],
   },
+  {
+    name: 'http_environments',
+    fieldMerge: false,
+    singleton: false,
+    columns: [
+      { name: 'name', type: 'text', nullable: false, references: null },
+      { name: 'values', type: 'json', nullable: false, references: null },
+    ],
+  },
+  {
+    name: 'http_requests',
+    fieldMerge: false,
+    singleton: false,
+    columns: [
+      { name: 'name', type: 'text', nullable: false, references: null },
+      { name: 'environment_id', type: 'text', nullable: true, references: 'http_environments' },
+      { name: 'request', type: 'json', nullable: false, references: null },
+    ],
+  },
+  {
+    name: 'http_flows',
+    fieldMerge: false,
+    singleton: false,
+    columns: [
+      { name: 'name', type: 'text', nullable: false, references: null },
+      { name: 'environment_id', type: 'text', nullable: true, references: 'http_environments' },
+      { name: 'steps', type: 'json', nullable: false, references: null },
+      { name: 'last_run', type: 'json', nullable: false, references: null },
+    ],
+  },
+  // NOTE: `http_secrets` is deliberately NOT here. It is local-only — absent
+  // from STORES, so absent from every backup — and this mirror describes the
+  // exported schema. If it ever appears in this list, the guarantee has been
+  // broken; http-playground.spec.ts asserts the value never reaches a backup.
   {
     name: 'notes',
     fieldMerge: true,

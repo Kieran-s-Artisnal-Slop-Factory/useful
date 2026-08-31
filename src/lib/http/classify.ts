@@ -51,6 +51,18 @@ export interface FailureContext {
   pageOrigin: string;
   /** `navigator.onLine`, which is a hint rather than a fact. */
   online: boolean;
+  /**
+   * Origins that have answered THIS page successfully earlier in the session.
+   *
+   * The single most useful piece of evidence this module has, and it was
+   * being thrown away. A host that answered a moment ago is up, resolves,
+   * accepts connections, and demonstrably sends the headers that let this
+   * page read a response — so a failure against it now cannot be any of
+   * those things, and the vague "most likely CORS" can become a sharp
+   * "CORS, and only for this resource". In memory, for this session only:
+   * it is evidence about right now, not a fact worth storing.
+   */
+  provenOrigins?: readonly string[];
 }
 
 const originOf = (url: string): string | null => {
@@ -126,12 +138,28 @@ export function classifyFailure(error: unknown, context: FailureContext): Failur
   }
 
   if (targetOrigin !== null) {
+    // The strong case: this exact host already answered this page. Everything
+    // else that produces a bare TypeError — DNS, a refused connection, a dead
+    // network — was disproved minutes ago, so the remaining explanation is
+    // not really a guess any more, and saying "most likely" here would send
+    // someone off checking a hostname that is demonstrably fine.
+    if (context.provenOrigins?.includes(targetOrigin)) {
+      return {
+        kind: 'cors',
+        title: 'CORS — and only for this resource',
+        detail:
+          `${targetOrigin} already answered a different request from this page in this session. So the host is up, the name resolves, the connection is accepted, and it does send the headers that let this page read a response — just not for this address. ` +
+          'CORS is configured per resource far more often than people expect: one very common server rule attaches Access-Control-Allow-Origin to images and media and leaves it off everything else, so a .png works and a .csv in the next directory does not. Nothing about the request you just built is wrong. Compare the response headers of a URL from this host that DOES work against this one — the difference will be on the server.',
+        guess: false,
+      };
+    }
     return {
       kind: 'cors',
       title: 'Most likely CORS',
       detail:
         `This is a cross-origin request — from ${context.pageOrigin} to ${targetOrigin} — and it failed without a status, which is what a CORS refusal looks like from inside a page. It is a likelihood, not a certainty: the browser gives a page the same bare error for a refused connection, a name that does not resolve and a dropped network, on purpose, so that a page cannot use fetch to map what is out there. ` +
-        'The important part is that CORS is the SERVER’s decision, not this app’s: the target has to answer with an Access-Control-Allow-Origin header naming this origin, or a wildcard. No client running in a browser can opt out of that — not this one, not one you write, and not the same page installed to your home screen.',
+        'The important part is that CORS is the SERVER’s decision, not this app’s: the target has to answer with an Access-Control-Allow-Origin header naming this origin, or a wildcard. No client running in a browser can opt out of that — not this one, not one you write, and not the same page installed to your home screen. ' +
+        'Worth knowing before you conclude the host is simply closed: the header is often set per resource rather than per host, so one file type from a server can work while another from the same directory does not.',
       guess: true,
     };
   }

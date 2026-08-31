@@ -37,6 +37,37 @@ describe('sniff', () => {
     expect(sniff(mp4)?.mime).toBe('video/mp4');
   });
 
+  /**
+   * The formats added when the HTTP playground learned to preview media: a
+   * response that is a WebM or an M4A used to sniff as nothing at all, which
+   * meant "unrecognised bytes" for two of the most ordinary things a server
+   * serves.
+   */
+  it('recognises the web media formats a response is likely to be', () => {
+    const m4a = withTail([0, 0, 0, 0x18, ...text('ftypM4A ')]);
+    expect(sniff(m4a)?.mime).toBe('audio/mp4');
+    expect(sniff(withTail([0, 0, 0, 0x18, ...text('ftypmp41')]))?.mime).toBe('video/mp4');
+    expect(sniff(withTail([...text('fLaC'), 0, 0, 0, 0x22]))?.mime).toBe('audio/flac');
+  });
+
+  /**
+   * WebM and Matroska share one magic number and differ only in a DocType
+   * string further in — the reason this cannot be a plain signature row.
+   */
+  it('tells WebM from Matroska by the DocType, not the magic number', () => {
+    const ebml = [0x1a, 0x45, 0xdf, 0xa3];
+    const webm = withTail([...ebml, 0x9f, 0x42, 0x86, 0x81, 0x01, 0x42, 0x82, 0x84, ...text('webm')]);
+    expect(sniff(webm)?.mime).toBe('video/webm');
+    expect(sniff(webm)?.extension).toBe('webm');
+
+    const mkv = withTail([...ebml, 0x9f, 0x42, 0x86, 0x81, 0x01, 0x42, 0x82, 0x88, ...text('matroska')]);
+    expect(sniff(mkv)?.mime).toBe('video/x-matroska');
+
+    // A header naming neither is still the container the magic number attests
+    // to; guessing WebM there would put it in front of a player that fails.
+    expect(sniff(withTail(ebml))?.mime).toBe('video/x-matroska');
+  });
+
   it('recognises the non-image formats a paste might turn out to be', () => {
     expect(sniff(withTail([...text('%PDF-1.7')]))?.mime).toBe('application/pdf');
     expect(sniff(withTail([0x50, 0x4b, 0x03, 0x04]))?.mime).toBe('application/zip');

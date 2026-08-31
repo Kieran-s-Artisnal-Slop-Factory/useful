@@ -49,6 +49,12 @@ export interface SendOptions {
   /** Injected so the classifier can be tested without a browser. */
   pageOrigin?: string;
   online?: boolean;
+  /**
+   * Origins that have already answered this page. Passed straight to the
+   * classifier, which uses them to turn "most likely CORS" into a certainty
+   * when the host has demonstrably served this page before.
+   */
+  provenOrigins?: readonly string[];
   /** Injected for tests. */
   fetchImpl?: typeof fetch;
   now?: () => number;
@@ -129,7 +135,12 @@ export async function send(request: HttpRequest, options: SendOptions = {}): Pro
     return {
       ok: false,
       ms: clock() - started,
-      failure: classifyFailure(error, { url: request.url.trim(), pageOrigin, online }),
+      failure: classifyFailure(error, {
+        url: request.url.trim(),
+        pageOrigin,
+        online,
+        provenOrigins: options.provenOrigins,
+      }),
     };
   }
 }

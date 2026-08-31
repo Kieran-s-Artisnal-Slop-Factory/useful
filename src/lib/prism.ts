@@ -20,5 +20,8 @@ import 'prismjs/components/prism-yaml';
 import 'prismjs/components/prism-toml';
 import 'prismjs/components/prism-csv';
 import 'prismjs/components/prism-diff';
+// Markdown extends markup, which the core already carries — the import order
+// this module guarantees is exactly what makes that safe.
+import 'prismjs/components/prism-markdown';
 
 export default Prism;
