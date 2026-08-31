@@ -18,15 +18,6 @@ import {
   type Buffers,
   type Layout,
 } from './model';
-import {
-  closeMessage,
-  consoleMessage,
-  documentMessage,
-  isPopoutMessage,
-  POPOUT_CHANNEL,
-  popoutFeatures,
-  readyMessage,
-} from './popout';
 import { zipEntries, zipBytes } from '../zip';
 import type { WebPlayground } from '../db/types';
 
@@ -231,14 +222,8 @@ describe('archiveName', () => {
 });
 
 describe('layout', () => {
-  it('offers exactly the five modes, split first', () => {
-    expect(LAYOUTS.map((l) => l.id)).toEqual([
-      'split',
-      'editor',
-      'preview',
-      'modal',
-      'popout',
-    ]);
+  it('offers exactly the four modes, split first', () => {
+    expect(LAYOUTS.map((l) => l.id)).toEqual(['split', 'editor', 'preview', 'modal']);
     for (const layout of LAYOUTS) {
       expect(layout.label).toMatch(/\S/);
       expect(layout.title).toMatch(/\S/);
@@ -248,7 +233,7 @@ describe('layout', () => {
   it('knows what a layout string is', () => {
     expect(isLayout('split')).toBe(true);
     expect(isLayout('modal')).toBe(true);
-    expect(isLayout('popout')).toBe(true);
+    expect(isLayout('popout')).toBe(false);
     expect(isLayout('sidebar')).toBe(false);
     expect(isLayout(null)).toBe(false);
   });
@@ -260,7 +245,6 @@ describe('layout', () => {
     ['editor', true, false, false, true],
     ['preview', false, true, true, true],
     ['modal', true, false, true, true],
-    ['popout', true, false, true, true],
   ];
 
   for (const [layout, editor, preview, console_, single] of table) {
@@ -279,17 +263,14 @@ describe('layout', () => {
   });
 
   /**
-   * `modal` and `popout` render no preview in the page FLOW, but the document
-   * is still built — it is shown over the page or in another window. Only
-   * `editor` genuinely has no preview running anywhere, which is why it is the
-   * only mode without a console.
+   * `modal` renders no preview in the page FLOW, but the document is still
+   * built — it is shown over the page. Only `editor` genuinely has no preview
+   * running anywhere, which is why it is the only mode without a console.
    */
   it('tells "somewhere else" apart from "nowhere"', () => {
-    for (const layout of ['modal', 'popout'] as const) {
-      expect(isDetached(layout), layout).toBe(true);
-      expect(showsPreview(layout), layout).toBe(false);
-      expect(hasConsole(layout), layout).toBe(true);
-    }
+    expect(isDetached('modal')).toBe(true);
+    expect(showsPreview('modal')).toBe(false);
+    expect(hasConsole('modal')).toBe(true);
     for (const layout of ['split', 'editor', 'preview'] as const) {
       expect(isDetached(layout), layout).toBe(false);
     }
@@ -304,68 +285,3 @@ describe('layout', () => {
   });
 });
 
-describe('popout messages', () => {
-  it('accepts each message it defines', () => {
-    expect(isPopoutMessage(readyMessage())).toBe(true);
-    expect(isPopoutMessage(documentMessage('<p>x</p>'))).toBe(true);
-    expect(isPopoutMessage(consoleMessage([{ level: 'log', text: 'x' }]))).toBe(true);
-    expect(isPopoutMessage(closeMessage())).toBe(true);
-  });
-
-  const rejected: [string, unknown][] = [
-    ['a foreign channel', { channel: 'someone-else', type: 'ready' }],
-    ['no channel', { type: 'ready' }],
-    ['an unknown type', { channel: POPOUT_CHANNEL, type: 'evaluate' }],
-    ['a document with no srcdoc', { channel: POPOUT_CHANNEL, type: 'document' }],
-    ['a document whose srcdoc is not text', { channel: POPOUT_CHANNEL, type: 'document', srcdoc: 1 }],
-    ['a console with no list', { channel: POPOUT_CHANNEL, type: 'console', messages: 'x' }],
-    ['null', null],
-    ['a string', POPOUT_CHANNEL],
-    ['an array', [readyMessage()]],
-  ];
-
-  for (const [label, value] of rejected) {
-    it(`rejects ${label}`, () => {
-      expect(isPopoutMessage(value)).toBe(false);
-    });
-  }
-
-  /**
-   * The relay crosses a postMessage, which structured-clones. The previewer's
-   * list is a Svelte `$state` array — a Proxy — and structured clone refuses
-   * one with DataCloneError. This caught it going the wrong way once already,
-   * where a defensive try/catch swallowed the error and the console strip just
-   * stayed empty with nothing to explain it.
-   */
-  it('builds a console message that structured clone will actually take', () => {
-    const live = new Proxy([{ level: 'log' as const, text: 'proxied' }], {});
-    const message = consoleMessage(live);
-    expect(() => structuredClone(message)).not.toThrow();
-    expect(structuredClone(message)).toEqual({
-      channel: POPOUT_CHANNEL,
-      type: 'console',
-      messages: [{ level: 'log', text: 'proxied' }],
-    });
-    // A plain array in must not come out sharing identity either.
-    const plain = [{ level: 'warn' as const, text: 'x' }];
-    expect(consoleMessage(plain).messages[0]).not.toBe(plain[0]);
-  });
-
-  it('every message it builds survives a structured clone', () => {
-    for (const message of [
-      readyMessage(),
-      documentMessage('<p>x</p>'),
-      consoleMessage([{ level: 'error', text: 'e' }]),
-      closeMessage(),
-    ]) {
-      expect(() => structuredClone(message), message.type).not.toThrow();
-      expect(isPopoutMessage(structuredClone(message)), message.type).toBe(true);
-    }
-  });
-
-  it('sizes the window to the screen, clamped at both ends', () => {
-    expect(popoutFeatures(2560, 1440)).toBe('popup=yes,width=1200,height=1000');
-    expect(popoutFeatures(1440, 900)).toBe('popup=yes,width=720,height=720');
-    expect(popoutFeatures(320, 300)).toBe('popup=yes,width=320,height=320');
-  });
-});

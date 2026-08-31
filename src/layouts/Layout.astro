@@ -9,17 +9,9 @@ import OfflineSetup from '../components/chrome/OfflineSetup.svelte';
 
 interface Props {
   title: string;
-  /**
-   * Drop the three persistent chrome islands: the sidebar, the notification
-   * engine and the install offer. For a window that is a viewport onto
-   * something rather than a place to work — today, the web playground's
-   * popped-out preview. The engine especially: a second copy ticking in a
-   * second window would raise every notification twice.
-   */
-  bare?: boolean;
 }
 
-const { title, bare = false } = Astro.props;
+const { title } = Astro.props;
 const currentPath = Astro.url.pathname;
 // Base-aware paths for the inline scripts / static links below (works whether
 // the app is served at the root or under a sub-path like GitHub Pages).
@@ -63,23 +55,17 @@ const swPath = href('/sw.js');
       })();
     </script>
   </head>
-  <body class:list={{ bare }}>
+  <body>
     <script>
       // Test hook: the chunk is fetched ONLY when the test-mode flag is set on
       // this profile, so a real user never downloads it. See src/lib/testMode.ts.
       import { installTestHookIfEnabled } from '../lib/testMode';
       installTestHookIfEnabled();
     </script>
-    {
-      !bare && (
-        <>
-          <Chrome client:load transition:persist="chrome" {currentPath} />
-          <NotificationEngine client:load transition:persist="engine" />
-          <OfflineSetup client:load transition:persist="offline" />
-        </>
-      )
-    }
-    <main class:list={['page', { bare }]}>
+    <Chrome client:load transition:persist="chrome" {currentPath} />
+    <NotificationEngine client:load transition:persist="engine" />
+    <OfflineSetup client:load transition:persist="offline" />
+    <main class="page">
       <slot />
     </main>
     {

@@ -281,67 +281,6 @@ test.describe('web playground', () => {
     expect(await app.dumpAll()).toEqual(before);
   });
 
-  test('popout runs the preview in its own window, still sandboxed', async ({ app }) => {
-    const { page } = app;
-    await app.goto('/tools/web-playground/');
-    await typeInto(page, 'html', '<h1>Popped</h1>');
-
-    const [popup] = await Promise.all([
-      page.waitForEvent('popup'),
-      page.getByTestId('wp-layout-popout').click(),
-    ]);
-    await popup.waitForLoadState();
-
-    // The preview left this window and arrived in the other one.
-    await expect(page.locator('iframe[title="Web playground preview"]')).toHaveCount(0);
-    await expect(page.getByTestId('wp-preview-elsewhere')).toBeVisible();
-    await expect(page.getByTestId('wp-popout-note')).toContainText('phones and tablets');
-    const popped = popup.frameLocator('iframe[title="Web playground preview"]');
-    await expect(popped.locator('h1')).toHaveText('Popped');
-
-    // The popup window is same-origin with the app — which is exactly why the
-    // code must NOT be its document. It is not: the frame inside it carries
-    // the same sandbox, so the code still runs with no origin of its own.
-    const frame = popup.locator('iframe[title="Web playground preview"]');
-    await expect(frame).toHaveAttribute('sandbox', 'allow-scripts');
-    expect(await frame.getAttribute('sandbox')).not.toContain('allow-same-origin');
-
-    // It fills the window. This collapsed to a 150px strip once, because the
-    // height was set on a box whose parent had no height for a percentage to
-    // resolve against, and the window still "worked" in every other respect.
-    const fills = await popup.evaluate(() => {
-      const el = document.querySelector('iframe[title="Web playground preview"]');
-      const rect = el!.getBoundingClientRect();
-      return {
-        heightRatio: rect.height / window.innerHeight,
-        widthRatio: rect.width / window.innerWidth,
-        top: Math.round(rect.top),
-      };
-    });
-    expect(fills.heightRatio, 'the preview does not fill its window').toBeGreaterThan(0.9);
-    expect(fills.widthRatio).toBeGreaterThan(0.9);
-    // And no band of dead space where a topbar would be on an ordinary page.
-    expect(fills.top).toBe(0);
-
-    // Editing here updates the window over there.
-    await typeInto(page, 'html', '<h1>Edited while popped out</h1>');
-    await expect(popped.locator('h1')).toHaveText('Edited while popped out');
-
-    // And its console comes back to sit beside the code that wrote it.
-    await typeInto(page, 'script', "console.log('from the popout');\n");
-    await expect(consoleLines(page).first()).toContainText('from the popout');
-
-    // Closing the window puts the preview back rather than leaving a dead mode.
-    await popup.close();
-    await expect(page.getByTestId('wp-layout-split')).toHaveAttribute('aria-pressed', 'true', {
-      timeout: 15_000,
-    });
-    await expect(page.locator('iframe[title="Web playground preview"]')).toHaveCount(1);
-    await expect(
-      page.frameLocator('iframe[title="Web playground preview"]').locator('h1')
-    ).toHaveText('Edited while popped out');
-  });
-
   test('modal opens the preview over the page and every exit returns to split', async ({
     app,
   }) => {
@@ -400,15 +339,6 @@ test.describe('web playground', () => {
     await page.mouse.click(Math.max(2, outside!.x / 2), Math.max(2, outside!.y / 2));
     await expect(page.getByTestId('wp-modal')).toHaveCount(0);
     await expect(page.getByTestId('wp-layout-split')).toHaveAttribute('aria-pressed', 'true');
-  });
-
-  test('the preview window says so when it has no playground to listen to', async ({ app }) => {
-    const { page } = app;
-    // Opened directly rather than by the playground: there is no opener, so
-    // there is nothing to show and the page says which page to go back to.
-    await app.goto('/tools/web-playground/preview/');
-    await expect(page.getByTestId('pw-orphaned')).toBeVisible();
-    await expect(page.getByTestId('pw-orphaned')).toContainText('Popout');
   });
 
   test('New and Clear reset the scratch buffers without writing', async ({ app }) => {

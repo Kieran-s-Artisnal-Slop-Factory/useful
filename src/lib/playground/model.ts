@@ -64,14 +64,13 @@ export function isEmpty(buffers: Buffers): boolean {
 export const scriptName = (lang: ScriptLang): string => (lang === 'ts' ? 'script.ts' : 'script.js');
 
 /** Where the preview sits relative to the editor. */
-export type Layout = 'split' | 'editor' | 'preview' | 'modal' | 'popout';
+export type Layout = 'split' | 'editor' | 'preview' | 'modal';
 
 export const LAYOUTS: { id: Layout; label: string; title: string }[] = [
   { id: 'split', label: 'Split', title: 'Editor and preview side by side' },
   { id: 'editor', label: 'Editor', title: 'The code only — the preview is hidden' },
   { id: 'preview', label: 'Preview', title: 'The preview only — the editor is collapsed' },
   { id: 'modal', label: 'Modal', title: 'The preview over the page, near fullscreen' },
-  { id: 'popout', label: 'Popout', title: 'The preview in its own window' },
 ];
 
 export const isLayout = (value: unknown): value is Layout =>
@@ -82,16 +81,14 @@ export const showsEditor = (layout: Layout): boolean => layout !== 'preview';
 
 /**
  * Is the preview rendered in the PAGE FLOW? False for `modal`, which draws it
- * over the page, and for `popout`, which draws it in another window. The
- * document is built the same way for all of them — those two are sent or
- * shown the very string this would have put inline.
+ * over the page instead — the document is built the same way either way,
+ * because the modal shows the very string this would have put inline.
  */
 export const showsPreview = (layout: Layout): boolean =>
   layout === 'split' || layout === 'preview';
 
 /** Is the preview somewhere other than the page flow? */
-export const isDetached = (layout: Layout): boolean =>
-  layout === 'modal' || layout === 'popout';
+export const isDetached = (layout: Layout): boolean => layout === 'modal';
 
 /** Is there a preview running anywhere, and so a console worth showing? */
 export const hasConsole = (layout: Layout): boolean => layout !== 'editor';

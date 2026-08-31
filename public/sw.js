@@ -23,7 +23,7 @@
 // Bump this on any meaningful change to this file: `activate` only purges
 // caches whose name differs, so a constant name makes that step dead code and
 // lets a previous deploy's (or a poisoned) entry survive forever.
-const CACHE_NAME = 'useful-cache-v35';
+const CACHE_NAME = 'useful-cache-v36';
 
 // Everything under this prefix belongs to this app. Cache Storage is keyed by
 // ORIGIN, not by service-worker scope, so if two of these apps are ever served
@@ -82,7 +82,6 @@ const SHELL = [
   'tools/sql-playground/',
   'tools/config-playground/',
   'tools/web-playground/',
-  'tools/web-playground/preview/',
   'tools/notebook/',
   'tools/ascii-art/',
   'tools/file-tree/',

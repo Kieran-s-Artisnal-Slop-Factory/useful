@@ -56,14 +56,6 @@
     type Layout,
     type ScriptLang,
   } from '../../lib/playground/model';
-  import {
-    closeMessage,
-    documentMessage,
-    isPopoutMessage,
-    POPOUT_WINDOW_NAME,
-    popoutFeatures,
-  } from '../../lib/playground/popout';
-  import { href } from '../../lib/paths';
   import { zipBlob } from '../../lib/zip';
   import { copyText, downloadBlob } from '../../lib/exportFile';
   import { all, getSingleton, patch, put, putSingleton, softDelete, withSyncFields } from '../../lib/db/repo';
@@ -101,10 +93,6 @@
   // Session state, not a preference: the page already forgets everything else
   // on reload, and a remembered layout would be the only thing that did not.
   let layout = $state<Layout>('split');
-  /** The popped-out preview window, while one is open. */
-  let popout: Window | null = null;
-  let popoutBlocked = $state(false);
-  let popoutPoll: ReturnType<typeof setInterval> | undefined;
   /** The <dialog> for `modal`, while that layout is chosen. */
   let modalEl = $state<HTMLDialogElement | undefined>();
 
@@ -137,69 +125,6 @@
       css: buffers.css,
       script: compiled.code,
     });
-    sendToPopout();
-  }
-
-  // --- the popped-out preview ----------------------------------------------
-
-  /** Hand the current document to the popout, if one is listening. */
-  function sendToPopout() {
-    if (!popout || popout.closed || !srcdoc) return;
-    try {
-      popout.postMessage(documentMessage(srcdoc), window.location.origin);
-    } catch {
-      /* it went away between the check and the send */
-    }
-  }
-
-  function onPopoutMessage(event: MessageEvent) {
-    // Both windows are ours, so a real origin check is available here — unlike
-    // the sandboxed frame, whose origin is the string "null" and proves nothing.
-    if (event.origin !== window.location.origin) return;
-    if (!popout || event.source !== popout) return;
-    if (!isPopoutMessage(event.data)) return;
-    if (event.data.type === 'ready') sendToPopout();
-    else if (event.data.type === 'console') messages = event.data.messages;
-  }
-
-  function openPopout() {
-    popoutBlocked = false;
-    const opened = window.open(
-      href('/tools/web-playground/preview/'),
-      POPOUT_WINDOW_NAME,
-      popoutFeatures(window.screen.availWidth, window.screen.availHeight)
-    );
-    if (!opened) {
-      // Blocked, or a browser that has no popups to give. Say so and stay put.
-      popoutBlocked = true;
-      layout = 'split';
-      return;
-    }
-    popout = opened;
-    messages = [];
-    clearInterval(popoutPoll);
-    // The window can be closed from its own title bar, which fires nothing we
-    // can hear. Noticing costs one cheap check a second.
-    popoutPoll = setInterval(() => {
-      if (popout?.closed) {
-        popout = null;
-        clearInterval(popoutPoll);
-        if (layout === 'popout') layout = 'split';
-      }
-    }, 1000);
-  }
-
-  function closePopout() {
-    clearInterval(popoutPoll);
-    if (popout && !popout.closed) {
-      try {
-        popout.postMessage(closeMessage(), window.location.origin);
-        popout.close();
-      } catch {
-        /* already gone */
-      }
-    }
-    popout = null;
   }
 
   /**
@@ -231,8 +156,6 @@
     // open. The dialog's own close event is the only way out, and unmounting
     // it takes it out of the top layer on its own.
     layout = next;
-    if (next === 'popout') openPopout();
-    else closePopout();
     // Coming back to an inline preview: the frame remounts empty, so give it
     // the document again rather than waiting for the next keystroke.
     if (showsPreview(next)) void rebuild();
@@ -341,7 +264,6 @@
   }
 
   onMount(async () => {
-    window.addEventListener('message', onPopoutMessage);
     try {
       await refresh();
       const prefs = await getSingleton<Preferences>('preferences');
@@ -354,11 +276,7 @@
     }
   });
 
-  onDestroy(() => {
-    clearTimeout(debounce);
-    window.removeEventListener('message', onPopoutMessage);
-    closePopout();
-  });
+  onDestroy(() => clearTimeout(debounce));
 </script>
 
 <div class="page-header">
@@ -390,23 +308,8 @@
         The preview is over the page. Close it with the ×, with
         <kbd>Esc</kbd>, or by clicking outside it.
       </span>
-    {:else if layout === 'popout'}
-      <span class="muted small" data-testid="wp-popout-note">
-        The preview is in its own window. <strong>Popouts do not work on most
-        phones and tablets</strong> — browsers there open a tab you have to switch to
-        by hand, and some block it outright. Switch back to Split if it does not
-        appear.
-      </span>
     {/if}
   </div>
-
-  {#if popoutBlocked}
-    <p class="banner banner-danger" data-testid="wp-popout-blocked" role="alert">
-      The browser would not open the preview window — it was blocked, or this
-      browser has no popups. Allow popups for this site and try again; the
-      preview is back beside the editor in the meantime.
-    </p>
-  {/if}
 
   <div class="workspace" class:single={isSingleColumn(layout)}>
     {#if showsEditor(layout)}
@@ -538,11 +441,7 @@
           />
         {:else}
           <p class="muted small" data-testid="wp-preview-elsewhere">
-            {#if layout === 'modal'}
-              The preview is open over the page. Anything it logs still arrives below.
-            {:else}
-              The preview is running in its own window. Anything it logs still arrives below.
-            {/if}
+            The preview is open over the page. Anything it logs still arrives below.
           </p>
         {/if}
 
