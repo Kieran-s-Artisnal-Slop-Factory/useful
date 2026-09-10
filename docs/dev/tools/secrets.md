@@ -2,7 +2,7 @@
 
 A generator for passwords, keys, tokens and identifiers at `/tools/secrets/`. Twenty-seven cards, each producing one kind of value from the browser's cryptographic random source. The page writes nothing — to IndexedDB, to the URL, or to the console — so a value exists only until it is replaced or the tab is closed.
 
-_Describes the code as of v0.5.0 (unreleased; schema v16) — verify against source when in doubt._
+_Describes the code as of v0.5.0 (schema v16) — verify against source when in doubt._
 
 ## File map
 

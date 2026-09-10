@@ -4,7 +4,7 @@ Build an HTTP request, send it, and read what came back — like curl or Postman
 
 Everything it sends is something you pressed Send on.
 
-_Describes the code as of v0.5.0 (unreleased; schema v16) — verify against source when in doubt._
+_Describes the code as of v0.5.0 (schema v16) — verify against source when in doubt._
 
 ## Read this first: CORS
 

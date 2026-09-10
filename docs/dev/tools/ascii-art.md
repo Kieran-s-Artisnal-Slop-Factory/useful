@@ -2,7 +2,7 @@
 
 `/tools/ascii-art/` — an image as characters, or words as a FIGlet banner. A stateless Svelte island over three pure modules; nothing on the page is written anywhere, including the chosen font.
 
-_Describes the code as of v0.5.0 (unreleased; schema v16) — verify against source when in doubt._
+_Describes the code as of v0.5.0 (schema v16) — verify against source when in doubt._
 
 ## File map
 

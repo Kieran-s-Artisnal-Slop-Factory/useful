@@ -2,7 +2,7 @@
 
 A pixel-art editor at `/tools/sprite-editor/`: a square character grid, a legend mapping each character to a CSS colour, and named documents in IndexedDB. Ported from [retoken](https://github.com/Descent098/retoken)'s `SpriteEditor` — the drawing surface and the sprite format are its; the documents, autosave, undo/redo and exports are this app's.
 
-_Describes the code as of v0.5.0 (unreleased; schema v16) — verify against source when in doubt._
+_Describes the code as of v0.5.0 (schema v16) — verify against source when in doubt._
 
 ## File map
 

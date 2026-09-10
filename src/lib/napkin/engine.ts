@@ -24,7 +24,7 @@
 import type { NapkinField } from '../db/types';
 
 /** The bits of a boxed expression this module uses. */
-interface Boxed {
+export interface Boxed {
   json: unknown;
   latex: string;
   isValid: boolean;
@@ -42,9 +42,33 @@ interface Boxed {
 }
 
 interface Engine {
-  parse(latex: string): Boxed;
-  box(json: unknown): Boxed;
+  parse(latex: string, options?: { canonical?: boolean }): Boxed;
+  box(json: unknown, options?: { canonical?: boolean }): Boxed;
   number(value: number): unknown;
+}
+
+/**
+ * Parse and box WITHOUT canonicalising.
+ *
+ * Everything else here wants the canonical form, because that is what
+ * evaluates. The image export wants the opposite: a tree shaped the way the
+ * author wrote it, so that substituting values into it produces the formula
+ * they recognise rather than the engine's preferred spelling of it.
+ *
+ * The difference is not cosmetic. Canonically, `a - b` is
+ * `["Add", "a", ["Negate", "b"]]`, so putting b = −7 in renders `5 + 7`;
+ * raw, it stays `["Subtract", "a", "b"]` and renders `5 - (-7)`. Likewise
+ * `1 + rate` is reordered to `rate + 1` on the way in, and
+ * `costPerMonth × 12 × years` becomes `12 × costPerMonth × years`.
+ */
+export async function parseRaw(latex: string): Promise<Boxed> {
+  const ce = await loadEngine();
+  return ce.parse(latex, { canonical: false });
+}
+
+export async function boxRaw(json: unknown): Promise<Boxed> {
+  const ce = await loadEngine();
+  return ce.box(json, { canonical: false });
 }
 
 let enginePromise: Promise<Engine> | null = null;

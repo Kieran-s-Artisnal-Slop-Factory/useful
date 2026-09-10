@@ -5,7 +5,7 @@ that belong to the release rather than to any one phase. The reviewed,
 sequenced version of the feature list is [version-5-phased.md](version-5-phased.md);
 where the two disagree, that file is the later thought.
 
-_Describes the code as of v0.5.0 (unreleased; schema v16) — verify against source when in doubt._
+_Describes the code as of v0.5.0 (schema v16) — verify against source when in doubt._
 
 ## The list, as asked for
 
@@ -18,7 +18,7 @@ _Describes the code as of v0.5.0 (unreleased; schema v16) — verify against sou
   against a gain or lose goal.
 - **Calculators › Napkin Math** — export a calculation as an image: the
   typeset formula with the variables replaced by their values, a preview
-  button, PNG or SVG output. *(Phase 3; not in the first sitting.)*
+  button, PNG or SVG output.
 
 Two standing constraints came with the list and shaped several decisions:
 usability wins over accessibility where the two genuinely collide, because
@@ -61,7 +61,7 @@ background remover and every icon in the app respectively.
 | `typescript` | 6.0.3 | 7.0.2 | Deferred. A compiler major under Astro 7 and Svelte 5 is its own piece of work with its own regression surface, and nothing in 0.5.0 wants it |
 | `react` / `react-dom` | 18.3.1 | 19.3.0 | Deferred. React is here only because `@excalidraw/excalidraw` needs it; upgrading means clearing Excalidraw's peer range first, and the app itself renders no React |
 | `@dicebear/core` | 9.4.3 | 10.7.0 | Deferred. Drives the logo generator's seeded avatars. A major there can change generated output, which would silently alter every avatar someone has already saved a seed for |
-| `@cortex-js/compute-engine` | 0.115.0 | 0.128.0 | Deferred. A 0.x minor is a breaking change by semver, and this is the engine napkin math parses and substitutes with — Phase 3 builds directly on `expr.subs()`, so moving it mid-release would confound any bug found there |
+| `@cortex-js/compute-engine` | 0.115.0 | 0.128.0 | Deferred. A 0.x minor is a breaking change by semver, and this is the engine napkin math parses with. Phase 3 leans on it harder than any other feature — on a NON-canonical parse and re-render, which is a less travelled path than the evaluator uses — so moving it mid-release would have confounded every oddity found there |
 | `@sqlite.org/sqlite-wasm` | 3.53.0-build1 | 3.53.4-build1 | Deferred. The prerelease-tagged range does not admit the newer build without an explicit version pin, and the SQL playground has no complaint against the one it has |
 
 ### Note on the type mismatch

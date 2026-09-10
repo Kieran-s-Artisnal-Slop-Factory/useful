@@ -18,7 +18,9 @@ An offline-only, local-first app there is no server, no account, and no network 
   and light stops, file-transfer times, daily calorie needs (resting and
   maintenance energy by three published equations, and what to eat to hit a
   goal), napkin math (a formula becomes a
-  little calculator, and then a function in Python, JavaScript, Go or Rust),
+  little calculator, then a function in Python, JavaScript, Go or Rust, and
+  then a picture — the formula, the same formula with your numbers written
+  into it, and the answer, as SVG or PNG),
   and three text tools — a diff by line, word or character that also writes
   the patch, word similarity scored five ways with the working shown, and text
   analysis with counts, readability scores and case transformations.

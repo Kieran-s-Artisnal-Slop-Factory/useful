@@ -149,7 +149,10 @@ test.describe('offline readiness', () => {
    *
    * Both pages are opened for the first time with the network already off.
    */
-  test('the 0.4.0 tools work offline, and the one that cannot says so', async ({ app }) => {
+
+  test('every tool 0.4.0 and 0.5.0 added works offline, and the one that cannot says so', async ({
+    app,
+  }) => {
     const { page } = app;
     // Sending with no network is the point of the last third of this test,
     // and the browser logs the failed load however it was provoked.
@@ -226,5 +229,61 @@ test.describe('offline readiness', () => {
     await expect(failure).toContainText('works offline');
 
     await page.context().setOffline(false);
+
+    /* ---- and the three tools 0.5.0 adds ------------------------------ */
+
+    // --- the colour extractor -----------------------------------------------
+    // Pure arithmetic over a canvas, but the page has never been opened in
+    // this profile, so it is the crawl that has to have found it.
+    await page.goto('/tools/color-extractor/');
+    await expect(page.getByTestId('cx-file')).toBeVisible({ timeout: 30_000 });
+    const png = await page.evaluate(async () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 192;
+      canvas.height = 60;
+      const ctx = canvas.getContext('2d')!;
+      ctx.fillStyle = '#c0392b';
+      ctx.fillRect(0, 0, 96, 60);
+      ctx.fillStyle = '#2980b9';
+      ctx.fillRect(96, 0, 96, 60);
+      return canvas.toDataURL('image/png');
+    });
+    await page.getByTestId('cx-file').setInputFiles({
+      name: 'offline.png',
+      mimeType: 'image/png',
+      buffer: Buffer.from(png.split(',')[1]!, 'base64'),
+    });
+    await expect(page.getByTestId('cx-swatch')).toHaveCount(2, { timeout: 30_000 });
+    await expect(page.getByTestId('cx-css')).toContainText('--primary:');
+
+    // --- the calorie calculator ---------------------------------------------
+    await page.goto('/tools/calories/');
+    await expect(page.getByTestId('cal-bmr')).toHaveText('1,649 kcal/day', { timeout: 30_000 });
+    await expect(page.getByTestId('cal-tdee')).toHaveText('2,556 kcal/day');
+
+    // --- napkin math, and its image export ----------------------------------
+    // This is the one that could plausibly fail: the export is behind a
+    // dynamic import, so the chunk has to have been crawled, and the KaTeX
+    // faces it inlines are fetched at build time from /math/fonts/.
+    await page.goto('/tools/napkin-math/');
+    await expect(page.getByTestId('napkin-formula-loading')).toHaveCount(0, { timeout: 60_000 });
+    await page.getByTestId('napkin-name').fill('Offline');
+    await page.locator('[data-testid="napkin-formula"]').evaluate((element) => {
+      (element as HTMLElement & { value: string }).value = '\\mathrm{aa}-\\mathrm{bb}';
+      element.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await expect(page.getByTestId('napkin-input-aa')).toBeVisible({ timeout: 30_000 });
+    await page.getByTestId('napkin-input-aa').fill('10');
+    await page.getByTestId('napkin-input-bb').fill('4');
+    await expect(page.getByTestId('napkin-result')).toHaveText('6');
+    await page.getByTestId('napkin-export-image').click();
+    await expect(page.getByTestId('napkin-image-preview')).toBeVisible({ timeout: 60_000 });
+
+    // The picture is whole: fonts inside it, drawn with real glyphs.
+    const svg = await page
+      .locator('[data-testid="napkin-image-preview"]')
+      .evaluate(async (element) => (await fetch((element as HTMLImageElement).src)).text());
+    expect(svg).toContain('data:font/woff2;base64,');
+    expect(svg.match(/<text /g)!.length).toBeGreaterThan(3);
   });
 });

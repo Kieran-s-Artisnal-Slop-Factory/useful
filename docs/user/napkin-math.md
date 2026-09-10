@@ -2,7 +2,7 @@
 
 Write a formula once, and get a little calculator for it: named inputs, a live answer, a history of the numbers you have run through it, and code in four languages when you want to take it somewhere else.
 
-_Describes the code as of v0.5.0 (unreleased; schema v16) — verify against source when in doubt._
+_Describes the code as of v0.5.0 (schema v16) — verify against source when in doubt._
 
 ## Writing a formula
 
@@ -52,6 +52,30 @@ Templates you save appear in the sidebar, with a search box. Click one to open i
 - Paste JSON into the import box, or **Choose a file…**, and it loads. Templates and calculation files are told apart automatically.
 
 A shared template carries the **formula only**. The numbers you have run through it are a separate download, so handing someone a formula does not hand them your figures.
+
+## The calculation as a picture
+
+**Export image**, under Save in the **Calculations** card, draws the calculation as a picture: the formula, the same formula with your numbers written into it, and the answer. It is for a document or a message, where a link to this page is no use to anyone.
+
+Four things to know before you send one:
+
+- **The fonts are inside the file.** Maths is typeset with fonts your reader almost certainly does not have, so they travel in the picture. That is why it looks right wherever you paste it, and why it is bigger than something this small has any right to be — a few tens of kilobytes for three short rows. The dialog tells you how much of that is font.
+- **The middle row is not the answer.** It is your formula with the numbers dropped into their places — `12500 - 4750`, not `7750`. The answer is the row underneath. Showing both is the whole point: someone can see what you worked out *and* how.
+- **SVG for a document, PNG for a chat.** SVG is the drawing itself, so it stays sharp at any size and prints properly — that is what a word processor, a slide or a report wants. PNG is a photograph of that drawing at a fixed size, and it is what a chat window, an issue tracker or an email will actually accept. If you have the choice, choose SVG.
+- **Nothing is saved.** The picture is built when you open the dialog and gone when you close it. Downloading or copying it is the only way to keep it.
+
+You need a formula before the button does anything, and the **Result** row only appears once there is an answer to put in it.
+
+What the dialog offers:
+
+- **Rows** — tick **Formula**, **With your values**, **Result** and **Title** (the template's name, so an untitled one has nothing to show) in any combination. The preview redraws each time you change one.
+- **Theme** — light or dark. The colours are written into the file rather than taken from your theme here, so it looks the same on someone else's screen as it does on yours.
+- **Transparent background** — leaves the paper out, so the picture sits on whatever colour you paste it onto. Choose the theme to match: dark text on a dark slide disappears.
+- **Decimals in the result** — the number as this page shows it, or rounded to 0–4 places. This changes the picture only. Your calculation and the number on the page are untouched.
+- **PNG size** — 1x, 2x or 3x. Pick 2x or 3x for anything that will be read on a good screen or printed. It does not affect the SVG, which has no fixed size to choose.
+- **Download SVG**, **Download PNG**, **Copy PNG** — the last one puts the picture straight on the clipboard, ready to paste. If your browser blocks the clipboard, download instead.
+
+Some formulas cannot have their values written into them cleanly. When that happens the middle row is left out rather than drawn wrong, and the dialog says why underneath the preview.
 
 ## Gotchas
 

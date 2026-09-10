@@ -2,7 +2,7 @@
 
 Craft a request, send it, and understand what came back — the httpie/Postman core, running in the page — then name the parts that change between environments, keep the secret ones out of every backup, and chain requests into a flow that carries a token from one step to the next.
 
-_Describes the code as of v0.5.0 (unreleased; schema v16) — verify against source when in doubt._
+_Describes the code as of v0.5.0 (schema v16) — verify against source when in doubt._
 
 The tool exists to say the things a browser will not. Two of them shape the whole page, and both are cases where every other browser-based HTTP client is silent:
 

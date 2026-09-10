@@ -601,3 +601,248 @@ test.describe('napkin math', () => {
     expect(after.filter((u) => /mathlive|compute-engine/i.test(u))).toEqual([]);
   });
 });
+
+test.describe('napkin math — the image export', () => {
+  test.slow();
+
+  /**
+   * Set the formula directly rather than typing it.
+   *
+   * `typeFormula` above is the right tool when the EDITOR is the subject —
+   * it caught real bugs in the inline-shortcut handling. Here the editor is
+   * only the way in, and typing twelve characters at 50 ms each before every
+   * case would spend most of the run in the wrong place. Setting `value` and
+   * dispatching `input` is exactly what the component listens for.
+   */
+  async function setFormula(page: P, latex: string) {
+    await mathFieldReady(page);
+    await page.locator('[data-testid="napkin-formula"]').evaluate((element, value) => {
+      (element as HTMLElement & { value: string }).value = value;
+      element.dispatchEvent(new Event('input', { bubbles: true }));
+    }, latex);
+  }
+
+  /** The SVG the dialog is previewing, read back out of its blob URL. */
+  async function previewSvg(page: P): Promise<string> {
+    return page
+      .locator('[data-testid="napkin-image-preview"]')
+      .evaluate(async (element) => {
+        const response = await fetch((element as HTMLImageElement).src);
+        return response.text();
+      });
+  }
+
+  /**
+   * Every glyph in the picture, in drawing order, as one string.
+   *
+   * KaTeX kerns by splitting a word across several runs — `revenue` is drawn
+   * as `re`, `v`, `enue` in three separate <text> elements — so searching the
+   * SVG source for a whole word finds nothing even when the word is plainly
+   * there. The captions and the title are single runs and can be matched in
+   * the source; the maths cannot.
+   */
+  async function previewGlyphs(page: P): Promise<string> {
+    const svg = await previewSvg(page);
+    return (svg.match(/<text[^>]*>[^<]*<\/text>/g) ?? [])
+      .map((element) => element.replace(/<[^>]*>/g, ''))
+      .join('');
+  }
+
+  /** Width and height straight out of a PNG's IHDR chunk. */
+  function pngSize(bytes: Buffer): { width: number; height: number } {
+    return { width: bytes.readUInt32BE(16), height: bytes.readUInt32BE(20) };
+  }
+
+  async function openWithMargin(page: P) {
+    await expect(page.getByTestId('napkin-no-fields')).toBeVisible({ timeout: 30_000 });
+    await page.getByTestId('napkin-name').fill('Monthly margin');
+    await setFormula(page, '\\mathrm{revenue}-\\mathrm{cost}');
+    await expect(page.getByTestId('napkin-input-revenue')).toBeVisible({ timeout: 30_000 });
+    await page.getByTestId('napkin-input-revenue').fill('12500');
+    await page.getByTestId('napkin-input-cost').fill('4750');
+    await expect(page.getByTestId('napkin-result')).toHaveText('7750');
+    await page.getByTestId('napkin-export-image').click();
+    await expect(page.getByTestId('napkin-image-preview')).toBeVisible({ timeout: 30_000 });
+  }
+
+  test('draws the three rows as a real picture, and writes nothing', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/napkin-math/');
+    const before = await app.dumpAll();
+    await openWithMargin(page);
+
+    const svg = await previewSvg(page);
+
+    // The picture is vector primitives, NOT embedded HTML. That is not a
+    // stylistic preference: Chromium taints a canvas the moment an SVG
+    // carrying a <foreignObject> is drawn on it, so the PNG below could not
+    // exist if this assertion failed.
+    expect(svg).not.toContain('<foreignObject');
+    expect(svg.match(/<text /g)!.length).toBeGreaterThan(5);
+
+    // Self-contained: an <img> rendering an SVG may not fetch anything, so a
+    // font referenced by URL would silently come out as a fallback serif.
+    expect(svg).toContain('@font-face');
+    expect(svg).toContain('data:font/woff2;base64,');
+    expect(svg).not.toMatch(/url\((?!data:)/);
+    expect(svg).not.toContain('var(--');
+
+    // The title, the labels, and the formula's own glyphs.
+    expect(svg).toContain('Monthly margin');
+    expect(svg).toContain('FORMULA');
+    expect(svg).toContain('WITH YOUR VALUES');
+    expect(svg).toContain('RESULT');
+
+    // The preview element really rendered it — a broken SVG loads as nothing.
+    const natural = await page
+      .getByTestId('napkin-image-preview')
+      .evaluate((el) => [(el as HTMLImageElement).naturalWidth, (el as HTMLImageElement).naturalHeight]);
+    expect(natural[0]).toBeGreaterThan(80);
+    expect(natural[1]).toBeGreaterThan(80);
+
+    expect(await app.dumpAll()).toEqual(before);
+  });
+
+  test('the middle row carries the values, and the result is the answer', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/napkin-math/');
+    await openWithMargin(page);
+    const glyphs = await previewGlyphs(page);
+
+    // The formula row keeps its names...
+    expect(glyphs).toContain('revenue');
+    expect(glyphs).toContain('cost');
+    // ...and the row under it has the numbers, NOT the answer. This is the
+    // whole feature: `expr.subs()` would have collapsed this to 7750.
+    expect(glyphs).toContain('12500');
+    expect(glyphs).toContain('4750');
+    expect(glyphs).toContain('7750');
+  });
+
+  test('a fraction draws its bar, which nothing in the markup calls a border', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/napkin-math/');
+    await expect(page.getByTestId('napkin-no-fields')).toBeVisible({ timeout: 30_000 });
+    await setFormula(page, '\\frac{\\mathrm{revenue}}{\\mathrm{months}}');
+    await expect(page.getByTestId('napkin-input-revenue')).toBeVisible({ timeout: 30_000 });
+    await page.getByTestId('napkin-input-revenue').fill('1200');
+    await page.getByTestId('napkin-input-months').fill('4');
+    await expect(page.getByTestId('napkin-result')).toHaveText('300');
+    await page.getByTestId('napkin-export-image').click();
+    await expect(page.getByTestId('napkin-image-preview')).toBeVisible({ timeout: 30_000 });
+
+    const svg = await previewSvg(page);
+    // MathLive paints a fraction bar with `.ML__frac-line::after`, so an
+    // element scan that only reads borders and backgrounds finds nothing and
+    // the picture comes out as two numbers with no line between them.
+    // One rect is the background; a fraction needs at least one more.
+    expect(svg.match(/<rect /g)!.length).toBeGreaterThan(1);
+  });
+
+  test('rasterises to a PNG at the chosen scale, and downloads both formats', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/napkin-math/');
+    const before = await app.dumpAll();
+    await openWithMargin(page);
+
+    const natural = await page
+      .getByTestId('napkin-image-preview')
+      .evaluate((el) => [(el as HTMLImageElement).naturalWidth, (el as HTMLImageElement).naturalHeight]);
+
+    const svgDownload = page.waitForEvent('download');
+    await page.getByTestId('napkin-download-image-svg').click();
+    const svgFile = await svgDownload;
+    expect(svgFile.suggestedFilename()).toBe('Monthly-margin.svg');
+    const svgText = readFileSync(await svgFile.path(), 'utf8');
+    expect(svgText).toContain('@font-face');
+    expect(svgText).toContain('Monthly margin');
+
+    await page.getByTestId('napkin-image-scale').selectOption('3');
+    const pngDownload = page.waitForEvent('download');
+    await page.getByTestId('napkin-download-image-png').click();
+    const pngFile = await pngDownload;
+    expect(pngFile.suggestedFilename()).toBe('Monthly-margin.png');
+    const png = readFileSync(await pngFile.path());
+
+    // Really a PNG, really three times the size, and really has ink on it.
+    expect(png.subarray(0, 4)).toEqual(Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+    const size = pngSize(png);
+    expect(size.width).toBe(natural[0]! * 3);
+    expect(size.height).toBe(natural[1]! * 3);
+    // A blank picture compresses to almost nothing; a typeset one does not.
+    expect(png.byteLength).toBeGreaterThan(4000);
+
+    expect(await app.dumpAll()).toEqual(before);
+  });
+
+  test('turning a row off takes it out of the picture', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/napkin-math/');
+    await openWithMargin(page);
+
+    const withAll = await previewSvg(page);
+    await page.getByTestId('napkin-image-row-substituted').uncheck();
+    await expect
+      .poll(async () => (await previewSvg(page)).includes('WITH YOUR VALUES'), { timeout: 20_000 })
+      .toBe(false);
+
+    const fewer = await previewSvg(page);
+    expect(fewer.length).toBeLessThan(withAll.length);
+    expect(fewer).toContain('FORMULA');
+    expect(fewer).toContain('RESULT');
+    // The values row is gone; the other two are untouched.
+    const glyphs = await previewGlyphs(page);
+    expect(glyphs).toContain('revenue');
+    expect(glyphs).toContain('7750');
+    expect(glyphs).not.toContain('12500');
+
+    // The title comes off too, and the picture gets shorter for it.
+    await page.getByTestId('napkin-image-title').uncheck();
+    await expect
+      .poll(async () => (await previewSvg(page)).includes('Monthly margin'), { timeout: 20_000 })
+      .toBe(false);
+  });
+
+  test('the dark theme changes the ink, not the layout', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/napkin-math/');
+    await openWithMargin(page);
+
+    const light = await previewSvg(page);
+    expect(light).toContain('#ffffff');
+
+    await page.getByTestId('napkin-image-theme').selectOption('dark');
+    await expect
+      .poll(async () => (await previewSvg(page)).includes('#111827'), { timeout: 20_000 })
+      .toBe(true);
+
+    const dark = await previewSvg(page);
+    expect(dark).toContain('#f3f4f6');
+    expect(dark).not.toContain('fill="#111111"');
+    // Same rows, same glyphs — only the colours moved.
+    expect(dark.match(/<text /g)!.length).toBe(light.match(/<text /g)!.length);
+  });
+
+  test('every control in the dialog has an accessible name', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/napkin-math/');
+    await openWithMargin(page);
+    // The dialog is behind a click, so the registry sweep never audits it.
+    const unnamed = await page.evaluate(() => {
+      const bad: string[] = [];
+      const dialog = document.querySelector('[data-testid="napkin-image-dialog"]');
+      if (!dialog) return ['dialog missing'];
+      for (const el of Array.from(dialog.querySelectorAll('input, select, textarea, button'))) {
+        const node = el as HTMLInputElement;
+        const named =
+          (node.labels && node.labels.length > 0) ||
+          Boolean(node.getAttribute('aria-label')) ||
+          Boolean(node.closest('label')) ||
+          (node.tagName === 'BUTTON' && (node.textContent ?? '').trim().length > 0);
+        if (!named) bad.push(node.tagName.toLowerCase() + '[' + (node.getAttribute('data-testid') ?? '?') + ']');
+      }
+      return bad;
+    });
+    expect(unnamed).toEqual([]);
+  });
+});

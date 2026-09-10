@@ -2,7 +2,7 @@
 
 Self-documenting back-of-the-envelope calculations at `/tools/napkin-math/`: type a formula, get typed input fields, run named calculations against it, keep a library of templates, and generate code from any of it in Python, JavaScript, Go, Rust or as a dependency-free web component.
 
-_Describes the code as of v0.5.0 (unreleased; schema v16) — verify against source when in doubt._
+_Describes the code as of v0.5.0 (schema v16) — verify against source when in doubt._
 
 ## File map
 
@@ -10,15 +10,18 @@ _Describes the code as of v0.5.0 (unreleased; schema v16) — verify against sou
 | --- | --- |
 | [NapkinMathApp.svelte](../../../src/components/apps/NapkinMathApp.svelte) | The tool: library sidebar, template editor, fields, calculations, code card, export/import. |
 | [MathField.svelte](../../../src/components/MathField.svelte) | The `<math-field>` wrapper. Three settings here are load-bearing — see below. |
-| [napkin/engine.ts](../../../src/lib/napkin/engine.ts) | The Compute Engine, wrapped: `parseFormula`, `evaluateFormula`, `boxJson`. |
+| [napkin/engine.ts](../../../src/lib/napkin/engine.ts) | The Compute Engine, wrapped: `parseFormula`, `evaluateFormula`, `boxJson`, and the non-canonical `parseRaw` / `boxRaw` the image export needs. |
 | [napkin/model.ts](../../../src/lib/napkin/model.ts) | Fields, `reconcileFields`, `checkValue`. Pure, so it tests without loading 37 MB of maths library. |
 | [napkin/transfer.ts](../../../src/lib/napkin/transfer.ts) | Import and export, with the validation an untrusted document needs. |
+| [napkin/substitute.ts](../../../src/lib/napkin/substitute.ts) | The middle row of the picture: `substituteJson`, `usableValues`, `substitutedLatex`. |
+| [napkin/exportImage.ts](../../../src/lib/napkin/exportImage.ts) | The SVG builder: `layoutRow`, `buildCalculationSvg`, `fontFaceRules`, `formatNumberLatex`, `imageFilename`, `EXPORT_THEMES`. |
+| [raster/svgToPng.ts](../../../src/lib/raster/svgToPng.ts) | `svgToPngBlob` — a self-contained SVG string through a blob URL, an `<img>` and a canvas. Shared, not napkin-specific. |
 | [codegen/expression.ts](../../../src/lib/codegen/expression.ts) | MathJSON → an expression, per language, with precedence. |
 | [codegen/functions.ts](../../../src/lib/codegen/functions.ts) | The whole file: docstring, typed parameters, guard clauses, helpers. |
 | [codegen/identifiers.ts](../../../src/lib/codegen/identifiers.ts) | Symbol → a legal identifier, per language, with collision resolution. |
 | [codegen/webcomponent.ts](../../../src/lib/codegen/webcomponent.ts) | The dependency-free custom element. |
 | [codegen/latex.ts](../../../src/lib/codegen/latex.ts) | The mathfield's LaTeX reduced to readable Markdown maths for a comment. |
-| [codegen/formulaMarkup.ts](../../../src/lib/codegen/formulaMarkup.ts) | The formula as self-contained typeset HTML + CSS + embedded faces, for the web component. |
+| [codegen/formulaMarkup.ts](../../../src/lib/codegen/formulaMarkup.ts) | The formula as self-contained typeset HTML + CSS + embedded faces, for the web component (`renderFormula`) and for the image export (`renderFormulaSet`). |
 | [MathField.svelte](../../../src/components/MathField.svelte) `insert()` | Puts a skeleton at the cursor, through the mathfield's own `insert` command. |
 | [CodeBlock.svelte](../../../src/components/CodeBlock.svelte) | Read-only source, highlighted by Prism. |
 | [CodeInput.svelte](../../../src/components/CodeInput.svelte) | A textarea with a highlighted underlay, for the import box. |
@@ -213,6 +216,114 @@ A Playwright case generates a component, then loads it on `/tools/photography/` 
 
 The formula is shown as plain LaTeX text. `generateWebComponent` takes an optional `formulaMarkup` argument and MathLive's SSR entry (`mathlive/ssr`, 397 KB) exports `convertLatexToMarkup`, so pre-rendering it is one call away — but the seam is deliberately left unwired. That markup is KaTeX spans that need MathLive's static stylesheet **and** the twenty faces to look like anything; a host page has neither, so the pre-rendered version would render worse than the plain text it replaced, and shipping the CSS and fonts alongside would end the "one file, no dependencies" promise the component exists for. The argument is there for a caller that does have those assets.
 
+## The image export
+
+**Export image** sits in the **Calculations** card, under Save, behind a dashed rule. It had a card of its own at first, which put a heading and a paragraph between the answer and the button that turns the answer into a picture; saving a calculation and picturing it are the same kind of act and belong together. It draws the current calculation: the formula, the same formula with the values written into it, and the result. The dialog previews it live and offers **Download SVG**, **Download PNG** and **Copy PNG**. The whole feature arrives on that first click and not before.
+
+```mermaid
+flowchart TD
+  A["formulaLatex, exactly as typed"] --> R
+  B["substitutedLatex in substitute.ts"] --> R
+  C["formatNumberLatex of the result"] --> R
+  R["three rows: a caption and a LaTeX string"] --> S
+  S["renderFormulaSet in formulaMarkup.ts: convertLatexToMarkup per row, one stylesheet, each face embedded once"] --> M
+  M["layoutRow: laid out in an off-screen shadow root, geometry read back"] --> G
+  G["drawRow: text, rect and nested svg primitives"] --> V
+  V["buildCalculationSvg returns a self-contained SVG string"] --> D["downloadImageSvg writes the .svg"]
+  V --> P["svgToPngBlob in raster/svgToPng.ts"]
+  P --> E["encodeCanvas, then downloadBlob or copyPng"]
+```
+
+`renderFormulaSet` exists rather than three calls to `renderFormula` because three rows of one calculation share almost every face: rendered separately and concatenated, `KaTeX_Math-Italic` would be pasted into the file once per row that happens to use it. The union is measured first and each face embedded once.
+
+Nothing is measured until `document.fonts.ready` resolves: sized against a fallback serif, every row comes out the wrong width and the picture is clipped.
+
+The preview is an `<img>` of a blob URL rather than inlined markup. That is the safe choice — an SVG inside an `<img>` cannot run script, and this markup is derived from user-typed LaTeX — and the honest one: it is the same pipeline the PNG goes through, so a preview that draws is a PNG that will draw.
+
+### The dialog
+
+A native `<dialog>`, opened with `showModal()` from an effect rather than from the click handler, because `showModal()` is what brings the backdrop, the focus trap and Escape. Its state is local to the export and never touches the template: which rows (`showFormulaRow`, `showSubstitutedRow`, `showResultRow`, `showImageTitle`), `imageTheme`, `imageTransparent`, `imageDecimals`, `imageScale`. The result row is offered only when there is a result to put in it, and **Export image** is not rendered at all until the formula parses — it sits outside the `fields.length === 0` branch on purpose, so a formula with no free variables (`2+2`) still offers a picture even though it has nothing to fill in.
+
+`rebuildImage` runs on open and on any option change — but only while the dialog is open — and carries an `imageToken` for the same reason the parse and evaluate paths do: a slow render must not overwrite a newer one. Closing revokes the blob URL and drops the SVG. Nothing here reads or writes a row: the export renders the calculation on screen and adds no data model of its own.
+
+Three actions come off the built SVG: `downloadImageSvg` (`downloadText`, `image/svg+xml`), `downloadImagePng` and `copyImagePng`, the last two sharing one `rasterize()` that puts any refusal from `svgToPngBlob` into the dialog's error line rather than throwing it.
+
+### There is no `<foreignObject>` in the output, and there must never be one
+
+This is the single most important fact on this page, because the version with one is the obvious version.
+
+The plan said to lay the typeset rows out as HTML inside `<foreignObject>` and rasterise that with a canvas. Measured in Chromium, **it cannot work**: drawing *any* SVG containing a `<foreignObject>` onto a canvas taints it, and `toBlob()` then throws `SecurityError: Tainted canvases may not be exported`. A trivial one-element `<foreignObject>` with no external references at all is enough to trigger it. The plan expected trouble from Safari only; the truth is that shipping it as planned would have given the dialog a PNG button that always failed.
+
+So the browser is still the typesetter — nothing here understands maths — but the markup is laid out once and then **read back as geometry**, and the output is `<text>`, `<rect>` and nested `<svg>`. That rasterises in every engine and scales without a second render. A Playwright case asserts the absence directly:
+
+```
+expect(svg).not.toContain('<foreignObject');
+```
+
+Anyone "simplifying" this back to embedded HTML will find every test green except that one, and a PNG button that throws.
+
+One consequence worth knowing: `svgToPngBlob`'s WebKit refusal (`foreignObjectSupport`, `WEBKIT_REFUSAL`) only fires when the SVG it is handed actually contains a `<foreignObject>`. This picture never does, so the napkin export never reaches that branch and the dialog offers PNG everywhere.
+
+Two more properties the output has to keep, both because an `<img>` rendering an SVG may not fetch anything:
+
+- **The faces travel as `data:` URIs.** A font referenced by URL falls back to a serif silently.
+- **`fontFaceRules` keeps only the `@font-face` rules** out of the rendered CSS. The layout rules position HTML and cannot affect `<text>` and `<rect>`, so carrying them would add about 30 KB to every picture for nothing.
+
+Colours are literals from `EXPORT_THEMES`, never `var(--…)`: an SVG file has no `:root` to inherit from, and a picture is a thing you send to someone whose theme is not yours. A unit test asserts every value in both palettes is a plain hex.
+
+### `expr.subs()` is not how you get "the formula with your values in"
+
+It reads like the answer — the evaluator already uses it — but it does not substitute, it **partially evaluates**. Measured against the real Compute Engine:
+
+| formula | values | `expr.subs()` gives | the row should read |
+|---|---|---|---|
+| `sqrt(x² + y²)` | 3, 4 | `5` | `\sqrt{3^2+4^2}` |
+| `costPerMonth × 12 × years` | 25, 3 | `900` | `25×12×3` |
+
+Those are answers, and the answer is the row underneath — the middle row would have been a duplicate of the bottom one.
+
+String replacement on the LaTeX is the other plausible wrong answer: replacing `rate` also hits the `rate` inside `\text{separate}`, and replacing `x` hits the `x` in `\max`. A formula is a tree, not a string.
+
+[substitute.ts](../../../src/lib/napkin/substitute.ts) walks the MathJSON tree instead and swaps symbol nodes for number nodes. `substituteJson` is pure and exported so the walk tests without loading 2.5 MB of engine: element 0 of an application is the operator head and is never a variable, and all four shapes MathJSON can take — a bare string, the `{sym}` long form, an array application, the `{fn}` long form — are covered.
+
+### The parse and the re-render are non-canonical
+
+`parseRaw` and `boxRaw` in [engine.ts](../../../src/lib/napkin/engine.ts) exist for this one caller. Everything else wants the canonical form, because that is what evaluates. Here canonicalising rewrites the author's formula on the way in:
+
+| written | canonical form | renders as | raw form renders as |
+|---|---|---|---|
+| `a - b`, with b = −7 | `["Add", "a", ["Negate", "b"]]` | `5 + 7` | `5 - (-7)` |
+| `1 + rate` | reordered to `rate + 1` | `0.05 + 1` | `1 + 0.05` |
+| `costPerMonth × 12 × years` | `12 × costPerMonth × years` | `12 × 25 × 3` | `25 × 12 × 3` |
+
+`5 + 7` is not a lie about the arithmetic, but it is not the formula anyone typed, and the picture's whole claim is that it shows your formula.
+
+The row is **refused rather than shown** when the round trip does not come back clean. `substitutedLatex` returns a reason instead of LaTeX when the output carries `\error`, `\mathtip`, `__unit__` or `\operatorname{\_\_`, when nothing has a value yet, or when none of the named inputs appear in the formula. The dialog puts that reason under the preview and draws one row fewer. A picture captioned "your calculation" that quietly contains `\operatorname{__unit__}` is worse than a shorter one.
+
+A single letter wrapped in `\mathrm{}` parses as a *different* symbol — `\mathrm{x}` is `x_upright` — so `aliases()` accepts both spellings for the same field name. The editor never emits that form, but an imported formula can carry it.
+
+### Three traps in reading geometry back out of a browser
+
+Each of these cost time, each would cost it again, and each fails quietly rather than loudly.
+
+| trap | what happens if you do the obvious thing |
+|---|---|
+| **The baseline has to be measured.** `layoutRow` inserts a zero-size inline-block with `vertical-align: baseline` after each text node, reads its `top`, and removes it — that element sits exactly on the line's baseline. | Every arithmetic estimate from the font size and the line box drifts, and the rows sit visibly off their own line. |
+| **MathLive paints a fraction bar with `.ML__frac-line::after`.** So `hasPaintedPseudo` checks the element *and* both pseudo-elements, and counts a painted box as a rule only when it is a hairline of 4 px or less — a background on a tall box is a highlight, and painting it would cover the glyphs. | An element scan that reads borders and background colours finds **nothing**. The first working version drew fractions as two numbers with no line between them. |
+| **KaTeX splits a word across text runs to kern it.** `revenue` is drawn as `re`, `v`, `enue` in three separate `<text>` elements. | A spec asserting `toContain('revenue')` against the SVG source fails on a picture that is perfectly correct. The Playwright helper `previewGlyphs` joins every `<text>` body first — the captions and the title are single runs and *can* be matched in the source, the maths cannot. |
+
+### It is behind a dynamic import, guarded both ways
+
+`rebuildImage`, `downloadImageSvg` and `rasterize` all `import()` their modules at the moment they are needed: the SVG builder, the substituter and its non-canonical engine calls, and the rasteriser. The napkin page already carries MathLive and the Compute Engine — it should not also carry a dialog most visits never open.
+
+[payload.spec.ts](../../../tests/local/payload.spec.ts) asserts **both directions**, because a guard that can never fire is not a guard: the export's chunk must not load on a page that only opened the tool, and it must load once the dialog is opened. It finds that chunk by searching the real build for the baseline probe's inline style, `width:0;height:0;vertical-align:baseline` — a string only this feature carries. A guessed chunk name is how the CodeMirror guard sat inert for several releases, and a MathLive class name would be useless here because the editor bundle carries those on purpose.
+
+### What the tests cover
+
+- [substitute.test.ts](../../../src/lib/napkin/substitute.test.ts) — the tree walk in Vitest against plain JSON, then `substitutedLatex` against the **real** engine for the cases that decide whether the feature is honest: the square root that must stay a square root, the subtraction that must stay `5-(-7)`, `\mathrm{rate}` next to `\mathrm{rated}`, and each refusal.
+- [exportImage.test.ts](../../../src/lib/napkin/exportImage.test.ts) — the arithmetic and naming around the builder. `formatNumberLatex` groups thousands with `\,` rather than a comma, because the row above it is rendered by the Compute Engine, which writes `\,`; four digits stay unbroken, since `1,000` reads worse than `1000` in a formula. `imageFilename` cannot emit a separator or a traversal.
+- [napkin-math.spec.ts](../../../tests/local/napkin-math.spec.ts) — `layoutRow` and `buildCalculationSvg` measure real text, so they live in Playwright: no `<foreignObject>`, no non-`data:` `url(`, no `var(--`, a fraction drawing more than one `<rect>`, the middle row carrying `12500` and `4750` while the bottom row carries `7750`, a PNG whose IHDR is exactly 3× the preview at 3× and which is too large to be blank, every dialog control carrying an accessible name, and **zero writes** across the whole flow.
+
 ## Offline
 
 The twenty KaTeX faces (262,804 bytes with their stylesheet) live in their own cache bucket, `useful-fonts-v1`, deliberately **outside** the app-cache prefix so a `CACHE_NAME` bump does not evict them. They are stable, unfingerprinted `public/` files that the service worker's `_astro/` crawl can never find — it matches fingerprinted chunk URLs and does not parse CSS `url()` — so they register their own `OfflineBundle` and are fetched cache-first with no revalidation.
@@ -270,3 +381,7 @@ The index is `x`, not `i` — a bare `i` is the imaginary unit to the Compute En
 - **`\mathrm{}` on a single letter renames it.** The editor's rule only fires on two or more letters, so this cannot happen by typing — but a formula pasted in through the import box can carry it, and `x_upright` is what the engine will call it.
 - **The generated code is a starting point, not a library.** It has no tests, no packaging, and no float-precision story beyond what the language gives you.
 - **An imported template's MathJSON is re-derived from its LaTeX**, never trusted, so a hand-edited file whose two halves disagree cannot mislead the generator. The consequence is that importing needs the engine loaded.
+- **The image export's rounding is its own.** There is no precision preference anywhere in this app, so the plan's "formatted through the page's existing precision setting" had nothing to hook into. The dialog offers `auto` — `String(number)`, exactly what the page shows — or 0 to 4 decimals, and that choice changes the picture and nothing about the calculation. Inventing an app-wide setting from an export dialog is the wrong place to start one.
+- **The substituted row is refused, not approximated.** When the non-canonical round trip comes back with an engine error marker, the row is dropped and the reason is shown under the preview. Some formulas therefore produce a two-row picture with an explanation attached rather than the three rows the dialog offers.
+- **The picture carries its own fonts, so it is a few tens of KB** — the dialog states the figure. Only the faces the three rows actually resolve to are embedded, so a one-face formula is far smaller than a mixed one, but there is no way to make it small *and* have it render correctly on a machine without KaTeX installed.
+- **The title's width is estimated, not measured** — `title.length * 8.2` — because it is drawn as plain sans-serif `<text>` and never goes through `layoutRow`. A long title in a wide-glyph name can sit closer to the right edge than the padding claims.

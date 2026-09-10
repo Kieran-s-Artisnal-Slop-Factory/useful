@@ -2,7 +2,7 @@
 
 `/tools/color-extractor/` reports the colours actually present in an image, then offers to turn them into a CSS theme. Extraction is k-means clustering in OKLab over a downsampled copy; the theme half maps that palette onto the five `THEME_ROLES` and calls the same `buildTheme` the Themes tool uses. Nothing is persisted.
 
-_Describes the code as of v0.5.0 (unreleased; schema v16) — verify against source when in doubt._
+_Describes the code as of v0.5.0 (schema v16) — verify against source when in doubt._
 
 ## File map
 

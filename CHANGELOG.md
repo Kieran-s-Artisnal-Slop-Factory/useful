@@ -1,4 +1,4 @@
-# 0.5.0 (unreleased)
+# 0.5.0 — September 9th, 2026
 
 > **No migration runs in this release.** The schema stays at **v16** —
 > the first release since 0.2.0 that adds no store. Your data is not
@@ -10,6 +10,7 @@
 
 * Added a **Color extractor** under Images: drop, pick or **paste** an image and get its major colours back, ranked by how much of the picture each covers. The clustering runs in OKLab rather than RGB, so a gradient sky collapses into one blue while a small saturated mark survives as its own entry, and the seed is fixed so the same image and count always give the same palette. Every colour copies individually in four CSS spellings, and the palette exports as a theme in exactly the format Generators › Themes emits, previewed by the same component.
 * **Generators › Themes** now seeds its builder from the URL. The colour extractor's "Open in Themes" button carries the five role colours as query parameters, and Themes fills its own fields from them on load — so a palette pulled out of a photo lands in the harmony and spacing controls in one click. Reading a URL writes nothing, and a mangled link falls back to the usual defaults rather than erroring.
+* **Napkin math exports a calculation as a picture.** Three rows — your formula, the same formula with the numbers written into it, and the answer — typeset and downloadable as SVG or PNG, with a live preview and a light or dark theme. The middle row is the point: it shows the working, not the result. The picture carries the maths fonts inside it, so it renders the same wherever it is pasted, and it is drawn as vector shapes rather than embedded HTML, which is what lets it become a PNG at all.
 * Added a **Daily calories** calculator under Calculators: resting and maintenance energy from Mifflin–St Jeor, revised Harris–Benedict or Katch–McArdle, an activity multiplier, and a daily target for a gain or loss goal at a chosen rate. It shows its working step by step with your own numbers substituted in, and it cautions rather than blocks — an aggressive rate or a target under your resting energy gets a sentence, not a disabled button. Only your unit system is remembered; body measurements deliberately never persist.
 
 ## Bug Fixes

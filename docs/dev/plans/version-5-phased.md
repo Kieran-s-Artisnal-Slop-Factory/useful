@@ -157,13 +157,18 @@ Settled; the phases below assume them. Each records why.
    SVG loaded into an `Image` from a blob URL, drawn to a canvas at 1×/2×/3×
    and encoded through the existing `encodeCanvas()` in
    [img/convert.ts](../../../src/lib/img/convert.ts). The rasteriser lives in
-   `src/lib/raster/svgToPng.ts` because it is generic. Known trade: a
+   `src/lib/raster/svgToPng.ts` because it is generic. ~~Known trade: a
    `<foreignObject>` SVG rasterises in Chromium and Firefox when every
-   resource is inline (which the embedded fonts guarantee); **Safari is
-   unreliable** at drawing `<foreignObject>` to canvas. The PNG button says
-   so when the UA is WebKit and offers the SVG instead; this is a personal
-   app used from Chromium, and a Safari-specific canvas pipeline is not
-   worth building blind.
+   resource is inline; **Safari is unreliable**, so the PNG button says so on
+   WebKit and offers the SVG instead.~~
+   **Wrong, and measured wrong in an interesting way — see Phase 3.** *No*
+   engine will rasterise a `<foreignObject>` SVG: Chromium taints the canvas
+   the instant one is drawn onto it, and `toBlob()` then throws
+   `SecurityError: Tainted canvases may not be exported`. A single
+   `<foreignObject>` holding the word "hi", with no external references at
+   all, is enough to trigger it. The rasteriser and its WebKit check are
+   both still correct and still shipped; what changed is that the napkin
+   export no longer produces the kind of SVG they were guarding.
 9. **The calorie calculator uses Mifflin–St Jeor by default.** It is the
    equation the dietetics literature has preferred since the 2005
    comparison; Harris–Benedict (revised 1984) and Katch–McArdle (needs body
@@ -208,9 +213,9 @@ nobody answers.
 | 1 | Images › Colour extractor | — | — | **DONE.** Stateless; largest phase |
 | 2 | Calculators › Daily calorie calculator | — | pref key | **DONE.** `calorie_units` in `preferences`, no migration |
 | **A** | **Checkpoint** — full suite green | | | **PASSED** 2026-09-09 |
-| 3 | Napkin Math › export calculation as image | — | — | Extends an existing tool |
-| 4 | Hardening + release | — | — | Docs sweep, payload, offline, cut 0.5.0 |
-| **B** | **Checkpoint** — full suite green, release | | | after 3–4 |
+| 3 | Napkin Math › export calculation as image | — | — | **DONE.** Extends an existing tool; the PNG route was redesigned |
+| 4 | Hardening + release | — | — | **DONE.** Docs sweep, payload, offline, cut 0.5.0 |
+| **B** | **Checkpoint** — full suite green, release | | | **PASSED** 2026-09-09 |
 
 Two new tool pages (one under **Images**, one under **Calculators**), one
 extended tool, zero migrations. Schema stays **v16** unless Q4 is answered
@@ -304,12 +309,46 @@ precache audit; `payload.spec.ts` unchanged in its heavy-chunk assertions
 > explaining a behaviour that had just been fixed as a bug — because the
 > writing and the fixing ran concurrently.
 
-### Checkpoint B — after Phases 3–4 — *pending*
+### Checkpoint B — after Phases 3–4 — PASSED 2026-09-09
 
 Gate for the release. Exit criteria as A, plus: Napkin Math's page weight
 unchanged at first paint (the export code is behind a click, and the
 rasteriser is a lazy import), the offline walk covering all three features,
-and `VERSION` / `package.json` / CHANGELOG dated.
+and `VERSION` / `package.json` / CHANGELOG dated. All met.
+
+| What | Result |
+| --- | --- |
+| `npm test` | 521 passed, 0 failed |
+| Trust gate | `self-verification 5/5 injected faults detected` |
+| `npm run test:unit` | 2,442 passed across 98 files (2,221 at the start of the release) |
+| `tools/audit-precache.mjs` | green — 509 files, 22.61 MB, cap 600 |
+| Docs validation | 1,365 relative links resolve, 65 mermaid diagrams parse |
+| Payload | the image export proved absent on load and present on open |
+| Offline | the colour extractor, the calorie calculator and the formula image all work with the network off |
+
+> **The one thing this checkpoint had to argue with.** A new offline test
+> made `background-remover.spec.ts`'s own offline case time out — not
+> always, which is the worst kind. The suite runs eight browsers against
+> one single-threaded static server, and that test has 120 seconds in
+> which to fetch a 13 MB runtime and run inference on it; a second test
+> installing bundles in the same window took the margin away.
+>
+> It was tempting to call it flakiness — the project's own rule says a
+> shifting failure set is flakiness, and the set did shift. It was not.
+> Running the whole suite with the new test EXCLUDED gave 521 passed, 0
+> failed; running it with the test included failed twice out of two. The
+> fix was to fold the new assertions into the offline test that already
+> existed, so the release adds coverage without adding a second download.
+>
+> The lesson worth keeping: *re-run before digging* is a good rule, and it
+> is not a substitute for isolating the variable. Two runs of a flaky
+> suite cannot tell you which of them was the accident.
+
+**Still owed, and not claimed:** the fresh-install → airplane-mode walk on
+a real handset. It has been owed since 0.3.0. What exists is the emulated
+equivalent under Playwright, which is a different thing. It is on the
+TODO's *For human* list along with three other things only a person can
+judge.
 
 ---
 
@@ -505,10 +544,67 @@ rules, and which equation to pick when.
 
 ---
 
-## Phase 3 — Napkin Math › export the calculation as an image
+## Phase 3 — Napkin Math › export the calculation as an image — DONE
 
 **Goal:** a saved calculation becomes a picture — the formula, the formula
 with the values in, and the result — as SVG or PNG, previewed before saving.
+
+> ### What this phase found
+>
+> Two of this phase's three design decisions were wrong, and both were wrong
+> in the same way: they described what the libraries look like they do rather
+> than what they measurably do.
+>
+> **1. `expr.subs()` does not substitute. It partially evaluates.** Decision 7
+> named it as the way to get "the formula with the values in", on the strength
+> of the evaluator already using it. Run against the real Compute Engine,
+> `sqrt(x² + y²)` at 3 and 4 comes back as `5`, and
+> `costPerMonth × 12 × years` at 25 and 3 comes back as `900`. Those are
+> answers, and the answer is the row underneath — the middle row would have
+> been a duplicate of the bottom one.
+>
+> What works is walking the MathJSON tree and swapping symbol nodes for number
+> nodes. It also has to parse and re-render **non-canonically**, which was the
+> one part decision 7 got right for the wrong reason: canonicalising rewrites
+> `a - b` into `a + (-b)` on the way in, so b = −7 renders as `5 + 7` where
+> the honest reading is `5 - (-7)`. It also reorders `1 + rate` to `rate + 1`
+> and `costPerMonth × 12` to `12 × costPerMonth`. See
+> [substitute.ts](../../../src/lib/napkin/substitute.ts).
+>
+> **2. A `<foreignObject>` SVG cannot be rasterised by anything.** Decision 8
+> expected trouble from Safari only. Measured in Chromium: drawing *any* SVG
+> containing a `<foreignObject>` onto a canvas taints it, and `toBlob()`
+> throws `SecurityError: Tainted canvases may not be exported`. A trivial
+> one-element case with no external references triggers it. Shipped as
+> planned, the export would have offered a PNG button that always failed.
+>
+> So the picture is built from **vector primitives instead**. The browser is
+> still the typesetter — nothing here understands maths — but the markup is
+> laid out once in an off-screen shadow root and then read back as geometry:
+> each text run with its measured position, font and exact baseline; each rule
+> as a rectangle; each inline `<svg>` KaTeX draws for a stretchy glyph copied
+> across at its measured box. The output is `<text>`, `<rect>` and nested
+> `<svg>`, which rasterises everywhere — **including Safari**, so the WebKit
+> refusal decision 8 called for was deleted rather than shipped.
+>
+> Three details that cost time and would cost it again:
+>
+> - **The baseline has to be measured, not derived.** A zero-size
+>   inline-block with `vertical-align: baseline` inserted after a text node
+>   sits exactly on that line's baseline. Every arithmetic approach from the
+>   font size and the line box drifts.
+> - **MathLive paints a fraction bar with `.ML__frac-line::after`.** Scanning
+>   elements for borders and backgrounds finds *nothing* — the first working
+>   version drew fractions as two numbers with no line between them. Pseudo-
+>   elements have to be checked explicitly.
+> - **KaTeX splits a word across text runs to kern it.** `revenue` is drawn as
+>   `re`, `v`, `enue`. A spec asserting `toContain('revenue')` on the SVG
+>   source fails on a picture that is perfectly correct.
+>
+> **Still owed:** there is no precision preference in this app, so the plan's
+> "formatted through the page's existing precision setting" had nothing to
+> hook into. The dialog offers its own rounding for the picture and changes
+> nothing about the calculation.
 
 **Scope:**
 
@@ -520,43 +616,48 @@ with the values in, and the result — as SVG or PNG, previewed before saving.
    numeric leaves formatted through the page's existing precision setting.
    Unit-tested against the engine, which is already lazily loaded in tests
    that need it.
-2. **`src/lib/napkin/exportImage.ts`** — `buildCalculationSvg(rows, opts)`
-   (decision 8): three rows rendered via `renderFormula(latex, { embedFonts:
-   true })` from [formulaMarkup.ts](../../../src/lib/codegen/formulaMarkup.ts),
-   the merged CSS and the embedded faces placed once in a `<style>`, each
-   row a `<foreignObject>` sized from a measurement pass in a detached
-   shadow root (the probe `collectFaces` already uses); options: which rows
-   (Q2), theme (light / dark using the app's tokens, resolved to literal
-   colours because an SVG file has no `:root`), padding, title (the
-   template name) on or off. Output is a self-contained SVG string with no
-   external references — which is the property that lets it rasterise.
+2. **`src/lib/napkin/exportImage.ts`** — `buildCalculationSvg(rows, opts)`.
+   *As built, not as first specified — see the blockquote above.* The rows
+   are typeset together by `renderFormulaSet` (one stylesheet, each face
+   embedded once), laid out in a detached shadow root by `layoutRow`, and
+   then read back as geometry: `<text>` per measured run, `<rect>` per
+   rule, and a copied `<svg>` per stretchy glyph. ~~each row a
+   `<foreignObject>`~~ — that design cannot be rasterised by any browser.
+   Options: which rows (Q2), theme (light / dark, resolved to literal
+   colours because an SVG file has no `:root`), padding, transparency, and
+   the template name as a title. Output is a self-contained SVG string with
+   no external references — which is the property that lets it rasterise.
 3. **UI** in [NapkinMathApp.svelte](../../../src/components/apps/NapkinMathApp.svelte):
    an **Export image** button beside the existing export targets that opens
    a dialog with the options above and a **live preview** (the SVG mounted
    inline, re-rendered on option change), and two actions: **Download SVG**
    (`downloadText`, `image/svg+xml`) and **Download PNG** at 1×/2×/3× via
    the lazy `svgToPng` (`downloadBlob`), plus **Copy PNG** through the
-   existing `copyPng`. On WebKit the PNG actions are replaced by one line
-   saying why and pointing at the SVG.
+   existing `copyPng`. ~~On WebKit the PNG actions are replaced by one line
+   saying why.~~ Not needed: the picture contains no `<foreignObject>`, so
+   it rasterises on WebKit too and the refusal was deleted rather than
+   shipped.
 4. **Payload:** `exportImage.ts` and `svgToPng.ts` are behind the button's
    click (`import()`), and `payload.spec.ts` asserts Napkin Math's first
-   paint does not grow. The embedded fonts make a single SVG ~100–300 KB
-   (only the faces used are embedded); the user page says so.
+   paint does not grow. The embedded fonts make a single SVG a few tens of
+   KB (only the faces used are embedded, and a typical calculation needs
+   one or two); the user page says so.
 
 **Data model:** none. The export reads the current calculation and writes
 nothing.
 
-**Tests:** unit — `substitutedLatex` on formulas with a variable inside
-`\text{}` and `\sqrt{}` (the string-replacement traps), a formula where a
-value is negative (parenthesised, not `a--b`), number formatting; SVG
-builder produces well-formed XML (parsed back with `DOMParser` in the
-Playwright run, `escapeXml` cases in Vitest), no `http`/`url(` references
-survive in the output. Playwright — open a seeded calculation, open the
-dialog, the preview contains three `<foreignObject>`s, toggle the middle
-row off and it contains two, Download SVG yields a file whose text contains
-the template name and a `@font-face`, Download PNG yields a blob that
-decodes to the expected width × scale and is not a single colour; **zero
-writes** for the whole flow.
+**Tests:** unit — the MathJSON tree walk against plain JSON (including that
+the operator HEAD is never substituted), and `substitutedLatex` against the
+REAL engine on the cases that decide whether the feature is honest: a
+square root that stays a square root rather than becoming 5, a subtraction
+that stays one with its negative parenthesised, and a name inside another
+word left alone; number grouping and filename sanitising. Playwright — the
+picture is asserted to contain **no `<foreignObject>`** (the assertion that
+keeps the PNG possible at all), the middle row to carry the values rather
+than the answer, a fraction to draw its bar, a toggled-off row to leave the
+picture, the dark theme to change the ink and not the layout, and the PNG
+to decode at exactly the chosen multiple of the preview; **zero writes**
+for the whole flow.
 
 **Docs:** [napkin-math.md](../tools/napkin-math.md) (dev) gains a section
 with a mermaid sequence diagram *App → substitute → renderFormula →
@@ -570,7 +671,7 @@ file is bigger than you expect because the fonts travel inside it.
 
 ---
 
-## Phase 4 — Hardening and release
+## Phase 4 — Hardening and release — DONE
 
 **Goal:** the cross-cutting passes, then cut 0.5.0.
 

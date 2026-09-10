@@ -124,6 +124,65 @@ export async function renderFormula(
   return { markup, css: `${fontCss}\n${layoutCss}`, fontBytes: bytes, families };
 }
 
+export interface RenderedFormulaSet {
+  /** One markup string per input, in the same order. Empty inputs give ''. */
+  markups: string[];
+  /** ONE stylesheet for all of them: the layout rules plus the union of faces. */
+  css: string;
+  fontBytes: number;
+  families: string[];
+}
+
+/**
+ * Several formulas that will live in ONE document, sharing one stylesheet.
+ *
+ * Calling `renderFormula` per row and concatenating the results would embed
+ * `KaTeX_Math-Italic` once per row that happens to use it — three rows of a
+ * calculation share almost every face, so that is the same 40 KB pasted three
+ * times into a file someone is going to send to somebody. Measuring the union
+ * first embeds each face exactly once.
+ *
+ * Written for the napkin-math image export (0.5.0 Phase 3), which is why it
+ * returns markups rather than a joined string: the caller lays each row out
+ * separately and reads its geometry back.
+ *
+ * That caller does NOT put these into a `<foreignObject>`, and a future one
+ * should not either — Chromium taints a canvas the moment an SVG containing
+ * one is drawn onto it, so the picture can never become a PNG. See
+ * [exportImage.ts](../napkin/exportImage.ts), whose header explains what to
+ * do instead.
+ */
+export async function renderFormulaSet(
+  latexes: readonly string[],
+  { embedFonts = true }: { embedFonts?: boolean } = {}
+): Promise<RenderedFormulaSet | null> {
+  const trimmed = latexes.map((latex) => latex.trim());
+  if (trimmed.every((latex) => !latex)) return null;
+
+  let convert: (latex: string) => string;
+  try {
+    ({ convertLatexToMarkup: convert } = await import('mathlive'));
+  } catch {
+    return null;
+  }
+
+  const markups = trimmed.map((latex) => (latex ? convert(latex) : ''));
+  if (markups.every((markup) => !markup)) return null;
+
+  const faces = new Map<string, FaceKey>();
+  for (const markup of markups) {
+    if (!markup) continue;
+    for (const [file, key] of await collectFaces(markup)) {
+      if (!faces.has(file)) faces.set(file, key);
+    }
+  }
+  const families = [...new Set([...faces.values()].map((key) => key.family))].sort();
+  if (!embedFonts) return { markups, css: layoutCss, fontBytes: 0, families };
+
+  const { css: fontCss, bytes } = await embedFaces(faces);
+  return { markups, css: `${fontCss}\n${layoutCss}`, fontBytes: bytes, families };
+}
+
 /** `@font-face` rules carrying the font bytes themselves. */
 async function embedFaces(faces: Map<string, FaceKey>): Promise<{ css: string; bytes: number }> {
   const rules: string[] = [];

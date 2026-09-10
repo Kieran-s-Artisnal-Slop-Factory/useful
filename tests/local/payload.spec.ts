@@ -219,6 +219,44 @@ test.describe('payload discipline', () => {
     expect(urls.filter((u) => /\.wav/i.test(u)), 'a keypress sound was fetched').toEqual([]);
   });
 
+
+  test('the image export stays behind its button', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/');
+    // A marker only the SVG builder carries — the baseline probe it inserts
+    // to measure where the browser put each text run. Resolved from the real
+    // build, because guessing a chunk name is how the CodeMirror guard sat
+    // inert for several releases. A MathLive class name is NOT usable here:
+    // those live in the editor bundle too, which this page loads on purpose.
+    const EXPORT_CHUNKS = chunksContaining('width:0;height:0;vertical-align:baseline');
+
+    const onLoad = await watch(page, async () => {
+      await page.goto('/tools/napkin-math/');
+      await expect(page.getByTestId('napkin-no-fields')).toBeVisible({ timeout: 30_000 });
+    });
+    expect(
+      onLoad.filter((url) => EXPORT_CHUNKS.test(url)),
+      'the image export loaded on a page that never opened it'
+    ).toEqual([]);
+
+    // And it DOES arrive once the dialog is opened — a guard that can never
+    // fire is not a guard.
+    await expect(page.getByTestId('napkin-formula-loading')).toHaveCount(0, { timeout: 30_000 });
+    await page.locator('[data-testid="napkin-formula"]').evaluate((element) => {
+      (element as HTMLElement & { value: string }).value = '\\mathrm{aa}+\\mathrm{bb}';
+      element.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await expect(page.getByTestId('napkin-export-image')).toBeEnabled({ timeout: 30_000 });
+    const onOpen = await watch(page, async () => {
+      await page.getByTestId('napkin-export-image').click();
+      await expect(page.getByTestId('napkin-image-preview')).toBeVisible({ timeout: 30_000 });
+    });
+    expect(
+      onOpen.some((url) => EXPORT_CHUNKS.test(url)),
+      'the image export never loaded even when opened'
+    ).toBe(true);
+  });
+
   test('ascii art brings figlet as its own chunk, and its fonts one row at a time', async ({ app }) => {
     const { page } = app;
     await app.goto('/');
@@ -346,9 +384,25 @@ test.describe('payload discipline', () => {
   test('the install precache holds the shell only — no model, no engines', async ({ app }) => {
     const { page } = app;
     await app.goto('/');
-    await page.waitForFunction(() => Boolean(navigator.serviceWorker.controller), null, {
-      timeout: 30_000,
-    });
+    /**
+     * Waiting for the worker to CONTROL this page, not merely to be ready.
+     *
+     * `clients.claim()` only reaches clients that already exist when it runs,
+     * and on a fresh profile the first navigation regularly starts before the
+     * worker has activated — so that document stays uncontrolled however long
+     * you wait, and a bare `waitForFunction` here times out under load. That
+     * is ordinary service-worker behaviour rather than a fault: the NEXT
+     * navigation is controlled. One reload is what a real second page view
+     * does, and it is the only deterministic way through. Copied from
+     * `serviceWorkerInCharge` in offline.spec.ts, which learned this first.
+     */
+    await page.evaluate(() => navigator.serviceWorker.ready);
+    if (!(await page.evaluate(() => Boolean(navigator.serviceWorker.controller)))) {
+      await page.reload();
+      await page.waitForFunction(() => Boolean(navigator.serviceWorker.controller), null, {
+        timeout: 30_000,
+      });
+    }
 
     const cached = await page.evaluate(async () => {
       const names = await caches.keys();

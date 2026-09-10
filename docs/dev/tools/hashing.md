@@ -2,7 +2,7 @@
 
 `/tools/hashing/` — twelve digests of the same message, HMAC over any of them, and salt/pepper composition. A stateless Svelte island over `src/lib/hash/`; it writes **nothing** to IndexedDB, and its spec asserts that across a whole session.
 
-_Describes the code as of v0.5.0 (unreleased; schema v16) — verify against source when in doubt._
+_Describes the code as of v0.5.0 (schema v16) — verify against source when in doubt._
 
 ## File map
 

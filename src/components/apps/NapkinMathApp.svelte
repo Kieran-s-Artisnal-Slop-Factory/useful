@@ -23,7 +23,7 @@
   import MathField from '../MathField.svelte';
   import CodeBlock from '../CodeBlock.svelte';
   import CodeInput from '../CodeInput.svelte';
-  import { copyText, downloadText } from '../../lib/exportFile';
+  import { copyPng, copyText, downloadBlob, downloadText } from '../../lib/exportFile';
   import {
     all,
     byIndex,
@@ -158,6 +158,35 @@
   /** Bumped per evaluation, same reason. */
   let evalToken = 0;
 
+  /* ---- the image export (0.5.0 Phase 3) ---------------------------------- */
+  /**
+   * Everything this dialog needs — the SVG builder, the Compute Engine's
+   * non-canonical parse, the rasteriser — is loaded on the first click and
+   * not before. The napkin page already carries MathLive; it should not also
+   * carry a feature most visits never open.
+   */
+  let imageOpen = $state(false);
+  let imageDialog: HTMLDialogElement | undefined = $state();
+  let showFormulaRow = $state(true);
+  let showSubstitutedRow = $state(true);
+  let showResultRow = $state(true);
+  let showImageTitle = $state(true);
+  let imageTheme = $state<'light' | 'dark'>('light');
+  let imageTransparent = $state(false);
+  let imageDecimals = $state('auto');
+  let imageScale = $state('2');
+  /** The rendered SVG source, and a blob URL of it for the preview. */
+  let imageSvg = $state<string | null>(null);
+  let imageUrl = $state<string | null>(null);
+  let imageWidth = $state(0);
+  let imageHeight = $state(0);
+  let imageFontBytes = $state(0);
+  let imageNote = $state<string | null>(null);
+  let imageError = $state<string | null>(null);
+  let imageBusy = $state(false);
+  /** Bumped per rebuild; a stale render must not replace a newer one. */
+  let imageToken = 0;
+
   const filtered = $derived(
     search.trim()
       ? templates.filter((t: NapkinTemplate) =>
@@ -196,6 +225,154 @@
     templateToJson({ name, description, formulaLatex, formulaJson, fields })
   );
   const fileStem = $derived((name.trim() || 'template').replace(/[^a-z0-9._-]+/gi, '-'));
+
+  /* ---- the image export -------------------------------------------------- */
+
+  const decimalsValue = (): number | null =>
+    imageDecimals === 'auto' ? null : Number(imageDecimals);
+
+  function releaseImageUrl() {
+    if (imageUrl) URL.revokeObjectURL(imageUrl);
+    imageUrl = null;
+  }
+
+  /**
+   * Rebuild the picture from the current options.
+   *
+   * The preview is an `<img>` of a blob URL rather than inlined markup. That
+   * is the safe choice — an SVG in an `<img>` cannot run script, and the
+   * markup here is derived from user-typed LaTeX — and also the honest one:
+   * it is exactly the pipeline the PNG goes through, so a preview that draws
+   * is a PNG that will draw.
+   */
+  async function rebuildImage() {
+    const token = ++imageToken;
+    imageBusy = true;
+    imageError = null;
+    try {
+      const [{ buildCalculationSvg, formatNumberLatex }, { substitutedLatex }] = await Promise.all([
+        import('../../lib/napkin/exportImage'),
+        import('../../lib/napkin/substitute'),
+      ]);
+      if (token !== imageToken || destroyed) return;
+
+      const rows: { label: string; latex: string }[] = [];
+      let note: string | null = null;
+
+      if (showFormulaRow) rows.push({ label: 'Formula', latex: formulaLatex });
+
+      if (showSubstitutedRow) {
+        const subbed = await substitutedLatex(formulaLatex, readInputs());
+        if (token !== imageToken || destroyed) return;
+        if (subbed.ok) {
+          rows.push({ label: 'With your values', latex: subbed.latex });
+        } else {
+          note = subbed.reason;
+        }
+      }
+
+      if (showResultRow && result !== null) {
+        rows.push({ label: 'Result', latex: `= ${formatNumberLatex(result, decimalsValue())}` });
+      }
+
+      if (rows.length === 0) {
+        releaseImageUrl();
+        imageSvg = null;
+        imageError = note ?? 'Nothing selected to draw.';
+        return;
+      }
+
+      const built = await buildCalculationSvg(rows, {
+        title: showImageTitle ? name.trim() : '',
+        theme: imageTheme,
+        transparent: imageTransparent,
+      });
+      if (token !== imageToken || destroyed) return;
+      if (!built) {
+        imageError = 'The formula could not be typeset.';
+        return;
+      }
+
+      releaseImageUrl();
+      imageSvg = built.svg;
+      imageWidth = built.width;
+      imageHeight = built.height;
+      imageFontBytes = built.fontBytes;
+      imageNote = note;
+      imageUrl = URL.createObjectURL(new Blob([built.svg], { type: 'image/svg+xml' }));
+    } catch (err) {
+      if (token !== imageToken || destroyed) return;
+      imageError = err instanceof Error ? err.message : 'The picture could not be built.';
+    } finally {
+      if (token === imageToken) imageBusy = false;
+    }
+  }
+
+  function openImageDialog() {
+    imageOpen = true;
+    void rebuildImage();
+  }
+
+  function closeImageDialog() {
+    imageOpen = false;
+    releaseImageUrl();
+    imageSvg = null;
+    imageError = null;
+    imageNote = null;
+  }
+
+  // The dialog is opened from an effect rather than the click, because
+  // `showModal()` is what brings the backdrop, the focus trap and Escape.
+  $effect(() => {
+    const dialog = imageDialog;
+    if (!dialog) return;
+    if (imageOpen && !dialog.open) dialog.showModal();
+    if (!imageOpen && dialog.open) dialog.close();
+  });
+
+  // Any option change re-renders, but only while the dialog is actually open.
+  $effect(() => {
+    void showFormulaRow;
+    void showSubstitutedRow;
+    void showResultRow;
+    void showImageTitle;
+    void imageTheme;
+    void imageTransparent;
+    void imageDecimals;
+    if (imageOpen) void rebuildImage();
+  });
+
+  async function downloadImageSvg() {
+    if (!imageSvg) return;
+    const { imageFilename } = await import('../../lib/napkin/exportImage');
+    downloadText(imageSvg, imageFilename(name, 'svg'), 'image/svg+xml');
+    flash('SVG downloaded');
+  }
+
+  async function rasterize(): Promise<Blob | null> {
+    if (!imageSvg) return null;
+    const { svgToPngBlob } = await import('../../lib/raster/svgToPng');
+    const out = await svgToPngBlob(imageSvg, { scale: Number(imageScale) });
+    if (!out.ok) {
+      imageError = out.message;
+      return null;
+    }
+    return out.blob;
+  }
+
+  async function downloadImagePng() {
+    const blob = await rasterize();
+    if (!blob) return;
+    const { imageFilename } = await import('../../lib/napkin/exportImage');
+    downloadBlob(blob, imageFilename(name, 'png'));
+    flash('PNG downloaded');
+  }
+
+  async function copyImagePng() {
+    const blob = await rasterize();
+    if (!blob) return;
+    flash((await copyPng(blob)) ? 'PNG copied' : 'Could not copy the image');
+  }
 
   function flash(text: string) {
     feedback = text;
@@ -868,6 +1045,22 @@
               {/if}
             </div>
           {/if}
+
+          {#if formulaJson}
+            <div class="row wrap image-row">
+              <button
+                class="btn btn-sm"
+                data-testid="napkin-export-image"
+                onclick={openImageDialog}
+              >
+                Export image
+              </button>
+              <span class="muted small">
+                The formula, the same formula with your numbers written into it,
+                and the answer — as a picture, for a document or a message.
+              </span>
+            </div>
+          {/if}
         </div>
 
         <div class="stack tight history">
@@ -1075,6 +1268,130 @@
     </Explainer>
   </div>
 </div>
+
+<!-- The image export. A native <dialog>, so Escape, the focus trap and the
+     backdrop cost nothing to have. -->
+<dialog
+  bind:this={imageDialog}
+  class="image-dialog"
+  data-testid="napkin-image-dialog"
+  onclose={() => (imageOpen = false)}
+  onclick={(e) => e.target === imageDialog && closeImageDialog()}
+>
+  <div class="image-head">
+    <h2>Export image</h2>
+    <button class="btn btn-sm" data-testid="napkin-image-close" onclick={closeImageDialog}>Close</button>
+  </div>
+
+  <div class="image-body">
+    <div class="image-options">
+      <fieldset>
+        <legend class="eyebrow">Rows</legend>
+        <label class="check">
+          <input type="checkbox" data-testid="napkin-image-row-formula" bind:checked={showFormulaRow} />
+          <span>Formula</span>
+        </label>
+        <label class="check">
+          <input type="checkbox" data-testid="napkin-image-row-substituted" bind:checked={showSubstitutedRow} />
+          <span>With your values</span>
+        </label>
+        <label class="check">
+          <input type="checkbox" data-testid="napkin-image-row-result" bind:checked={showResultRow} />
+          <span>Result</span>
+        </label>
+        <label class="check">
+          <input type="checkbox" data-testid="napkin-image-title" bind:checked={showImageTitle} />
+          <span>Title</span>
+        </label>
+      </fieldset>
+
+      <div>
+        <label for="napkin-image-theme">Theme</label>
+        <select id="napkin-image-theme" data-testid="napkin-image-theme" bind:value={imageTheme}>
+          <option value="light">Light</option>
+          <option value="dark">Dark</option>
+        </select>
+      </div>
+
+      <label class="check">
+        <input type="checkbox" data-testid="napkin-image-transparent" bind:checked={imageTransparent} />
+        <span>Transparent background</span>
+      </label>
+
+      <div>
+        <label for="napkin-image-decimals">Decimals in the result</label>
+        <select id="napkin-image-decimals" data-testid="napkin-image-decimals" bind:value={imageDecimals}>
+          <option value="auto">As shown on the page</option>
+          <option value="0">0</option>
+          <option value="1">1</option>
+          <option value="2">2</option>
+          <option value="3">3</option>
+          <option value="4">4</option>
+        </select>
+      </div>
+
+      <div>
+        <label for="napkin-image-scale">PNG size</label>
+        <select id="napkin-image-scale" data-testid="napkin-image-scale" bind:value={imageScale}>
+          <option value="1">1x</option>
+          <option value="2">2x</option>
+          <option value="3">3x</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="image-preview">
+      {#if imageBusy && !imageUrl}
+        <p class="muted" aria-live="polite">Rendering...</p>
+      {/if}
+      {#if imageError}
+        <p class="form-error" data-testid="napkin-image-error" role="alert">{imageError}</p>
+      {/if}
+      {#if imageUrl}
+        <img
+          src={imageUrl}
+          alt="The calculation, typeset"
+          data-testid="napkin-image-preview"
+          width={imageWidth}
+          height={imageHeight}
+        />
+        <p class="muted small" data-testid="napkin-image-size">
+          {imageWidth} x {imageHeight} px, {Math.round(imageFontBytes / 1024)} KB of fonts inside it
+        </p>
+      {/if}
+      {#if imageNote}
+        <p class="muted small" data-testid="napkin-image-note">{imageNote}</p>
+      {/if}
+    </div>
+  </div>
+
+  <div class="image-actions row wrap">
+    <button
+      class="btn btn-sm btn-primary"
+      data-testid="napkin-download-image-svg"
+      disabled={!imageSvg}
+      onclick={downloadImageSvg}
+    >
+      Download SVG
+    </button>
+    <button
+      class="btn btn-sm"
+      data-testid="napkin-download-image-png"
+      disabled={!imageSvg}
+      onclick={downloadImagePng}
+    >
+      Download PNG
+    </button>
+    <button
+      class="btn btn-sm"
+      data-testid="napkin-copy-image-png"
+      disabled={!imageSvg}
+      onclick={copyImagePng}
+    >
+      Copy PNG
+    </button>
+  </div>
+</dialog>
 
 <style>
   .layout {
@@ -1290,5 +1607,107 @@
     height: 1px;
     overflow: hidden;
     clip-path: inset(50%);
+  }
+
+  /* The image export sits under Save: both are things you do WITH the
+     calculation, so a rule rather than a card separates them. */
+  .image-row {
+    border-top: 1px dashed var(--border-color);
+    padding-top: var(--space-3);
+    margin-top: var(--space-1);
+    align-items: baseline;
+  }
+
+  .image-row .muted {
+    flex: 1 1 14rem;
+  }
+
+  /* ---- the image export dialog ------------------------------------------- */
+  .image-dialog {
+    width: min(56rem, calc(100vw - 2 * var(--space-4)));
+    max-height: 88vh;
+    background: var(--surface-raised-color);
+    color: var(--text-color);
+    border: 1px solid var(--border-strong-color);
+    outline: 1px dashed var(--border-color);
+    outline-offset: 4px;
+    padding: 0;
+  }
+
+  .image-dialog::backdrop {
+    background: var(--scrim-color);
+  }
+
+  .image-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-4);
+    border-bottom: 1px solid var(--border-color);
+  }
+
+  .image-head h2 {
+    font-size: var(--font-size-sm);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-label);
+  }
+
+  .image-body {
+    display: grid;
+    grid-template-columns: minmax(12rem, 16rem) 1fr;
+    gap: var(--space-4);
+    padding: var(--space-4);
+    align-items: start;
+  }
+
+  @media (max-width: 48rem) {
+    .image-body {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  .image-options {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+  }
+
+  .image-options fieldset {
+    border: 1px dashed var(--border-color);
+    padding: var(--space-2) var(--space-3);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+  }
+
+  /* A checkerboard, so a transparent export does not read as a white one. */
+  .image-preview {
+    min-height: 8rem;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    align-items: flex-start;
+    overflow: auto;
+  }
+
+  .image-preview img {
+    max-width: 100%;
+    height: auto;
+    border: 1px solid var(--border-color);
+    background-color: #fff;
+    background-image:
+      linear-gradient(45deg, #e5e5e5 25%, transparent 25%),
+      linear-gradient(-45deg, #e5e5e5 25%, transparent 25%),
+      linear-gradient(45deg, transparent 75%, #e5e5e5 75%),
+      linear-gradient(-45deg, transparent 75%, #e5e5e5 75%);
+    background-size: 16px 16px;
+    background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+  }
+
+  .image-actions {
+    padding: var(--space-3) var(--space-4);
+    border-top: 1px solid var(--border-color);
   }
 </style>
