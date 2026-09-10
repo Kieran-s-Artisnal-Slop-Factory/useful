@@ -296,6 +296,18 @@ export const REGISTRY: ToolDef[] = [
     icon: 'grid-2x2',
   },
   {
+    id: 'color-extractor',
+    name: 'Color extractor',
+    description: 'Pull a palette out of an image, and turn it into a CSS theme',
+    aliases: [
+      'palette', 'colours', 'colors', 'dominant color', 'dominant colour',
+      'swatch', 'eyedropper', 'pipette', 'extract', 'theme from image', 'kmeans',
+    ],
+    category: 'Images',
+    route: '/tools/color-extractor/',
+    icon: 'pipette',
+  },
+  {
     id: 'sql-playground',
     name: 'SQL playground',
     description: 'Run real SQLite or Postgres in the browser — nothing leaves the tab',
@@ -424,6 +436,19 @@ export const REGISTRY: ToolDef[] = [
     category: 'Calculators',
     route: '/tools/napkin-math/',
     icon: 'sigma',
+  },
+  {
+    id: 'calories',
+    name: 'Daily calories',
+    description: 'Resting and maintenance energy, and what to eat to hit a goal',
+    aliases: [
+      'calorie', 'calories', 'tdee', 'bmr', 'diet', 'deficit', 'surplus',
+      'weight loss', 'weight gain', 'mifflin', 'harris benedict',
+      'katch mcardle', 'metabolism', 'nutrition',
+    ],
+    category: 'Calculators',
+    route: '/tools/calories/',
+    icon: 'flame',
   },
   {
     id: 'logo-generator',

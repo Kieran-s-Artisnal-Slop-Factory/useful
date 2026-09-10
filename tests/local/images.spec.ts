@@ -342,3 +342,283 @@ test.describe('image compressor', () => {
     expect(isPng(bytes)).toBe(true);
   });
 });
+
+/**
+ * Every form control on the page that has no accessible name.
+ *
+ * The registry sweep in a11y.spec.ts audits each route's INITIAL render only,
+ * so controls behind an {#if} never reach it. Tools that gate most of their UI
+ * carry this check themselves, against the revealed page.
+ */
+async function unnamedControls(page: import('@playwright/test').Page): Promise<string[]> {
+  return page.evaluate(() => {
+    const bad: string[] = [];
+    const controls = document.querySelectorAll('main input, main select, main textarea, main button');
+    for (const el of Array.from(controls)) {
+      const node = el as HTMLInputElement;
+      const named =
+        (node.labels && node.labels.length > 0) ||
+        Boolean(node.getAttribute('aria-label')) ||
+        Boolean(node.getAttribute('aria-labelledby')) ||
+        Boolean(node.getAttribute('title')) ||
+        (node.tagName === 'BUTTON' && (node.textContent ?? '').trim().length > 0);
+      if (!named) bad.push(node.tagName.toLowerCase() + '[' + (node.getAttribute('data-testid') ?? 'no-testid') + ']');
+    }
+    return bad;
+  });
+}
+
+test.describe('color extractor', () => {
+  /**
+   * Every image here is built from FLAT vertical bands at exactly the
+   * sampler's own width (192 px on the long edge), so the downscale is a 1:1
+   * copy with no interpolated boundary pixels. That makes both the recovered
+   * hexes and the reported shares exact rather than approximate, which is
+   * what lets these assertions be equalities.
+   */
+  async function makeBands(
+    page: import('@playwright/test').Page,
+    colors: string[],
+    width = 192,
+    height = 60
+  ): Promise<Buffer> {
+    const dataUrl = await page.evaluate(
+      ([list, w, h]) => {
+        const canvas = document.createElement('canvas');
+        canvas.width = w as number;
+        canvas.height = h as number;
+        const ctx = canvas.getContext('2d')!;
+        const band = (w as number) / (list as string[]).length;
+        (list as string[]).forEach((hex, i) => {
+          ctx.fillStyle = hex;
+          ctx.fillRect(i * band, 0, band, h as number);
+        });
+        return canvas.toDataURL('image/png');
+      },
+      [colors, width, height] as const
+    );
+    return Buffer.from(dataUrl.split(',')[1]!, 'base64');
+  }
+
+  /** Three bands in a deliberate 3:2:1 area ratio (96 / 64 / 32 of 192 px). */
+  async function makeThreeUneven(page: import('@playwright/test').Page): Promise<Buffer> {
+    const dataUrl = await page.evaluate(() => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 192;
+      canvas.height = 60;
+      const ctx = canvas.getContext('2d')!;
+      ctx.fillStyle = '#c0392b';
+      ctx.fillRect(0, 0, 96, 60);
+      ctx.fillStyle = '#2980b9';
+      ctx.fillRect(96, 0, 64, 60);
+      ctx.fillStyle = '#f1c40f';
+      ctx.fillRect(160, 0, 32, 60);
+      return canvas.toDataURL('image/png');
+    });
+    return Buffer.from(dataUrl.split(',')[1]!, 'base64');
+  }
+
+  test('recovers the colors and their shares, and writes nothing', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/color-extractor/');
+    const before = await app.dumpAll();
+
+    await page.getByTestId('cx-file').setInputFiles({
+      name: 'three.png',
+      mimeType: 'image/png',
+      buffer: await makeThreeUneven(page),
+    });
+
+    await expect(page.getByTestId('cx-image-info')).toContainText('192 × 60');
+    const swatches = page.getByTestId('cx-swatch');
+    await expect(swatches).toHaveCount(3);
+
+    // Sorted by how much of the image each covers, biggest first.
+    await expect(swatches.nth(0)).toHaveAttribute('data-hex', '#c0392b');
+    await expect(swatches.nth(1)).toHaveAttribute('data-hex', '#2980b9');
+    await expect(swatches.nth(2)).toHaveAttribute('data-hex', '#f1c40f');
+    await expect(swatches.nth(0)).toContainText('50.0%');
+    await expect(swatches.nth(1)).toContainText('33.3%');
+    await expect(swatches.nth(2)).toContainText('16.7%');
+
+    // Six were asked for; the image only has three to give, and it says so
+    // instead of padding the palette out with black.
+    await expect(page.getByTestId('cx-count')).toHaveValue('6');
+    await expect(page.getByTestId('cx-short')).toContainText('3 distinct colors');
+
+    // Every spelling of the top color is offered, and copying is per-value.
+    await expect(page.getByTestId('cx-copy-hex-0')).toContainText('#c0392b');
+    await expect(page.getByTestId('cx-copy-rgb-0')).toContainText('rgb(192 57 43)');
+
+    expect(await app.dumpAll()).toEqual(before);
+  });
+
+  test('the count drives the clustering, and the same count returns the same palette', async ({
+    app,
+  }) => {
+    const { page } = app;
+    await app.goto('/tools/color-extractor/');
+    const before = await app.dumpAll();
+
+    await page.getByTestId('cx-file').setInputFiles({
+      name: 'six.png',
+      mimeType: 'image/png',
+      buffer: await makeBands(page, ['#e74c3c', '#8e44ad', '#2980b9', '#16a085', '#f39c12', '#2c3e50']),
+    });
+    const hexes = () =>
+      page.getByTestId('cx-swatch').evaluateAll((els) => els.map((el) => (el as HTMLElement).dataset.hex));
+
+    // All six recovered exactly, in the order the fixed seed produces. Pinned
+    // to literals rather than to the page's own earlier output, so six
+    // identical blacks could not satisfy this.
+    const SIX_AT_6 = ['#16a085', '#8e44ad', '#f39c12', '#e74c3c', '#2980b9', '#2c3e50'];
+    await expect(page.getByTestId('cx-swatch')).toHaveCount(6);
+    expect(await hexes()).toEqual(SIX_AT_6);
+
+    // Fewer clusters MERGES rather than truncating: not one of these three is
+    // among the six inputs — each is the mean of a pair. A regression that
+    // simply kept the three most common originals would fail here.
+    await page.getByTestId('cx-count').fill('3');
+    await expect(page.getByTestId('cx-swatch')).toHaveCount(3);
+    const merged = await hexes();
+    expect(merged).toEqual(['#1e91a1', '#5e447d', '#ee7730']);
+    for (const hex of merged) expect(SIX_AT_6).not.toContain(hex);
+    await expect(page.getByTestId('cx-short')).toHaveCount(0);
+
+    // The seed is fixed, so coming back to six lands exactly where it started.
+    await page.getByTestId('cx-count').fill('6');
+    await expect(page.getByTestId('cx-swatch')).toHaveCount(6);
+    expect(await hexes()).toEqual(SIX_AT_6);
+
+    expect(await app.dumpAll()).toEqual(before);
+  });
+
+  test('an image can be pasted, and a non-image is refused in words', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/color-extractor/');
+    const before = await app.dumpAll();
+
+    // A file that is not an image at all: named, not silently ignored.
+    await page.getByTestId('cx-file').setInputFiles({
+      name: 'notes.txt',
+      mimeType: 'text/plain',
+      buffer: Buffer.from('this is not a picture'),
+    });
+    await expect(page.getByTestId('cx-error')).toContainText('notes.txt');
+    await expect(page.getByTestId('cx-swatch')).toHaveCount(0);
+
+    // A paste anywhere on the page is accepted, which no other tool here does.
+    await page.evaluate(async () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 192;
+      canvas.height = 60;
+      const ctx = canvas.getContext('2d')!;
+      ctx.fillStyle = '#1abc9c';
+      ctx.fillRect(0, 0, 96, 60);
+      ctx.fillStyle = '#34495e';
+      ctx.fillRect(96, 0, 96, 60);
+      const blob = await new Promise<Blob | null>((r) => canvas.toBlob(r, 'image/png'));
+      const transfer = new DataTransfer();
+      transfer.items.add(new File([blob!], 'pasted.png', { type: 'image/png' }));
+      window.dispatchEvent(
+        new ClipboardEvent('paste', { clipboardData: transfer, bubbles: true, cancelable: true })
+      );
+    });
+
+    const swatches = page.getByTestId('cx-swatch');
+    await expect(swatches).toHaveCount(2);
+    await expect(page.getByTestId('cx-error')).toHaveCount(0);
+    // Both bands are half the image, so a share assertion alone would hold for
+    // any two colours at all — the hexes are what prove the paste was read.
+    await expect(swatches.nth(0)).toHaveAttribute('data-hex', '#34495e');
+    await expect(swatches.nth(1)).toHaveAttribute('data-hex', '#1abc9c');
+    await expect(swatches.nth(0)).toContainText('50.0%');
+    await expect(swatches.nth(1)).toContainText('50.0%');
+
+    expect(await app.dumpAll()).toEqual(before);
+  });
+
+  test('every control has an accessible name, including the ones behind the image gate', async ({
+    app,
+  }) => {
+    const { page } = app;
+    await app.goto('/tools/color-extractor/');
+    // The registry-driven sweep in a11y.spec.ts only audits a route's initial
+    // render, and almost everything on this page is gated on having an image
+    // — so the gate has to be opened here or these controls are never checked.
+    await page.getByTestId('cx-file').setInputFiles({
+      name: 'three.png',
+      mimeType: 'image/png',
+      buffer: await makeThreeUneven(page),
+    });
+    await expect(page.getByTestId('cx-swatch')).toHaveCount(3);
+    expect(await unnamedControls(page)).toEqual([]);
+  });
+
+  test('builds a theme in the Themes format and hands it over intact', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/color-extractor/');
+    const before = await app.dumpAll();
+
+    await page.getByTestId('cx-file').setInputFiles({
+      name: 'three.png',
+      mimeType: 'image/png',
+      buffer: await makeThreeUneven(page),
+    });
+    await expect(page.getByTestId('cx-swatch')).toHaveCount(3);
+
+    // The most common chromatic color leads; the most saturated accents.
+    await expect(page.getByTestId('cx-role-primary')).toHaveValue('#c0392b');
+    await expect(page.getByTestId('cx-role-accent')).toHaveValue('#f1c40f');
+    // No near-grey in this image, so the surface roles derive rather than
+    // putting a saturated color behind every page.
+    await expect(page.getByTestId('cx-role-base')).toHaveValue('');
+
+    // The output is the same shape the Themes tool emits, and the same
+    // component previews it.
+    const css = page.getByTestId('cx-css');
+    await expect(css).toContainText('color-scheme: light dark');
+    await expect(css).toContainText('--primary: light-dark(#c0392b');
+    await expect(css).toContainText('--radius: 8px');
+    // Not just that the shared component mounted — that the EXTRACTED theme
+    // reached it. "Primary action" is its own hardcoded label and would be
+    // there whatever variables it was handed.
+    await expect(page.getByTestId('cx-preview')).toBeVisible();
+    await expect(page.getByTestId('cx-preview')).toHaveAttribute(
+      'style',
+      /--primary: light-dark\(#c0392b/
+    );
+    // Pinned to the light side first: the vars are `light-dark()` pairs, so
+    // leaving the preview on "auto" would make the computed colour depend on
+    // whatever scheme the browser running the suite happens to prefer.
+    await page.getByTestId('cx-scheme-light').check();
+    const buttonColor = await page
+      .getByTestId('cx-preview')
+      .getByText('Primary action')
+      .evaluate((el) => getComputedStyle(el).backgroundColor);
+    expect(buttonColor).toBe('rgb(192, 57, 43)');
+
+    // Overriding a role is honoured, and the reset returns to the suggestion.
+    await page.getByTestId('cx-role-primary').selectOption('#2980b9');
+    await expect(css).toContainText('--primary: light-dark(#2980b9');
+    await page.getByTestId('cx-roles-reset').click();
+    await expect(page.getByTestId('cx-role-primary')).toHaveValue('#c0392b');
+
+    // The hand-off carries the chosen colors to Themes, which seeds from them.
+    const link = await page.getByTestId('cx-open-themes').getAttribute('href');
+    expect(link).toContain('primary=c0392b');
+    expect(link).toContain('accent=f1c40f');
+
+    const downloaded = await downloadBytes(page, () => page.getByTestId('cx-download-theme').click());
+    expect(downloaded.name).toBe('theme.css');
+    expect(downloaded.bytes.toString('utf8')).toContain('--primary: light-dark(#c0392b');
+
+    expect(await app.dumpAll()).toEqual(before);
+
+    await app.goto(link!);
+    await expect(page.getByTestId('th-color-primary')).toHaveValue('#c0392b');
+    await expect(page.getByTestId('th-color-accent')).toHaveValue('#f1c40f');
+    await expect(page.getByTestId('th-preview')).toBeVisible();
+    expect(await app.dumpAll()).toEqual(before);
+  });
+});

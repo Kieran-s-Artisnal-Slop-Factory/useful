@@ -2,7 +2,7 @@
 
 HTML, CSS and JavaScript (or TypeScript) in three editor tabs, with a live preview in a sandboxed iframe, a console strip fed from inside it, and a library of saved sessions in `web_playgrounds`. Ported from learn-anywhere's `WebExercise` — same author, MIT, no vendored third-party code — onto this app's own `CodeEditor`, `Card`, theme tokens, `zip.ts` and `repo.ts`, so there is one editor chassis in the app rather than two.
 
-_Describes the code as of v0.4.0 (unreleased; schema v16) — verify against source when in doubt._
+_Describes the code as of v0.5.0 (unreleased; schema v16) — verify against source when in doubt._
 
 ## File map
 

@@ -340,12 +340,204 @@ test.describe('file transfer', () => {
   });
 });
 
+/**
+ * Every form control on the page that has no accessible name.
+ *
+ * The registry sweep in a11y.spec.ts audits each route's INITIAL render only,
+ * so controls behind an {#if} never reach it. Tools that gate most of their UI
+ * carry this check themselves, against the revealed page.
+ */
+async function unnamedControls(page: import('@playwright/test').Page): Promise<string[]> {
+  return page.evaluate(() => {
+    const bad: string[] = [];
+    const controls = document.querySelectorAll('main input, main select, main textarea, main button');
+    for (const el of Array.from(controls)) {
+      const node = el as HTMLInputElement;
+      const named =
+        (node.labels && node.labels.length > 0) ||
+        Boolean(node.getAttribute('aria-label')) ||
+        Boolean(node.getAttribute('aria-labelledby')) ||
+        Boolean(node.getAttribute('title')) ||
+        (node.tagName === 'BUTTON' && (node.textContent ?? '').trim().length > 0);
+      if (!named) bad.push(node.tagName.toLowerCase() + '[' + (node.getAttribute('data-testid') ?? 'no-testid') + ']');
+    }
+    return bad;
+  });
+}
+
+test.describe('daily calories', () => {
+  /**
+   * The arithmetic is unit-tested; what matters here is that the UI feeds the
+   * right numbers in and shows what comes back. Every case is stateless
+   * except the unit toggle, which is audited as an isolated preferences delta
+   * exactly like the photography tool's sensor format.
+   */
+  test('computes BMR, maintenance and a goal target with zero DB writes', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/calories/');
+    const before = await app.dumpAll();
+
+    // Defaults: 70 kg, 175 cm, 30 y, male, moderately active, Mifflin-St Jeor.
+    // 10(70) + 6.25(175) - 5(30) + 5 = 1648.75 -> 1,649; x1.55 = 2,556.
+    await expect(page.getByTestId('cal-bmr')).toHaveText('1,649 kcal/day');
+    await expect(page.getByTestId('cal-tdee')).toHaveText('2,556 kcal/day');
+    await expect(page.getByTestId('cal-target-kcal')).toHaveText('2,556');
+
+    // The same body, female: the offset swings from +5 to -161.
+    await page.getByTestId('cal-sex-female').check();
+    await expect(page.getByTestId('cal-bmr')).toHaveText('1,483 kcal/day');
+
+    // Activity is the multiplier, and it is applied to the resting figure.
+    await page.getByTestId('cal-sex-male').check();
+    await page.getByTestId('cal-activity').selectOption('sedentary');
+    await expect(page.getByTestId('cal-tdee')).toHaveText('1,979 kcal/day');
+    await page.getByTestId('cal-activity').selectOption('moderate');
+
+    // A deficit of 0.5 kg/week is 0.5 x 7700 / 7 = 550 kcal/day.
+    await page.getByTestId('cal-goal-lose').check();
+    await page.getByTestId('cal-rate').fill('0.5');
+    await expect(page.getByTestId('cal-target-kcal')).toHaveText('2,006');
+
+    // A target weight turns the rate into a duration: 5 kg at 0.5 = 10 weeks.
+    await page.getByTestId('cal-target').fill('65');
+    await expect(page.getByTestId('cal-weeks')).toContainText('10 weeks');
+
+    // The working is shown, with the user's own numbers substituted in.
+    const steps = page.getByTestId('cal-steps');
+    await expect(steps).toContainText('Mifflin');
+    await expect(steps).toContainText('70.0 kg');
+    await expect(steps).toContainText('1.55');
+
+    expect(await app.dumpAll()).toEqual(before);
+  });
+
+  test('Katch-McArdle is refused without body fat, and works with it', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/calories/');
+    const before = await app.dumpAll();
+
+    await page.getByTestId('cal-equation').selectOption('katch-mcardle');
+    await expect(page.getByTestId('cal-problem')).toContainText('body-fat');
+    await expect(page.getByTestId('cal-bmr')).toHaveCount(0);
+
+    // 70 kg at 20% fat is 56 kg lean: 370 + 21.6(56) = 1579.6 -> 1,580.
+    await page.getByTestId('cal-bodyfat').fill('20');
+    await expect(page.getByTestId('cal-bmr')).toHaveText('1,580 kcal/day');
+    await expect(page.getByTestId('cal-problem')).toHaveCount(0);
+
+    // An equation that ignores the measurement says so rather than dropping it silently.
+    await page.getByTestId('cal-equation').selectOption('mifflin');
+    await expect(page.locator('[data-warning="body-fat-ignored"]')).toBeVisible();
+
+    expect(await app.dumpAll()).toEqual(before);
+  });
+
+  test('cautions appear for an aggressive plan without blocking it', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/calories/');
+    const before = await app.dumpAll();
+
+    await page.getByTestId('cal-goal-lose').check();
+    await page.getByTestId('cal-rate').fill('0.5');
+    await expect(page.getByTestId('cal-warning')).toHaveCount(0);
+
+    // 1 kg/week on a 70 kg body is over 1% — a caution, not a refusal. The
+    // target still computes: 2555.56 maintenance − 1100 = 1,456.
+    await page.getByTestId('cal-rate').fill('1');
+    await expect(page.locator('[data-warning="aggressive-rate"]')).toBeVisible();
+    await expect(page.getByTestId('cal-target-kcal')).toHaveText('1,456');
+
+    // A deficit under the resting rate, under the stated floor, and in fact
+    // larger than the whole daily burn: 1978.5 − 2200 is negative, so the
+    // headline is floored at zero rather than printing calories you cannot eat.
+    await page.getByTestId('cal-activity').selectOption('sedentary');
+    await page.getByTestId('cal-rate').fill('2');
+    await expect(page.locator('[data-warning="below-bmr"]')).toBeVisible();
+    await expect(page.locator('[data-warning="below-floor"]')).toBeVisible();
+    await expect(page.locator('[data-warning="impossible-rate"]')).toBeVisible();
+    await expect(page.getByTestId('cal-target-kcal')).toHaveText('0');
+
+    // Gaining too fast has its own caution, and losing-only ones clear.
+    await page.getByTestId('cal-goal-gain').check();
+    await page.getByTestId('cal-rate').fill('1');
+    await expect(page.locator('[data-warning="fast-gain"]')).toBeVisible();
+    await expect(page.locator('[data-warning="below-bmr"]')).toHaveCount(0);
+    await expect(page.locator('[data-warning="aggressive-rate"]')).toHaveCount(0);
+    await expect(page.locator('[data-warning="impossible-rate"]')).toHaveCount(0);
+    // 1978.5 maintenance + 1100 surplus.
+    await expect(page.getByTestId('cal-target-kcal')).toHaveText('3,079');
+
+    // A target weight the plan is moving AWAY from earns a caution and no
+    // arrival date, rather than a confident estimate for a weight it never reaches.
+    await page.getByTestId('cal-goal-lose').check();
+    await page.getByTestId('cal-rate').fill('0.5');
+    await page.getByTestId('cal-target').fill('80');
+    await expect(page.locator('[data-warning="wrong-direction"]')).toBeVisible();
+    await expect(page.getByTestId('cal-weeks')).toHaveCount(0);
+
+    expect(await app.dumpAll()).toEqual(before);
+  });
+
+  test('every control has an accessible name, in both unit systems and with a goal set', async ({
+    app,
+  }) => {
+    const { page } = app;
+    await app.goto('/tools/calories/');
+    // The registry sweep audits the initial render only, where the goal is
+    // "maintain" and the units are metric — so the rate, target-weight and
+    // feet/inches fields would otherwise never be checked at all.
+    expect(await unnamedControls(page)).toEqual([]);
+
+    await page.getByTestId('cal-goal-lose').check();
+    await expect(page.getByTestId('cal-rate')).toBeVisible();
+    expect(await unnamedControls(page)).toEqual([]);
+
+    await page.getByTestId('cal-units-imperial').click();
+    await expect(page.getByTestId('cal-height-ft')).toBeVisible();
+    expect(await unnamedControls(page)).toEqual([]);
+  });
+
+  test('the unit toggle writes only the preferences singleton and survives reload', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/calories/');
+    const before = await app.dumpAll();
+
+    await page.getByTestId('cal-units-imperial').click();
+    await expect
+      .poll(async () => (await app.get('preferences', 'singleton'))?.calorie_units)
+      .toBe('imperial');
+    const after = await app.dumpAll();
+    assertIsolatedDelta(before, after, [{ store: 'preferences', id: 'singleton' }]);
+
+    // The same body, restated: 70 kg is 154.32 lb and 175 cm is 5 ft 9 in.
+    await expect(page.getByTestId('cal-weight')).toHaveValue('154.32');
+    await expect(page.getByTestId('cal-height-ft')).toHaveValue('5');
+    await expect(page.getByTestId('cal-height-in')).toHaveValue('9');
+    // And it still describes the same person, to within the rounded inch.
+    const imperialBmr = Number(
+      (await page.getByTestId('cal-bmr').textContent())!.replace(/[^\d]/g, '')
+    );
+    expect(Math.abs(imperialBmr - 1649)).toBeLessThanOrEqual(3);
+
+    // Restored on the next visit, and the reload itself writes nothing.
+    await app.goto('/tools/calories/');
+    await expect(page.getByTestId('cal-weight')).toHaveValue('154.32');
+    await expect(page.getByTestId('cal-units-imperial')).toHaveAttribute('aria-pressed', 'true');
+    expect(await app.dumpAll()).toEqual(after);
+
+    // And back again, without accumulating rounding drift on the weight.
+    await page.getByTestId('cal-units-metric').click();
+    await expect(page.getByTestId('cal-weight')).toHaveValue('70');
+  });
+});
+
 test('explainer drop-downs toggle from the keyboard on every calculator page', async ({ app }) => {
   const { page } = app;
   const targets = [
     { path: '/tools/number-conversion/', testid: 'explainer-twos', text: 'Flip every bit, then add 1' },
     { path: '/tools/photography/', testid: 'explainer-equivalence', text: 'brightness of the picture' },
     { path: '/tools/file-transfer/', testid: 'explainer-bits-bytes', text: 'One byte is 8 bits' },
+    { path: '/tools/calories/', testid: 'explainer-calories', text: 'estimate your RESTING rate' },
   ];
   for (const t of targets) {
     await app.goto(t.path);

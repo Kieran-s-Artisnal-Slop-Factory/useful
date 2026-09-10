@@ -2,7 +2,7 @@
 
 Five small tools that turn a few inputs into something you can copy or download: Themes (color conversion, harmonies and a CSS theme builder), Gradients, Glassmorphism, Regex snippets and QR code. They all work offline and remember nothing — reload the page and you start from the defaults.
 
-_Describes the code as of v0.4.0 (unreleased; schema v16) — verify against source when in doubt._
+_Describes the code as of v0.5.0 (unreleased; schema v16) — verify against source when in doubt._
 
 ## Themes
 

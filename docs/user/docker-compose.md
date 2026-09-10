@@ -2,7 +2,7 @@
 
 **Docker Compose** (under Generators, or Ctrl/Cmd+K) builds a `compose.yaml` through controls that explain what each field does, starting from a template if you want one. It runs entirely on your device.
 
-_Describes the code as of v0.4.0 (unreleased; schema v16) — verify against source when in doubt._
+_Describes the code as of v0.5.0 (unreleased; schema v16) — verify against source when in doubt._
 
 ## Read this first
 

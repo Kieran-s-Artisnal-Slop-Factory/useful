@@ -1,8 +1,8 @@
 # Calculators
 
-Three stateless calculator tools — number-base conversion with bit-width operations and a step-by-step visualizer for the binary ones, photography equivalence and light stops, and file-transfer time — each a Svelte island over a pure-function module in `src/lib/calc/`. None of them writes to IndexedDB while computing; the single deliberate write in the group is the photography tool remembering the sensor format in `preferences.photo_last_format`.
+Four calculator tools — number-base conversion with bit-width operations and a step-by-step visualizer for the binary ones, photography equivalence and light stops, file-transfer time, and daily calorie planning — each a Svelte island over a pure-function module in `src/lib/calc/`. None of them writes to IndexedDB while computing; the two deliberate writes in the group are the photography tool remembering the sensor format in `preferences.photo_last_format` and the calorie tool remembering the unit system in `preferences.calorie_units`.
 
-_Describes the code as of v0.4.0 (unreleased; schema v16) — verify against source when in doubt._
+_Describes the code as of v0.5.0 (unreleased; schema v16) — verify against source when in doubt._
 
 ## File map
 
@@ -12,21 +12,23 @@ _Describes the code as of v0.4.0 (unreleased; schema v16) — verify against sou
 | [binaryOps.ts](../../../src/lib/calc/binaryOps.ts) | The eleven two-operand operations, each returning the answer **and** the steps that produced it — ripple add/subtract, shift-and-add multiply, restoring long division, columnar AND/OR/XOR, and the three shifts |
 | [photography.ts](../../../src/lib/calc/photography.ts) | Sensor formats, total-light equivalence, stop formulas, 1/3-stop snapping, shutter parse/format |
 | [transfer.ts](../../../src/lib/calc/transfer.ts) | Size and speed unit tables, `transferSeconds`, duration and rate formatting |
+| [calories.ts](../../../src/lib/calc/calories.ts) | The three resting-rate equations, the five activity multipliers, `plan()` with its `steps[]` and `warnings[]`, the intake floors, and the kg⇄lb / cm⇄ft-in helpers |
 | [NumberBaseApp.svelte](../../../src/components/apps/NumberBaseApp.svelte) | `/tools/number-conversion/` — page title "Programming" |
 | [PhotographyApp.svelte](../../../src/components/apps/PhotographyApp.svelte) | `/tools/photography/` |
 | [FileTransferApp.svelte](../../../src/components/apps/FileTransferApp.svelte) | `/tools/file-transfer/` |
+| [CalorieCalculatorApp.svelte](../../../src/components/apps/CalorieCalculatorApp.svelte) | `/tools/calories/` — page title "Daily calories" |
 | [Explainer.svelte](../../../src/components/Explainer.svelte) | The "by hand" disclosure used on every calculator page |
-| [number-conversion.astro](../../../src/pages/tools/number-conversion.astro), [photography.astro](../../../src/pages/tools/photography.astro), [file-transfer.astro](../../../src/pages/tools/file-transfer.astro) | Route shells; each mounts its app with `client:only="svelte"` |
-| [registry.ts](../../../src/lib/registry.ts) | Sidebar/palette entries (`number-conversion`, `photography`, `file-transfer`, category `Calculators`) |
-| [types.ts](../../../src/lib/db/types.ts) | `Preferences.photo_last_format` |
+| [number-conversion.astro](../../../src/pages/tools/number-conversion.astro), [photography.astro](../../../src/pages/tools/photography.astro), [file-transfer.astro](../../../src/pages/tools/file-transfer.astro), [calories.astro](../../../src/pages/tools/calories.astro) | Route shells; each mounts its app with `client:only="svelte"` |
+| [registry.ts](../../../src/lib/registry.ts) | Sidebar/palette entries (`number-conversion`, `photography`, `file-transfer`, `calories`, category `Calculators`) |
+| [types.ts](../../../src/lib/db/types.ts) | `Preferences.photo_last_format`, `Preferences.calorie_units` |
 
-## Conventions shared by all three
+## Conventions shared by all four
 
 - All maths lives in `src/lib/calc/*.ts` as pure functions with vitest specs beside them. The Svelte apps hold only view state (`$state` strings for inputs, `$derived` results) and format the output.
-- Stateless: nothing on these pages touches `repo.ts` while computing. The Playwright suite dumps the whole database before and after each scenario and asserts equality. The one exception is `rememberFormat()` in the photography app, wired to the format `<select>`'s `onchange` — never to a render effect.
-- Invalid input never produces a stale or wrong result. Photography and file transfer: the `$derived` yields `null` and the page shows a `role="alert"` message instead of the estimate. Number conversion is per-field — the offending field gets a `role="alert"` error and the canonical value (so the other three fields) is left at the last good parse.
-- `Explainer` is a native `<details>/<summary>` with a `summary` prop and a `testid` prop (default `explainer`), so keyboard toggling and the accessibility tree come for free. Every explainer on these pages has a unique testid (`explainer-twos`, `explainer-equivalence`, `explainer-bits-bytes`, …).
-- Test hooks: `data-testid` prefixes are `nb-` (number base), `ph-` (photography), `ft-` (file transfer).
+- Stateless: nothing on these pages touches `repo.ts` while computing. The Playwright suite dumps the whole database before and after each scenario and asserts equality. The two exceptions are `rememberFormat()` in the photography app and `switchUnits()` in the calorie app, each wired to its own control's handler — never to a render effect.
+- Invalid input never produces a stale or wrong result. Photography and file transfer: the `$derived` yields `null` and the page shows a `role="alert"` message instead of the estimate. Number conversion is per-field — the offending field gets a `role="alert"` error and the canonical value (so the other three fields) is left at the last good parse. Daily calories replaces the whole Estimate card with a "Not enough to work with" card carrying the refusal (`cal-problem`, `role="alert"`).
+- `Explainer` is a native `<details>/<summary>` with a `summary` prop and a `testid` prop (default `explainer`), so keyboard toggling and the accessibility tree come for free. Every explainer on these pages has a unique testid (`explainer-twos`, `explainer-equivalence`, `explainer-bits-bytes`, `explainer-calories`, …).
+- Test hooks: `data-testid` prefixes are `nb-` (number base), `ph-` (photography), `ft-` (file transfer), `cal-` (daily calories).
 
 ## Number conversion ("Programming")
 
@@ -274,6 +276,155 @@ Decimal units throughout (KB = 1000 B) — what drives and ISPs advertise. Bits 
 
 Defaults 1 GB, 100 Mbps, overhead 0. Inputs are strings; `num` accepts any finite number and leaves range checks to `transferSeconds` (an empty overhead field is treated as `0`). When the result is `null` the Estimate card is not rendered and an alert asks for a positive size and speed with overhead below 100 %. The Estimate card shows `formatDuration`, a raw seconds line (rounded and locale-grouped at ≥ 100 s, else 3 significant digits), `speedBothWays(bps)` as "Link speed", and — only when overhead > 0 — "After overhead" with `speedBothWays` of the effective rate.
 
+## Daily calories
+
+Body measurements, an activity level and a goal become a resting rate, a maintenance figure and a daily target, with every intermediate line shown. [calories.ts](../../../src/lib/calc/calories.ts) is arithmetic over three published resting-metabolic-rate equations; [CalorieCalculatorApp.svelte](../../../src/components/apps/CalorieCalculatorApp.svelte) holds the form, converts units at its edge, and draws what comes back.
+
+### API — `calories.ts`
+
+Types: `Sex = 'male' | 'female'`, `EquationId = 'mifflin' | 'harris-benedict' | 'katch-mcardle'`, `ActivityId`, `GoalDirection = 'maintain' | 'lose' | 'gain'`, `UnitSystem = 'metric' | 'imperial'`, plus `BodyInput`, `GoalInput`, `Step`, `Warning`, `CaloriePlan`, `BmrResult`, `PlanResult`.
+
+Two functions do the work. `bmr(body, equation)` returns `{ ok: true, value, step }` or `{ ok: false, reason }`; `plan(body, equation, activity, goal)` calls it and returns `{ ok: true, plan }` or passes the refusal straight through — it never substitutes a number of its own. Constants: `KCAL_PER_KG = 7700`, `INTAKE_FLOOR = { male: 1500, female: 1200 }`, `LB_PER_KG`, `CM_PER_INCH`. Lookups: `EQUATIONS`, `ACTIVITIES`, and `equationById(id)` / `activityById(id)`, both `undefined` for anything unknown.
+
+### The three equations
+
+All three estimate the **resting** rate in kcal/day from metric inputs. As implemented in `bmr()`:
+
+| Equation | `id` | Male | Female | Body fat |
+| --- | --- | --- | --- | --- |
+| Mifflin–St Jeor | `mifflin` | `10·kg + 6.25·cm − 5·age + 5` | `10·kg + 6.25·cm − 5·age − 161` | ignored |
+| Harris–Benedict (revised) | `harris-benedict` | `88.362 + 13.397·kg + 4.799·cm − 5.677·age` | `447.593 + 9.247·kg + 3.098·cm − 4.330·age` | ignored |
+| Katch–McArdle | `katch-mcardle` | `370 + 21.6 × lean` | the same formula | **required** — `lean = kg × (1 − bodyFat/100)` |
+
+- Mifflin's two sexes differ only in the trailing offset, so the same body reads exactly 166 kcal apart between them (`+5` against `−161`). [calories.test.ts](../../../src/lib/calc/calories.test.ts) asserts that gap on its own rather than trusting the two figures separately.
+- Katch–McArdle reads neither sex, age nor height. A 30-year-old 175 cm male and a 70-year-old 150 cm female at the same weight and body fat get an identical number, and the spec pins that equality.
+- Each `EquationDef` carries a one-sentence `note` on what it assumes and when to pick it. The app prints the note for the current selection under the picker as `cal-equation-note`.
+- Every substituted formula comes back as a `Step`, so the page shows `10 × 70.0 kg + 6.25 × 175.0 cm − 5 × 30 + 5` rather than the abstract form. `signed()` renders offsets and deltas with a real minus sign (U+2212) and a space after it, so `− 550` scans as arithmetic instead of a hyphenated number.
+
+### Activity multipliers
+
+`tdee = bmr × multiplier`, over the five standard levels in `ACTIVITIES` order:
+
+| `id` | Label shown | Multiplier | Note in the option |
+| --- | --- | --- | --- |
+| `sedentary` | Sedentary | 1.2 | Desk job, little or no exercise |
+| `light` | Lightly active | 1.375 | Light exercise 1–3 days a week |
+| `moderate` | Moderately active | 1.55 | Moderate exercise 3–5 days a week |
+| `very-active` | Very active | 1.725 | Hard exercise 6–7 days a week |
+| `extra-active` | Extra active | 1.9 | Hard exercise daily plus a physical job |
+
+Every id reads as its label. The first draft of this release shipped them one step apart — `active` labelled "Very active", `very-active` labelled "Extra active" — which is a trap for anyone picking a level by id in a test and reasoning about the multiplier. They were renamed before release; nothing persists an activity id, so there was nothing to migrate.
+
+### From measurements to a target
+
+```mermaid
+flowchart TD
+  I["BodyInput - sex, age, heightCm, weightKg, optional bodyFatPct"] --> B
+  EQ["EquationId from the picker"] --> B
+  B["bmr(body, equation)"] -->|"katch-mcardle with no body-fat percentage"| X["ok false - refused in words, no estimate card drawn"]
+  B -->|"age, height or weight missing or not positive"| X
+  B -->|ok| RE["resting value plus its substituted-formula Step"]
+  AC["ActivityId from the picker"] --> T
+  RE --> T["plan: tdee = resting × activityDef.multiplier"]
+  G["GoalInput - direction, rateKgPerWeek, optional targetWeightKg"] --> D
+  T --> D["plan: dailyDelta = ± rate × KCAL_PER_KG ÷ 7"]
+  D --> TG["plan: target = tdee + dailyDelta"]
+  TG --> WK["weeksToGoal = gap ÷ rate, only when the gap points the way the plan moves"]
+  TG --> W["warnings - impossible-rate, below-bmr, below-floor, aggressive-rate, fast-gain, wrong-direction, body-fat-ignored, extreme-input"]
+  TG --> S["steps - 3 to 5 rows of label, substituted detail, result"]
+  W --> C["CaloriePlan - the page draws the target AND every caution it earned"]
+  S --> C
+  WK --> C
+```
+
+### The shown working
+
+`steps[]` is three rows when maintaining (resting energy, maintenance, daily target), four once a rate is set (the deficit or surplus line lands third), and five when a positive target weight turns the rate into a duration. Each `Step` is a `label`, a `detail` with the user's own values already substituted, and a `value`. The app renders them straight into the `cal-steps` table without reformatting.
+
+A distance the rate covers in under seven days reads "under a week" rather than a fraction of one.
+
+`weeksToGoal` requires the gap to point the way the plan is moving. Taking its absolute value — which is what shipped first — gave a losing plan aimed at a *heavier* target a confident arrival date for a weight the deficit walks away from a little further every day. A target on the wrong side now produces no estimate and no step at all, and a `wrong-direction` caution instead. A target equal to the current weight is treated the same way: a plan with a deficit is already moving off the number it is aimed at.
+
+### Warnings, and why not one of them blocks
+
+Every caution is a sentence beside the number. Nothing on this page disables a control, greys out a result or refuses to compute because the plan is unwise: the target still renders, `cal-target-kcal` is still there, and the person reading it decides. That is [decision 9 of the 0.5.0 plan](../plans/version-5-phased.md) — cautions, never blocking, usability first. On a personal offline app the cost of being wrong about a paternalistic block is a tool that will not answer a question its owner is entitled to ask; the cost of a caution being ignored is a sentence someone read and disagreed with.
+
+| `id` | Fires when | Only when |
+| --- | --- | --- |
+| `below-bmr` | `target < bmr` — under what the body uses doing nothing | losing |
+| `below-floor` | `target < INTAKE_FLOOR[sex]` — 1 500 male, 1 200 female | losing |
+| `aggressive-rate` | `rate > weightKg × 0.01`, over 1 % of body weight a week | losing |
+| `fast-gain` | `rate > 0.5` kg a week | gaining |
+| `body-fat-ignored` | a finite `bodyFatPct` under an equation that cannot read it | any |
+| `wrong-direction` | a target weight on the far side of the current one from where the plan is heading | losing or gaining |
+| `impossible-rate` | `tdee + dailyDelta < 0` — a deficit larger than the whole daily burn | losing |
+| `extreme-input` | age outside 15–120, height outside 120–260 cm, or weight outside 30–400 kg | any |
+
+Warnings stack rather than reporting the first hit — a female, 130 years old, 25 % body fat, sedentary, losing 1.2 kg a week collects six at once (`impossible-rate`, `below-bmr`, `below-floor`, `aggressive-rate`, `body-fat-ignored`, `extreme-input`), and the unit suite asserts that whole list in order. `impossible-rate` leads deliberately: when no intake achieves the plan, that is the thing to read first, and the headline target is floored at zero rather than printing a negative number of calories to eat. Every bound is exclusive: exactly 0.70 kg a week on a 70 kg body, exactly 0.5 kg a week gaining, and exactly 120 / 260 / 400 at the top of the range are all silent. `INTAKE_FLOOR` is a rule of thumb from clinical guidance rather than a law of physics, which is precisely why crossing it produces a sentence. `extreme-input` is two-sided on purpose: all three equations were fitted on adults, so a toddler is every bit as much an extrapolation as a 130-year-old, and a one-sided guard let one through with no caution at all while promising in its own wording to cover the range.
+
+The **one** hard refusal is Katch–McArdle with no body-fat percentage. It is not a caution because there is no honest number to show: falling back to Mifflin–St Jeor would put a figure on screen from a formula the user did not pick, under a label saying they did. The other refusals are the same shape — a missing or impossible input, not an unwise choice:
+
+| Reason | Raised by |
+| --- | --- |
+| `Fill in age, height and weight.` | a non-finite age, height or weight |
+| `Age, height and weight all have to be greater than zero.` | any of the three at or below zero |
+| `Katch–McArdle works from lean mass, so it needs a body-fat percentage. …` | `katch-mcardle` with `bodyFatPct` null or `NaN` |
+| `Body fat has to be between 0 and 100 percent.` | `bodyFatPct` below 0 or at/above 100 |
+| `Set a rate of change greater than zero, or choose "maintain".` | a lose/gain goal with a zero or non-finite rate |
+| `Unknown equation "…".` / `Unknown activity level "…".` | an id absent from `EQUATIONS` / `ACTIVITIES` |
+
+The body checks run before the body-fat check, so a zero weight under Katch–McArdle reports the zero rather than the missing measurement. A rate supplied alongside `maintain` is ignored, not rejected.
+
+### Goal pacing and the 7 700 kcal constant
+
+`dailyDelta = ± (rate × KCAL_PER_KG) / 7`, negative when losing and positive when gaining, and `target = tdee + dailyDelta`. `KCAL_PER_KG` is 7 700: the classic 3 500 kcal-per-pound rule restated in metric and rounded — the exact conversion of 3 500 kcal/lb is 7 716 kcal/kg. The rounding is not what makes it approximate.
+
+What makes it approximate is that it treats a kilogram of body mass as a fixed energy account and ignores metabolic adaptation: sustain a deficit for months and resting expenditure falls, so the same food intake buys a smaller deficit than it did in week one. **Long plans therefore drift optimistic.** `weeksToGoal` compounds this — it divides the remaining distance by the requested rate and never recomputes maintenance at the lower weight, so the further out the target the more the figure is a direction rather than a date. The page says so in its explainer rather than hiding it in this file.
+
+### Units: metric inside, imperial only at the edge
+
+Everything in `calories.ts` is kilograms, centimetres and kilocalories. There is no second set of formulas for imperial, because a second set drifts from the first. The UI converts on the way in and on the way out:
+
+| Helper | Use |
+| --- | --- |
+| `kgToLb` / `lbToKg`, `cmToInches` / `inchesToCm` | The raw conversions, over `LB_PER_KG` and `CM_PER_INCH` |
+| `cmToFeetInches(cm)` | 175 → `{ feet: 5, inches: 9 }`; inches are rounded and a rounded 12 rolls into the next foot, so "5 ft 12 in" cannot appear |
+| `feetInchesToCm(feet, inches)` | The way back |
+| `weightUnit(units)` | `'kg'` / `'lb'` for the field labels |
+| `rateStep(units)` | The rate input's `step`: 0.05 kg or 0.1 lb |
+| `weightIn` / `weightToKg` | Exported and specced, but the app converts with `kgToLb` / `lbToKg` directly (see Known limits) |
+
+`convertTo(next)` rewrites the displayed weight, target weight, rate and height so they describe the **same body** in the new units, and writes nothing. `switchUnits(next)` calls it and then persists — it is split in two precisely so restoring the preference on mount can convert without writing back. Both return early when the requested system is already the current one, so clicking the active button is a no-op.
+
+Only the unit system persists. Body measurements deliberately never do, and that is [Q4 in the plan](../plans/version-5-phased.md): a preference row rides every backup export, so a stored weight would end up in a file the user hands to someone else or syncs somewhere, and refilling eight fields takes about ten seconds. The privacy line was worth more than the convenience.
+
+```mermaid
+sequenceDiagram
+  participant U as User
+  participant A as CalorieCalculatorApp
+  participant R as repo.ts
+  participant DB as IndexedDB preferences
+  A->>R: onMount getSingleton('preferences')
+  R->>DB: get 'singleton'
+  DB-->>R: row or undefined
+  R-->>A: prefs
+  A->>A: calorie_units is 'metric' or 'imperial' - convertTo it, no write
+  U->>A: clicks Metric or Imperial
+  A->>A: switchUnits - convertTo(next) restates every field
+  A->>R: putSingleton('preferences', { calorie_units: next })
+  R->>DB: field-merge that one key
+```
+
+Restore validates the stored value against the two literals rather than trusting the row, so junk is ignored instead of putting the form into a third state. The write is fire-and-forget (`void putSingleton(...)`). Like `photo_last_format`, `calorie_units` is not in the Preferences page's `KNOWN` set, so it surfaces read-only under "Remembered values" — nothing stored is invisible.
+
+### App wiring
+
+`CalorieCalculatorApp.svelte` keeps every input as a `$state` string, parses with a local `num()` that returns `null` for blank or non-finite text, and derives three things: `body` (null when age, weight or height will not parse), `goal`, and `result = body ? plan(...) : null`. `ok` and `problem` split that result, and exactly one of the Estimate card and the "Not enough to work with" card renders — never both, and neither when `body` is null.
+
+The Estimate card closes with a paragraph saying the figure is an estimate rather than a prescription and telling the reader to weigh themselves over a fortnight and adjust from what happened. It sits next to the number on purpose, not in a footnote. Below the cards, `explainer-calories` ("Which equation, and where the numbers come from") carries three paragraphs: which equation to pick and why, the activity multiplier as the biggest error source, and the 7 700 kcal constant's optimism over long plans.
+
+Test hooks: `cal-units-metric` / `cal-units-imperial` (both carrying `aria-pressed`), `cal-sex-male` / `cal-sex-female`, `cal-age`, `cal-height` or `cal-height-ft` / `cal-height-in`, `cal-weight`, `cal-bodyfat`, `cal-activity`, `cal-equation`, `cal-equation-note`, `cal-goal-maintain` / `cal-goal-lose` / `cal-goal-gain`, `cal-rate`, `cal-target`, and on the way out `cal-bmr`, `cal-tdee`, `cal-target-kcal`, `cal-weeks`, `cal-steps`, `cal-problem`, and `cal-warning` with a `data-warning` attribute carrying the `Warning['id']` so a spec can assert on one caution by name.
+
 ## Tests
 
 | File | Runner | Covers |
@@ -282,8 +433,9 @@ Defaults 1 GB, 100 Mbps, overhead 0. Inputs are strings; `num` accepts any finit
 | [binaryOps.test.ts](../../../src/lib/calc/binaryOps.test.ts) | vitest | Every operation at every width, signed and unsigned, over a table of fixed traps plus a seeded sample, checked against BigInt's own arithmetic (which already has C's semantics for `/`, `%` and `>>`) rather than against numbers copied out of the code's own output; the trace contract on every one of them; `0xFF + 1` (carry, no overflow) against `0x7F + 1` (overflow, no carry); multiplication dropping high bits with the partial products read back out of the drawn rows; `-7 / 2` and `-7 % 2` at each width; the most-negative-over-−1 overflow; arithmetic against logical shift on a negative value; shifting by ≥ the width; and the proof that `signed` changes the bits of nothing but division and modulo |
 | [photography.test.ts](../../../src/lib/calc/photography.test.ts) | vitest | Crop factors, the 20 mm f/2.8 → 40 mm f/5.6 example, exact stop formulas (m4/3 vs APS-C ≈ 0.83), snapping including table fallbacks, shutter parse/format, `formatStops` sign trimming |
 | [transfer.test.ts](../../../src/lib/calc/transfer.test.ts) | vitest | Unit tables, hand-computed durations across unit combinations, overhead, null on impossible input, `formatDuration` carry, `speedBothWays` |
-| [calculators.spec.ts](../../../tests/local/calculators.spec.ts) | Playwright (`npm test`) | Each page end-to-end with `dumpAll()` before/after asserting zero writes; the format pick audited with `assertIsolatedDelta` to `preferences/singleton` and restored after a reload that itself writes nothing; explainers toggle from the keyboard on all three pages. The visualizer adds six zero-write cases: stepping a trace by mouse and by keyboard, editing an operand restarting it at step 1, carry-without-overflow against overflow-without-carry, division by zero refused with no table drawn, signed division truncating toward zero with the sign as its own step, multiplication's out-of-width columns, arithmetic against logical shift, and a width change truncating both operands |
-| [a11y.spec.ts](../../../tests/local/a11y.spec.ts) | Playwright | The three routes are in the every-page sweep (accessible names, labelled fields, heading structure); palette keyboard navigation lands on Photography; an explainer opens from the keyboard |
+| [calories.test.ts](../../../src/lib/calc/calories.test.ts) | vitest | Each equation against hand-computed figures for both sexes (70 kg / 175 cm / 30 y and three other bodies), the 166 kcal Mifflin sex gap, Katch–McArdle ignoring sex/age/height, every refusal string, `tdee` at three multipliers, the delta being linear in the rate and taking its magnitude, `weeksToGoal` including its null cases, every warning trigger with its boundary tested on both sides, the full stacked warning list in order, the shape and count of `steps[]` from three rows to five, and the unit helpers — exact constants, round-trips to six places, and a sweep of a metre of heights proving `cmToFeetInches` never reports 12 inches |
+| [calculators.spec.ts](../../../tests/local/calculators.spec.ts) | Playwright (`npm test`) | Each page end-to-end with `dumpAll()` before/after asserting zero writes; the format pick audited with `assertIsolatedDelta` to `preferences/singleton` and restored after a reload that itself writes nothing; explainers toggle from the keyboard on all four pages. The visualizer adds six zero-write cases: stepping a trace by mouse and by keyboard, editing an operand restarting it at step 1, carry-without-overflow against overflow-without-carry, division by zero refused with no table drawn, signed division truncating toward zero with the sign as its own step, multiplication's out-of-width columns, arithmetic against logical shift, and a width change truncating both operands. The `daily calories` block adds four more: the default body's BMR/TDEE/target and the sex, activity, rate and target-weight moves that change them, all at zero writes; Katch–McArdle refused with `cal-bmr` absent and then working once body fat is entered, plus `body-fat-ignored` when the equation changes back; an aggressive plan raising `aggressive-rate`, `below-bmr` and `below-floor` while `cal-target-kcal` stays visible, and the losing-only cautions clearing when the goal flips to gain; and the unit toggle audited with `assertIsolatedDelta`, checked as the same body restated (154.32 lb, 5 ft 9 in, BMR within 3 kcal), restored across a reload that writes nothing, then toggled back to a clean 70 |
+| [a11y.spec.ts](../../../tests/local/a11y.spec.ts) | Playwright | All four routes are in the every-page sweep (accessible names, labelled fields, heading structure) — its `ROUTES` list is derived from `REGISTRY`, so registering a tool enrols it; palette keyboard navigation lands on Photography; an explainer opens from the keyboard |
 | [offline.spec.ts](../../../tests/local/offline.spec.ts), [payload.spec.ts](../../../tests/local/payload.spec.ts) | Playwright | Use `/tools/photography/` as the "light tool" probe: served from cache offline, and pulls none of the heavy bundles |
 
 ## Known limits and decisions
@@ -299,3 +451,11 @@ Defaults 1 GB, 100 Mbps, overhead 0. Inputs are strings; `num` accepts any finit
 - Snap tables end at f/32 and ISO 102400 (start f/1.0 and ISO 25); beyond them the geometric value replaces the marketing number.
 - Transfer estimates are theoretical throughput: no latency, ramp-up or retransmission model beyond the flat overhead percentage.
 - The photography preference is written on every change of the set-A select; `putSingleton` field-merges and stamps only that key. Set B's format is never remembered.
+- **The calorie figures are population equations, and the tool cannot say how wrong it is for you.** All three were fitted to groups; an individual sits somewhere in a distribution around them, and two people with identical inputs genuinely differ by a few hundred kcal a day. There is no confidence interval on screen because there is no honest one to compute from four numbers. The page's answer to this is the closing paragraph on the Estimate card: weigh yourself over a fortnight and adjust from what actually happened.
+- **The activity multiplier is the biggest single error source, and it is a five-way guess.** A step from 1.55 to 1.725 moves maintenance by 11.3 %. For the page's default body that is a bigger move than the whole spread between the three equations, which land at 1,649 kcal (Mifflin–St Jeor), 1,696 (Harris–Benedict) and 1,580 (Katch–McArdle at 20 % body fat). It is the first dial to move when the scale disagrees with the plan, and the explainer says so.
+- **`weeksToGoal` is a straight line.** It divides the remaining distance by the requested rate and never recomputes maintenance at the lower or higher weight, so it inherits the 7 700 kcal/kg constant's optimism and adds its own. Fine for "roughly five months", wrong as a date.
+- **`Fill in age, height and weight.` is close to unreachable from the UI.** The app's `num()` turns unparseable text into `null`, `body` becomes `null`, and `result` is `null` — so neither card renders and no message appears. `bmr()` only ever sees non-finite values from a caller other than this app. The zero-or-negative refusal, by contrast, is reachable: typing `0` parses fine.
+- **Blank height behaves differently in the two unit systems.** In metric a blank height field yields `null` and the Estimate card silently disappears; in imperial the feet and inches fields default to `0`, so the height is `0 cm` and the "greater than zero" refusal is shown instead. The asymmetry follows from `feetInchesToCm(num(ft) ?? 0, num(in) ?? 0)` and has not been unified.
+- **A unit round-trip is not bit-exact.** `convertTo` re-rounds to two decimals each way, and height passes through whole inches, so 175 cm → 5 ft 9 in → 175.26 cm. Weight survives a round trip cleanly at the default (70 → 154.32 → 70) and the Playwright case asserts exactly that, but the height drift is real and up to half an inch per crossing.
+- `weightIn` and `weightToKg` are exported and unit-tested, but the app converts with `kgToLb` / `lbToKg` directly. They are the tidier interface and nothing uses them yet; leaving both is a small redundancy rather than a bug.
+- No macro split, meal planning or BMI charting — the plan lists those under "not doing" for 0.5.0, as a plausible later section on the same page. The TODO asked for calorie needs by goal, and that is what is here.

@@ -2,7 +2,7 @@
 
 Self-documenting back-of-the-envelope calculations at `/tools/napkin-math/`: type a formula, get typed input fields, run named calculations against it, keep a library of templates, and generate code from any of it in Python, JavaScript, Go, Rust or as a dependency-free web component.
 
-_Describes the code as of v0.4.0 (unreleased; schema v16) — verify against source when in doubt._
+_Describes the code as of v0.5.0 (unreleased; schema v16) — verify against source when in doubt._
 
 ## File map
 

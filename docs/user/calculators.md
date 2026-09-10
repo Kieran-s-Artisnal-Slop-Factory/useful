@@ -1,8 +1,8 @@
 # Calculators
 
-Three small calculators under **Calculators** in the sidebar (or search for them with Ctrl/Cmd+K): **Programming** converts numbers between binary, octal, decimal and hex, shows bit operations, and walks two numbers through an operation one bit at a time; **Photography** turns one camera's settings into their equivalents on other sensor sizes and compares two sets of settings in stops; **File transfer** estimates how long a file takes to move at a given network speed. Each page has "by hand" drop-downs that explain the maths. Nothing you type is saved, with one exception: the Photography page remembers which sensor format you picked.
+Four small calculators under **Calculators** in the sidebar (or search for them with Ctrl/Cmd+K): **Programming** converts numbers between binary, octal, decimal and hex, shows bit operations, and walks two numbers through an operation one bit at a time; **Photography** turns one camera's settings into their equivalents on other sensor sizes and compares two sets of settings in stops; **File transfer** estimates how long a file takes to move at a given network speed; **Daily calories** works out what you burn and what to eat to gain, lose or hold your weight. Each page has "by hand" drop-downs that explain the maths. Nothing you type is saved, with two exceptions: the Photography page remembers which sensor format you picked, and the Daily calories page remembers whether you chose metric or imperial.
 
-_Describes the code as of v0.4.0 (unreleased; schema v16) — verify against source when in doubt._
+_Describes the code as of v0.5.0 (unreleased; schema v16) — verify against source when in doubt._
 
 ## Programming (number conversion)
 
@@ -34,6 +34,35 @@ The sensor format you pick for set A is remembered and preselected next time. It
 3. Optionally enter a **protocol overhead %** (0–99) to reserve part of the link for headers, encryption and retries.
 
 The estimate shows the transfer time (for example "1 min 20 s"), the same figure in plain seconds, the link speed spelled both ways ("100 Mbps = 12.5 MB/s") and, if you set an overhead, the effective speed after it. The page starts at 1 GB over 100 Mbps.
+
+## Daily calories
+
+Read these four things before you read a number off this page.
+
+**It is an estimate, not a prescription.** The equations behind it were built by measuring groups of people and fitting a line through the results. You are not the average of a group. Two people the same age, height, weight and sex can genuinely burn a few hundred calories a day apart from each other, and nothing you can type into a form will say which of them you are. Treat the number as a starting point, weigh yourself over two weeks, and move the target based on what actually happened to the scale.
+
+**The activity level is the one most people get wrong, and most people pick one too high.** It is a bigger source of error than which equation you choose — moving one step up the list raises the answer by about 11 %. "Moderately active" means real exercise three to five days a week, not a busy day. If you sit at a desk and go to the gym twice a week, you are "Lightly active". If the numbers stop matching the scale after a fortnight, this is the first setting to move down.
+
+**The warnings are cautions, and you can ignore them.** When a plan takes you below your resting rate, below the usual floor for eating without supervision, or faster than about 1 % of your body weight a week, a sentence appears next to the answer explaining why that matters. The answer is still there. Nothing is greyed out and no button stops working — the page tells you what it thinks and leaves the decision with you.
+
+**It remembers your units and deliberately not your measurements.** Metric or imperial is saved and comes back next time. Your age, height, weight, body fat, goal and rate are not saved anywhere, on purpose: settings get copied into backup files, and a body weight is not something that should quietly ride along in one. Refilling the form takes about ten seconds.
+
+### Which equation to pick
+
+- **Mifflin–St Jeor** is the default and the right answer for almost everyone. It is the one dietitians have preferred since a 2005 comparison found it the closest for people of ordinary body composition.
+- **Harris–Benedict (revised)** reads a bit higher for the same body. It is here because so many other calculators online use it, so if a website gave you a different number, this is probably why.
+- **Katch–McArdle** works from lean mass rather than total weight, so it needs a body-fat percentage and refuses to answer without one. Pick it only if you have a real measurement — a DEXA scan, calipers from someone who knows how to use them. It is the best of the three if you are notably lean or notably heavy and you actually know your body fat, and the worst of the three if you are guessing, because a guessed percentage feeds straight into the answer.
+
+If you enter a body-fat percentage while one of the other two equations is selected, the page says the number is not being used rather than quietly dropping it.
+
+### Using it
+
+1. Choose **Metric** or **Imperial** at the top of the first card. Everything already on the page is restated in the new units — the same body, different words.
+2. Fill in sex, age, height and weight. Body fat is optional and only Katch–McArdle reads it.
+3. Pick an **activity level** and an **equation**. The sentence under the equation says what it assumes.
+4. Pick a **goal** — maintain, lose or gain. For lose and gain, set a rate per week and, if you want, a target weight.
+
+You get three figures: **Resting (BMR)**, what you would burn lying still all day; **Maintenance (TDEE)**, resting multiplied by your activity level; and the big **Daily target**, maintenance adjusted for your goal. Below them, a table shows every step with your own numbers written into the formula, so you can check the arithmetic by hand. With a target weight, a line estimates how many weeks the plan takes.
 
 ## Gotchas
 
@@ -72,3 +101,16 @@ The estimate shows the transfer time (for example "1 min 20 s"), the same figure
 - Overhead must be below 100 %; at 100 % or above, or with a zero/negative size or speed, the estimate disappears and a message asks for valid inputs rather than showing a stale number.
 - The time is rounded to its two biggest units ("2 d 8 h", "1 h 4 min", "1 min 20 s") — under a minute it is just seconds ("10 s") — and it rounds up cleanly: 1 h 59.5 min shows as "2 h", never "1 h 60 min". The seconds line underneath is exact to three significant digits under 100 s and whole seconds above.
 - Nothing is saved; the page returns to 1 GB over 100 Mbps on reload.
+
+### Daily calories
+
+- **The longer the plan, the more optimistic it is.** Goal pacing treats a kilogram of body weight as a fixed 7,700 calories, which is the standard rule of thumb. It ignores the fact that a body running a deficit for months quietly burns less than it did in week one, so the same eating buys a smaller loss over time. The "weeks to your target weight" line is worse again: it assumes today's rate holds all the way there and never recalculates as you get lighter. Read it as a direction, not a date.
+- **The two floors are different for men and women.** The warning about eating too little appears below 1,500 calories a day for a man and below 1,200 for a woman. Those are the commonly quoted lower bounds for dieting without medical supervision — rules of thumb, not physics, which is why they produce a sentence rather than a locked page.
+- **The "too fast" caution scales with your weight.** Losing more than about 1 % of your body weight a week is where more of what you lose starts being muscle. On a 70 kg body that is 0.7 kg a week; on a 100 kg body it is 1 kg. Gaining has a flat caution instead: faster than half a kilogram (about 1.1 lb) a week tends to add fat whatever your training looks like.
+- **Those thresholds are metric underneath.** In imperial the caution about gaining appears a shade past 1.1 lb a week rather than at a round 1 lb, because the rule is half a kilogram converted.
+- **Katch–McArdle will not answer without a body-fat percentage.** It refuses rather than falling back to another equation, because a number from a formula you did not choose, sitting under a label saying you did, is worse than no number at all. Enter a percentage or pick a different equation.
+- **Clearing a field can make the estimate vanish without a message.** Empty the age or weight box and the whole result disappears rather than showing an error. Height is the odd one out: in metric an empty height does the same, but in imperial the feet and inches boxes count as zero, so you get a message asking for a height above zero. Either way nothing stale is left on screen.
+- **Switching units rounds your height.** Imperial height is whole feet and inches, so 175 cm becomes 5 ft 9 in, and switching back gives you 175.26 cm rather than 175. Weight comes back clean. If you care about the exact centimetre, set your units before you type.
+- If you enter an age over 120, a height over 260 cm or a weight over 400 kg, a caution says the answer is extrapolation — those are outside the range the equations were built from.
+- Everything except your choice of metric or imperial resets when you reload. The page starts at a 30-year-old male, 175 cm, 70 kg, moderately active, Mifflin–St Jeor, maintaining — restated in pounds and feet if imperial is what you chose last time.
+- None of this is medical advice, and the page is not trying to be. If you are planning a large or fast change, or you have a condition that food intake affects, talk to someone qualified.

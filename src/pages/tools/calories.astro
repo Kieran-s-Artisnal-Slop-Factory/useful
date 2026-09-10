@@ -1,0 +1,8 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import CalorieCalculatorApp from '../../components/apps/CalorieCalculatorApp.svelte';
+---
+
+<Layout title="Daily calories">
+  <CalorieCalculatorApp client:only="svelte" />
+</Layout>

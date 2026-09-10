@@ -11,6 +11,17 @@
  * surface, borders against their backdrop) in both light and dark. That is
  * where a regression would come from — the palette is defined once and every
  * page inherits it.
+ *
+ * **What this sweep does NOT reach.** It audits each route's INITIAL render,
+ * once. Anything behind an `{#if}` — a panel that appears after a file is
+ * loaded, a field that only exists for one option of a radio group, the
+ * imperial half of a units toggle — is never visited, so "the sweep covers
+ * every registered page" means every page's front door and not every control
+ * in the app. Two 0.5.0 examples: the colour extractor's whole palette and
+ * theme section is gated on having an image, and the calorie calculator's
+ * rate and target-weight fields only exist once the goal is not "maintain".
+ * A tool whose controls mostly live behind a gate should carry its own label
+ * assertions in its own spec rather than trusting this file to catch them.
  */
 import { test, expect } from './helpers/app';
 import { REGISTRY } from '../../src/lib/registry';

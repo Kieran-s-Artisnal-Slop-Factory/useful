@@ -1,4 +1,4 @@
-# Version 0.4.0 plans
+# Version 0.5.0 plans
 
 Before beginning make sure the VERSION is up to date, and create a file called `docs/dev/plans/version-<version number>-phased.md` which is a phased plan for implementing the features, then stop after creating it. If that file exists, the that means the version has been started and you're taking over from where another agent left off. If it doesn't then create the file making sure to also create "checkpoints" which are points after a few phases where the full test suite is ran, and must pass before proceeding. You don't need to run the full tests on every phase because it's going to be too slow. For each checkpoint, if it's not going to trample one another, feel free to use subagents, in fact ideally you should.
 
@@ -8,18 +8,35 @@ Additional things to keep in mind:
 
 ## Maintenance
 
-- [ ] Check all dependencies and do updates
+- [x] Check all dependencies and do updates
 
 ## Features & fixes
 
-- [ ] Daily calorie calculator
-  - [ ] Calculator to help you plan out your daily calorie needs
+
+- [x] Images > Color extractor
+  - [x] A tool to generate a palette from an image
+  - [x] Be able to copy, or upload an image and extract major colors
+    - [x] Pick how many points
+  - [x] Be able to export palette as a CSS theme in same format as `generators > themes`
+    - [x] Show same preview of components as there is in themes
+  - [x] Allow people to copy each color individually
+  - [x] Hand the palette over to `generators > themes` through the URL, and have Themes seed itself from it
+- [ ] Calculators
+  - [x] Daily calorie calculator
+    - [x] Calculator to help you plan out your daily calorie needs based on your goals (gain/lose weight)
+  - [ ] Napkin Math
+    - [ ] Add option to export the calculation as an image
+      - [ ] Show the mathjax representation of the calculation with the variables replaced by their values in the caclulation
+      - [ ] Add a preview button
+      - [ ] Allow for PNG or SVG output
 
 ## For human
 
 This section is for me to keep track of what I need to manually review, feel free to add to this
 
-- [ ] 
+- [ ] Sanity-check the calorie figures against one external TDEE calculator — the arithmetic is unit-tested against the published equations, but nobody has compared the whole answer to another tool
+- [ ] Run a real photo through the colour extractor at 4, 8 and 16 colours and say whether the palettes look right. Synthetic flat-band images prove the maths; only a photograph proves the judgement
+- [ ] Decide about the `@emnapi/core` override in package.json. It has no recorded reason, and it is what makes npm crash while resolving vitest's peer set, which is currently blocking a patch update
 
 ## Per change
 Required guidence to follow per change

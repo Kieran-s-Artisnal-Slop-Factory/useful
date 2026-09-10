@@ -2,7 +2,7 @@
 
 A real database running inside the browser tab, under **Playgrounds** in the sidebar (or Ctrl/Cmd+K). Pick SQLite or Postgres, write SQL in the editor, run it, and browse the tables you made. It is a genuine engine, not a simulation, so the error messages and the dialect quirks are the real ones — but the database itself lives in the tab's memory and there is no server anywhere. Your editor text is kept between visits; the data is not, unless you save a snapshot or export a file.
 
-_Describes the code as of v0.4.0 (unreleased; schema v16) — verify against source when in doubt._
+_Describes the code as of v0.5.0 (unreleased; schema v16) — verify against source when in doubt._
 
 ## Picking an engine
 

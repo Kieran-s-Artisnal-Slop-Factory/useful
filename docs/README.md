@@ -5,7 +5,7 @@ must not break; [`user/`](user/) explains how to use it and what will surprise
 you. Both describe the code as it is — when a page and the source disagree, the
 source is right and the page is a bug.
 
-_Describes the code as of v0.4.0 (unreleased; schema v16) — verify against source when in doubt._
+_Describes the code as of v0.5.0 (unreleased; schema v16) — verify against source when in doubt._
 
 ## For maintainers — [`dev/`](dev/)
 
@@ -31,6 +31,7 @@ Per tool, under [`dev/tools/`](dev/tools/):
 [text tools](dev/tools/text-tools.md) ·
 [generators](dev/tools/generators.md) ·
 [image tools](dev/tools/image-tools.md) ·
+[colour extractor](dev/tools/color-extractor.md) ·
 [base64](dev/tools/base64.md) ·
 [background remover](dev/tools/background-remover.md) ·
 [SVG editor](dev/tools/svg-editor.md) ·
@@ -66,7 +67,7 @@ the app.
 | [settings-backup-preferences.md](user/settings-backup-preferences.md) | Backups (the only copy of your data), and what the app remembers |
 | [time.md](user/time.md) | Timers, stopwatch, timezone conversion |
 | [scheduler.md](user/scheduler.md) | Events and TODOs across list, board and calendar |
-| [calculators.md](user/calculators.md) | Number bases, photography equivalence, file-transfer times |
+| [calculators.md](user/calculators.md) | Number bases, photography equivalence, file-transfer times, daily calorie needs |
 | [text-tools.md](user/text-tools.md) | Diff, Similarity and Text analysis — compare, score and count text |
 | [generators.md](user/generators.md) | Themes and colours, gradients, glassmorphism, regex, QR |
 | [secrets.md](user/secrets.md) | Passwords, keys, tokens and identifiers |
@@ -81,6 +82,7 @@ the app.
 | [logo-generator.md](user/logo-generator.md) | Seeded avatars, identicons, and icon or emoji badges |
 | [napkin-math.md](user/napkin-math.md) | Formulas that document themselves, with code you can take away |
 | [images.md](user/images.md) | Converter, resizer, compressor, background remover |
+| [color-extractor.md](user/color-extractor.md) | A palette out of a picture, and a CSS theme out of the palette |
 | [base64.md](user/base64.md) | Text and images in and out of base64, and data URLs |
 | [svg-editor.md](user/svg-editor.md) | The layered vector editor |
 | [image-editor.md](user/image-editor.md) | The layered raster editor (session-only — read the gotchas) |
@@ -101,6 +103,8 @@ phase list, [version-2.md](dev/plans/version-2.md) is the 0.2.0 plan,
 [version-3-phased.md](dev/plans/version-3-phased.md) the reviewed, phased
 version of it, [version-4.md](dev/plans/version-4.md) and
 [version-4-phased.md](dev/plans/version-4-phased.md) the same pair for 0.4.0,
+[version-5.md](dev/plans/version-5.md) and
+[version-5-phased.md](dev/plans/version-5-phased.md) the same pair for 0.5.0,
 and [TODO](dev/plans/TODO) is the running work list they all came from. They record intent at a point in time and are not maintained against
 the code.
 

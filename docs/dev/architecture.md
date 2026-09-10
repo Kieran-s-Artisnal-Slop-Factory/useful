@@ -2,7 +2,7 @@
 
 `useful` is a static Astro 7 site whose every page mounts one Svelte 5 island. There is no server: IndexedDB in the visitor's browser is the only copy of the data, a hand-written service worker makes the built site work offline, and the heavy optional pieces (an ML model, two SQL engines, a city dataset) load lazily on demand. This page is the maintainer's mental model — the stack, the runtime picture, the directory map, the cross-cutting systems and where each is documented, the invariants that must not break, and the recipe for adding a tool.
 
-_Describes the code as of v0.4.0 (unreleased; schema v16) — verify against source when in doubt._
+_Describes the code as of v0.5.0 (unreleased; schema v16) — verify against source when in doubt._
 
 ## The stack
 
@@ -58,7 +58,7 @@ Data lives in four places, deliberately:
 | Store | Holds | Owner |
 | --- | --- | --- |
 | IndexedDB `useful` | Every user row (`STORES` in [types.ts](../../src/lib/db/types.ts)) plus the `sync_outbox` change queue (not in `STORES`, never exported) | [repo.ts](../../src/lib/db/repo.ts), [outbox.ts](../../src/lib/db/outbox.ts) |
-| Cache Storage `useful-cache-v38` (`CACHE_NAME`) | App shell pages, fingerprinted `_astro/` assets, the SQL engines' wasm; purged by prefix on every version bump | [public/sw.js](../../public/sw.js) |
+| Cache Storage `useful-cache-v39` (`CACHE_NAME`) | App shell pages, fingerprinted `_astro/` assets, the SQL engines' wasm; purged by prefix on every version bump | [public/sw.js](../../public/sw.js) |
 | Cache Storage `useful-models-v1` (`MODEL_CACHE`) | The background remover's model + ONNX runtime, ~15.8 MB, filled on an explicit click; never purged by a version bump | [runtime.ts](../../src/lib/bg/runtime.ts) and sw.js, kept in sync by hand |
 | localStorage | `useful-theme`, `useful-sidebar-collapsed`, `useful-test-mode` — presentation and harness flags only, never data | [SettingsApp.svelte](../../src/components/apps/SettingsApp.svelte), [Chrome.svelte](../../src/components/chrome/Chrome.svelte), [testMode.ts](../../src/lib/testMode.ts) |
 
@@ -72,10 +72,12 @@ The live SQL databases live only in their worker's memory; [store.ts](../../src/
 | [src/layouts/Layout.astro](../../src/layouts/Layout.astro) | The single layout: `<head>`, theme/sidebar pre-paint script, the three persistent islands, `<main class="page">`, SW registration (PROD) or teardown (dev). |
 | [src/components/apps/](../../src/components/apps/) | One `*App.svelte` root per page (`TimersApp`, `SchedulerApp`, `SqlPlaygroundApp`, `SettingsApp`, `PreferencesApp`, `HomeApp`, …) plus page-specific sub-components (`CalendarView`, `ZonePicker`). |
 | [src/components/chrome/](../../src/components/chrome/) | App shell islands: `Chrome.svelte`, `CommandPalette.svelte`, `NotificationEngine.svelte`, `OfflineSetup.svelte`, `OfflinePanel.svelte`. |
-| [src/components/](../../src/components/) | Shared widgets: `Card`, `Explainer`, `Icon`, `ColorField`, `CodeEditor`, `SqlEditor`, `SandboxedPreview`. |
+| [src/components/](../../src/components/) | Shared widgets: `Card`, `Explainer`, `Icon`, `ColorField`, `CodeEditor`, `SqlEditor`, `SandboxedPreview`, `ThemePreview`. |
 | [src/lib/db/](../../src/lib/db/) | The data layer: `types.ts` (entities + `STORES`), `db.ts` (`MIGRATIONS`, `getDB`), `repo.ts` (CRUD), `outbox.ts`, `export.ts` (backup), `persistence.ts` (persistent-storage request). |
 | [src/lib/](../../src/lib/) top level | Cross-cutting modules: `registry.ts`, `paths.ts`, `fuzzy.ts`, `icons.ts`, `markdown.ts` + `prism.ts`, `exportFile.ts`, `dragdrop.ts`, `offline.ts`, `testMode.ts`, `testHook.ts`. |
 | `src/lib/<domain>/` | Pure per-tool logic with co-located `*.test.ts`: `time/` (durations, timezones, `cities.json`, `engine.svelte.ts`), `scheduler/` (`rank`, `recurrence`), `calc/`, `gen/`, `img/`, `raster/`, `svg/`, `bg/`, `sql/`. |
+| [img/](../../src/lib/img/) | The image tools' shared core. `convert.ts` decodes SVG, TIFF and every native raster format onto a canvas and encodes PNG/JPG. `ingest.ts` is the ONE way an image enters the app — picked, dropped or **pasted** — returning a decoded canvas or a typed refusal that carries its own sentence. `palette.ts` extracts a palette by k-means in OKLab and suggests which extracted colour plays which theme role. |
+| [raster/](../../src/lib/raster/) | The raster editor's model, history and EXIF, plus `svgToPng.ts` — a self-contained SVG string rasterised through a blob URL, an `<Image>` and a canvas. Generic on purpose — but **nothing calls it yet**: it landed as groundwork for the napkin-math formula export in Phase 3 of the 0.5.0 plan, which has not been built. Its unit coverage is real; its integration is owed. It refuses rather than producing a blank PNG on an engine that cannot draw `<foreignObject>` to a canvas. |
 | [text/](../../src/lib/text/) | Segmentation shared by every text tool: `tokenize.ts` (graphemes, words, sentences, paragraphs, lines, syllables, and the four numbers that all get called length). One layer, so counts, diffs and transformations cannot disagree about where a word starts. |
 | [encode/](../../src/lib/encode/) | `base64.ts` — encode/decode for both alphabets over `TextEncoder`, validation that reports the offset where a string stopped being base64, and `data:` URL parse/build. Exists because `btoa` throws on non-Latin-1 text and `atob` returns rubbish instead of failing. |
 | [template/](../../src/lib/template/) | `engine.ts` — the hand-rolled `{{placeholder}}` resolver: `render(template, scopes)` over an ordered scope chain (first hit wins) and `lint(template)`, which reads the names a template needs without resolving anything. Lookup only — no tags, no filters, no autoescaping. An unresolved name is an error carrying its offset, never an empty string. |

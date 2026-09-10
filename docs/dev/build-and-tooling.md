@@ -2,7 +2,7 @@
 
 Eight npm scripts, eight `.mjs` scripts under `tools/`, and one CI workflow. `astro build` emits a static `dist/` with no runtime; everything third-party is either bundled by Vite or vendored into `public/` and committed, so a fresh clone builds a working app with no network access. This page covers what each command really does, what each generator script produces and when to re-run it, the dependency and payload rules, how the site deploys under a sub-path, and the release procedure.
 
-_Describes the code as of v0.4.0 (unreleased; schema v16) — verify against source when in doubt._
+_Describes the code as of v0.5.0 (unreleased; schema v16) — verify against source when in doubt._
 
 ## File map
 

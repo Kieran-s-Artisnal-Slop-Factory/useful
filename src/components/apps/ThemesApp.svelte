@@ -1,7 +1,9 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import Card from '../Card.svelte';
   import ColorField from '../ColorField.svelte';
   import Explainer from '../Explainer.svelte';
+  import ThemePreview from '../ThemePreview.svelte';
   import { allFormats, parseCssColor } from '../../lib/gen/color';
   import { harmonies } from '../../lib/gen/harmony';
   import { buildTheme, THEME_ROLES } from '../../lib/gen/theme';
@@ -60,14 +62,30 @@
     })
   );
 
-  let previewStyle = $derived(
-    theme.vars.map(([name, value]) => `${name}: ${value}`).join('; ') +
-      (scheme === 'auto' ? '' : `; color-scheme: ${scheme}`)
-  );
-
   function useAsPrimary() {
     if (formats) themeColors[0]!.light = formats.hex.slice(0, 7);
   }
+
+  /**
+   * Seed the builder from the query string — how the colour extractor hands a
+   * palette over (`?primary=803900&accent=…`). Reading a URL writes nothing
+   * and touches no storage; an unparseable or absent value is simply ignored,
+   * so a mangled link degrades to the normal defaults rather than an error.
+   */
+  onMount(() => {
+    const params = new URLSearchParams(window.location.search);
+    let seeded = false;
+    THEME_ROLES.forEach((role, i) => {
+      const raw = params.get(role);
+      if (!raw) return;
+      const candidate = /^[0-9a-f]{3,8}$/i.test(raw) ? `#${raw}` : raw;
+      if (!parseCssColor(candidate)) return;
+      themeColors[i]!.light = candidate;
+      seeded = true;
+    });
+    // The explorer above should show what you arrived with, not the default.
+    if (seeded && themeColors[0]!.light) input = themeColors[0]!.light;
+  });
 </script>
 
 <div class="page-header">
@@ -279,45 +297,7 @@
         </fieldset>
       </div>
 
-      <div class="preview" data-testid="th-preview" style={previewStyle}>
-        <div class="pv-card">
-          <p class="pv-title">Card</p>
-          <p>Plaintext on the surface. <a href="#th" onclick={(e) => e.preventDefault()}>An inline link</a> and
-            <span class="pv-badge">accent badge</span>.</p>
-          <button class="pv-btn">Primary action</button>
-          <button class="pv-btn secondary">Secondary</button>
-        </div>
-
-        <details class="pv-accordion">
-          <summary>Accordion — click to toggle</summary>
-          <p>Collapsible content styled by the same variables.</p>
-        </details>
-
-        <table class="pv-table">
-          <thead>
-            <tr><th>Item</th><th>State</th></tr>
-          </thead>
-          <tbody>
-            <tr><td>First row</td><td>ready</td></tr>
-            <tr><td>Second row</td><td>waiting</td></tr>
-          </tbody>
-        </table>
-
-        <div class="pv-form">
-          <label>
-            Text field
-            <input type="text" placeholder="Type here" />
-          </label>
-          <label>
-            Select
-            <select><option>Option A</option><option>Option B</option></select>
-          </label>
-          <label class="pv-check">
-            <input type="checkbox" checked />
-            Checkbox
-          </label>
-        </div>
-      </div>
+      <ThemePreview vars={theme.vars} {scheme} testid="th-preview" />
 
       <pre class="mono css" data-testid="th-css">{theme.css}</pre>
       <div class="row">
@@ -509,132 +489,4 @@
     overflow-wrap: anywhere;
   }
 
-  /* ------------------------------------------------- the preview "window".
-     Everything below styles ONLY with the generated variables, so what you
-     see is what the copied CSS produces. */
-  .preview {
-    background: var(--surface);
-    color: var(--text);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: calc(var(--padding) * 1.5);
-    display: flex;
-    flex-direction: column;
-    gap: calc(var(--padding) * 1.25);
-  }
-
-  .pv-card {
-    background: var(--surface-2);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: var(--padding);
-  }
-
-  .pv-card .pv-title {
-    margin-bottom: calc(var(--padding) / 2);
-  }
-
-  .pv-card p {
-    margin-bottom: var(--padding);
-  }
-
-  .preview a {
-    color: var(--primary);
-  }
-
-  .pv-badge {
-    background: var(--accent);
-    color: var(--on-accent);
-    border-radius: var(--radius);
-    padding: 0 calc(var(--padding) / 2);
-    font-size: var(--font-size-sm);
-  }
-
-  .pv-btn {
-    background: var(--primary);
-    color: var(--on-primary);
-    border: 1px solid var(--primary);
-    border-radius: var(--radius);
-    padding: calc(var(--padding) / 2) var(--padding);
-    cursor: pointer;
-    font-weight: 600;
-  }
-
-  .pv-btn.secondary {
-    background: var(--secondary);
-    color: var(--on-secondary);
-    border-color: var(--secondary);
-  }
-
-  .pv-accordion {
-    background: var(--surface-2);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-  }
-
-  .pv-accordion summary {
-    cursor: pointer;
-    padding: calc(var(--padding) / 1.5) var(--padding);
-    font-weight: 600;
-  }
-
-  .pv-accordion p {
-    padding: 0 var(--padding) var(--padding);
-    color: var(--neutral);
-  }
-
-  .pv-table {
-    width: 100%;
-    border-collapse: collapse;
-  }
-
-  .pv-table th {
-    text-align: left;
-    background: var(--surface-2);
-    color: var(--neutral);
-    border-bottom: 1px solid var(--border);
-    padding: calc(var(--padding) / 2) var(--padding);
-  }
-
-  .pv-table td {
-    border-bottom: 1px solid var(--border);
-    padding: calc(var(--padding) / 2) var(--padding);
-  }
-
-  .pv-form {
-    display: flex;
-    gap: var(--padding);
-    flex-wrap: wrap;
-    align-items: end;
-  }
-
-  .pv-form label {
-    color: var(--neutral);
-    font-size: var(--font-size-sm);
-    text-transform: none;
-    letter-spacing: normal;
-    margin-bottom: 0;
-  }
-
-  .pv-form input[type='text'],
-  .pv-form select {
-    display: block;
-    margin-top: 4px;
-    background: var(--surface-2);
-    color: var(--text);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: calc(var(--padding) / 2) calc(var(--padding) / 1.5);
-    width: 11rem;
-  }
-
-  .pv-check {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-2);
-  }
-
-  .pv-check input {
-    accent-color: var(--primary);
-  }
 </style>

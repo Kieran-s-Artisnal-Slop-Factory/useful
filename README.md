@@ -12,9 +12,12 @@ An offline-only, local-first app there is no server, no account, and no network 
   background remover (on-device segmentation model), layered SVG editor,
   layered raster editor with EXIF viewing/editing, pixel-art sprite editor,
   and base64 encoding for text and files (data URLs, with the type read from
-  the bytes rather than the label).
+  the bytes rather than the label), and a colour extractor that pulls a
+  palette out of a picture and turns it into a CSS theme.
 - **Calculators** — number bases and bit operations, photography equivalence
-  and light stops, file-transfer times, napkin math (a formula becomes a
+  and light stops, file-transfer times, daily calorie needs (resting and
+  maintenance energy by three published equations, and what to eat to hit a
+  goal), napkin math (a formula becomes a
   little calculator, and then a function in Python, JavaScript, Go or Rust),
   and three text tools — a diff by line, word or character that also writes
   the patch, word similarity scored five ways with the working shown, and text
@@ -70,8 +73,8 @@ Everything runs locally: no account, no server, no telemetry.
   defaults, last-used timezone pair, last-used photography sensor format, the
   image tools' JPG quality, the last-open SVG-editor document, the last SQL
   playground engine, the config playground's last mode and open schema, the
-  notebook's open note and editor mode; Settings shows what has
-  been remembered)
+  notebook's open note and editor mode, the calorie calculator's unit
+  system; Settings shows what has been remembered)
 - `timers` — countdown timers; running timers store an absolute `end_at`
   deadline, so nothing writes per tick
 - `stopwatch` — singleton; start epoch + accumulated elapsed + lap list

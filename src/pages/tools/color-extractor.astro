@@ -1,0 +1,8 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import ColorExtractorApp from '../../components/apps/ColorExtractorApp.svelte';
+---
+
+<Layout title="Color extractor">
+  <ColorExtractorApp client:only="svelte" />
+</Layout>

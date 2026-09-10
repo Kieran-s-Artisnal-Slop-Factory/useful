@@ -2,7 +2,7 @@
 
 Four file-in/file-out tools under **Images** in the sidebar (or Ctrl/Cmd+K): **Image converter** changes a picture's format, **Image resizer** changes its dimensions, **Image compressor** makes the file smaller (by hand or to a size you name), and **Background remover** cuts the subject out with a segmentation model that runs on your own device. All four decode the picture, work on it in the tab, and hand you a PNG or a JPG. Nothing is uploaded, and no picture is ever stored — the only thing remembered is the JPG quality you last used. The two layered editors in the same category have their own pages: [SVG editor](svg-editor.md) and [image editor](image-editor.md).
 
-_Describes the code as of v0.4.0 (unreleased; schema v16) — verify against source when in doubt._
+_Describes the code as of v0.5.0 (unreleased; schema v16) — verify against source when in doubt._
 
 ## Image converter
 

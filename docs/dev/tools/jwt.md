@@ -2,7 +2,7 @@
 
 `/tools/jwt/` — decode, verify and sign JSON Web Tokens. A stateless Svelte island over [jwt.ts](../../../src/lib/crypto/jwt.ts); no token, secret or key is written anywhere.
 
-_Describes the code as of v0.4.0 (unreleased; schema v16) — verify against source when in doubt._
+_Describes the code as of v0.5.0 (unreleased; schema v16) — verify against source when in doubt._
 
 ## The distinction the whole page is built around
 

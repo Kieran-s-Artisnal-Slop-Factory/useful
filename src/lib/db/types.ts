@@ -61,6 +61,10 @@ export interface Preferences extends SyncFields {
   svg_last_doc_id?: string;
   /** Last-open sprite-editor document, resumed on reopen. */
   sprite_last_doc_id?: string;
+  /** Which unit system the calorie calculator shows. The only thing that
+   * tool remembers: body measurements deliberately never persist, because a
+   * preference row rides every backup export and a weight is not a setting. */
+  calorie_units?: 'metric' | 'imperial';
   /** The napkin-math template to reopen. */
   napkin_last_template_id?: string;
   /** Last engine picked in the SQL playground ('sqlite' / 'pglite'). */

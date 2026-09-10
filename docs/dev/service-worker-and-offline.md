@@ -2,14 +2,14 @@
 
 One hand-written service worker ([sw.js](../../public/sw.js)) makes the static build work with no network: it precaches the app shell at install, crawls the fingerprinted `_astro/` asset graph in the background, and serves navigations network-first and everything else stale-while-revalidate. Heavy optional freight (the background remover's model, the SQL engines, the maths fonts) is never precached; [offline.ts](../../src/lib/offline.ts) lists those as explicit "bundles" that a user downloads on purpose from the post-install dialog or Settings → Offline.
 
-_Describes the code as of v0.4.0 (unreleased; schema v16) — verify against source when in doubt._
+_Describes the code as of v0.5.0 (unreleased; schema v16) — verify against source when in doubt._
 
 ## Three tiers
 
 | Tier | What | Where it lives | Filled by | Purged by |
 |---|---|---|---|---|
-| Precache | `SHELL`: every page route + `favicon.svg`, `favicon-maskable.svg`, `manifest.webmanifest` + the thirty-seven `figlet/*.flf` fonts (596.5 KB) | Cache `CACHE_NAME` (`useful-cache-v38`) | `precacheShell()` at `install` | `activate` of a worker with a different `CACHE_NAME` |
-| Runtime cache | Every same-origin GET the page makes: `_astro/` JS/CSS/wasm/data chunks, navigated HTML | Same `useful-cache-v38` | The `fetch` handler (stale-while-revalidate) and the background crawl `warmAssetCache()` | Same version bump |
+| Precache | `SHELL`: every page route + `favicon.svg`, `favicon-maskable.svg`, `manifest.webmanifest` + the thirty-seven `figlet/*.flf` fonts (596.5 KB) | Cache `CACHE_NAME` (`useful-cache-v39`) | `precacheShell()` at `install` | `activate` of a worker with a different `CACHE_NAME` |
+| Runtime cache | Every same-origin GET the page makes: `_astro/` JS/CSS/wasm/data chunks, navigated HTML | Same `useful-cache-v39` | The `fetch` handler (stale-while-revalidate) and the background crawl `warmAssetCache()` | Same version bump |
 | Lazy bundles | Background remover model + ONNX runtime under `models/` and `ort/` | Cache `MODEL_CACHE` (`useful-models-v1`) — deliberately outside `CACHE_PREFIX` | `loadAssets()` in [runtime.ts](../../src/lib/bg/runtime.ts), or the SW's cache-first branch | Never by the SW; only `clearAssets()` (Background remover → "Remove downloaded model") or the user clearing site data |
 | Lazy bundles | The 20 KaTeX faces + their stylesheet under `math/` | Cache `FONT_CACHE` (`useful-fonts-v1`) — also outside `CACHE_PREFIX` | The `math-fonts` bundle in [offline.ts](../../src/lib/offline.ts), or the SW's cache-first branch | Never by the SW; only the user clearing site data |
 | Lazy bundles | The 25 Excalidraw faces under `excalidraw/fonts/` (the notebook's drawing canvas) | The same `FONT_CACHE` | The `drawing-fonts` bundle in [offline.ts](../../src/lib/offline.ts), or the SW's cache-first branch when Excalidraw asks for a face | Never by the SW; only the user clearing site data |

@@ -2,7 +2,7 @@
 
 Three tools under the Time category: countdown **timers** (rows in the `timers` store, driven by the [notification engine](../notification-engine.md)), a **stopwatch** (the `stopwatch` singleton), and a **timezone converter** built on the browser's Intl database with a lazily-loaded GeoNames city dataset. Timers and the stopwatch derive their display from stored absolute instants, so nothing is written per tick and reload cannot drift them; the converter stores nothing but the zone pair.
 
-_Describes the code as of v0.4.0 (unreleased; schema v16) — verify against source when in doubt._
+_Describes the code as of v0.5.0 (unreleased; schema v16) — verify against source when in doubt._
 
 ## Where it lives
 

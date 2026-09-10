@@ -1,3 +1,26 @@
+# 0.5.0 (unreleased)
+
+> **No migration runs in this release.** The schema stays at **v16** —
+> the first release since 0.2.0 that adds no store. Your data is not
+> touched, rewritten or moved, and a backup taken from 0.4.0 restores here
+> unchanged. The one new thing that persists is a single preference: which
+> unit system the calorie calculator shows.
+
+## Features
+
+* Added a **Color extractor** under Images: drop, pick or **paste** an image and get its major colours back, ranked by how much of the picture each covers. The clustering runs in OKLab rather than RGB, so a gradient sky collapses into one blue while a small saturated mark survives as its own entry, and the seed is fixed so the same image and count always give the same palette. Every colour copies individually in four CSS spellings, and the palette exports as a theme in exactly the format Generators › Themes emits, previewed by the same component.
+* **Generators › Themes** now seeds its builder from the URL. The colour extractor's "Open in Themes" button carries the five role colours as query parameters, and Themes fills its own fields from them on load — so a palette pulled out of a photo lands in the harmony and spacing controls in one click. Reading a URL writes nothing, and a mangled link falls back to the usual defaults rather than erroring.
+* Added a **Daily calories** calculator under Calculators: resting and maintenance energy from Mifflin–St Jeor, revised Harris–Benedict or Katch–McArdle, an activity multiplier, and a daily target for a gain or loss goal at a chosen rate. It shows its working step by step with your own numbers substituted in, and it cautions rather than blocks — an aggressive rate or a target under your resting energy gets a sentence, not a disabled button. Only your unit system is remembered; body measurements deliberately never persist.
+
+## Bug Fixes
+
+* Fixed drift in the test harness's schema mirror: `napkin_last_template_id` has been a real preference since the napkin-math tool shipped and had never been listed there, so the backup round-trip suite silently skipped it. Nothing was wrong with the data — the coverage claiming to check it was incomplete.
+
+## Other
+
+* Dependency maintenance: fifteen packages moved forward within their existing ranges, including Astro 7.3.2, Svelte 5.57.0, Playwright 1.63.0 and onnxruntime-web 1.29.0. Every available major was reviewed and none applied — each one is listed with its reason in Appendix A of `docs/dev/plans/version-5.md`, so a later audit does not rediscover them as news. One of them is not a decision at all: the vitest 4.1.11 *patch* cannot be installed, because npm crashes while resolving vitest's peer set against this project's `@emnapi/core` override. 4.1.10 stays, and the whole suite is green on it.
+* The Themes generator's component preview became a shared component, so the colour extractor shows the same preview rather than growing a second one that drifts apart from it. The markup, class names and testids are unchanged, which is what lets the existing Themes tests pass against it untouched.
+
 # 0.4.0 — August 31st, 2026
 
 > **Your data upgrades itself when you first open this version.** Three
