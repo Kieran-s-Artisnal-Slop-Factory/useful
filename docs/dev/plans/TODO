@@ -1,4 +1,4 @@
-# Version 0.6.0 plans
+# Version 0.7.0 plans
 
 Before beginning make sure the VERSION is up to date, and create a file called `docs/dev/plans/version-<version number>-phased.md` which is a phased plan for implementing the features, then stop after creating it. If that file exists, the that means the version has been started and you're taking over from where another agent left off. If it doesn't then create the file making sure to also create "checkpoints" which are points after a few phases where the full test suite is ran, and must pass before proceeding. You don't need to run the full tests on every phase because it's going to be too slow. For each checkpoint, if it's not going to trample one another, feel free to use subagents, in fact ideally you should.
 
@@ -8,112 +8,20 @@ Additional things to keep in mind:
 
 ## Maintenance
 
-- [x] Check all dependencies and do updates
-  - [x] Frontend (dicebear 10 and TypeScript 7 held back; see CHANGELOG)
-  - [x] CI
+- [ ] Check all dependencies and do updates
+  - [ ] Frontend (dicebear 10 and TypeScript 7 held back; see CHANGELOG)
+  - [ ] CI
 
 ## Features & fixes
 
-- [x] Time
-  - [x] Pomodoro
-    - [x] A Pomodoro style timer
-- [x] Calculators
-  - [x] Daily Calorie Calculator
-    - [x] Add a pop-up to warn people this is not medical advice and they should talk to a doctor before using the guidence, with an `I have read and understand the risks` they need to hit
-  - [x] Photography
-    - [x] Allow a user to upload two photos that have exif data, and compare the amount of light in each photo with the equations shown
-  - [x] Napkin math (see image)
-    - [x] Allow me to toggle the export image titles (e.g. "With your values" above the values I entered) individually
-    - [x] Allow me to customize the titles (e.g. I can update "With your values" to something like "At current market rate")
-- [x] Generators
-  - [x] Clip path
-    - [x] A css clip path generator
-      - [x] Point-based clip paths
-        - [x] All polygon presets from https://www.cssportal.com/css-clip-path-generator/
-        - [x] Chevron and "message" from https://design.dev/tools/clip-path-shapes/
-      - [x] circle; with radius slider
-      - [x] elipse; width and height
-      - [x] Blinds; Clip path with multiple rectangles
-        - [x] Reference https://www.sarasoueidan.com/assets/images/clipping-example-5.png
-        - [x] Allow varying
-          - [x] number of rectangles
-          - [x] Gap between them
-      - [x] Wave; Generate wave patterns with same settings as https://www.wavegenerator.app/
-  - [x] Placehodlers
-    - [x] Images
-      - [x] Add a new generator for a mosaic (image with blocky bits cut out of it) should have 2 patterns
-        - [x] One similar to https://cdna.artstation.com/p/assets/images/images/004/036/550/large/kieran-wood-mosaic-1.jpg?1479722651
-          - [x] Allows you to specify up to 4 colours
-        - [x] swirl
-          - [x] One similar to https://cdn.prod.website-files.com/6600e1eab90de089c2d9c9cd/6697271b0a09c18a6a5f8e00_image_92f8b978_1721067589555_1024.jpeg
-      - [x] Batches should provide the option to differentiate (so you're not downloading the same photo 3 times)
-        - [x] Available for all relevant types
-          - [x] Sizes; Should be available for all placeholder image types
-            - [x] check off and able to specify `n` sizes where `n` is the number of photos in the batch
-          - [x] Background; Be able to specify that the background should change for each
-        - [x] Specific options for types
-          - [x] Colour with a caption
-            - [x] Ink; Be able to specify the ink color for each
-          - [x] Gradient
-            - [x] Angle offset; How much to vary each angle by (e.g. 5 means angle each by 5 degrees, wrapping at the end)
-            - [x] Stop 1; Allows the stop 1 color to be randomized (make sure it's not the same as stop 2)
-            - [x] Stop 2; Allows the stop 2 color to be randomized (make sure it's not the same as stop 1)
-            - [x] Kind; Cycle between linear, radial, and conic gradients for each image
-          - [x] Noise
-            - [x] Ink; Be able to specify the ink color for each
-            - [x] Grain delta; How much to vary the grain by for each image
-            - [x] Blur delta; How much to vary the blur by for each image
-          - [x] Flow Field
-            - [x] Ink; Be able to specify the ink color for each
-            - [x] Seed; Whether to randomize the seed per image or not (just random chars between 1-12)
-            - [x] Line Delta; How much to vary the number of lines by for each image, wrap at 400 back to 0+remainder
-          - [x] Layered Geometry
-            - [x] Seed; Whether to randomize the seed per image or not (just random chars between 1-12)
-            - [x] Opacity delta; How much to vary the opacity by per image
-          - [x] Cut Planes
-            - [x] Seed; Whether to randomize the seed per image or not (just random chars between 1-12)
-            - [x] Opacity delta; How much to vary the opacity by per image
-          - [x] Icon
-            - [x] Ink; Be able to specify the ink color for each
-            - [x] Size Delta; How much to vary the size by on each image (wrap at 95% back to 0+remainder)
-            - [x] Icon; Pick a random icon per image
-          - [x] Drawn Scene
-            - [x] Randomizer should allow you to pick which scenes you want to allow to be included in the randomization by category (e.g. any nature, any city) or individual scenec (e.g. Skyline, Running track, Tennis court only)
-
-## Feedback round 1 (2026-09-11, after Phases 0-7)
-
-- [x] Clip path
-  - [x] Make the preview 4/3 by default; the current box is too long and distorts how the clip path looks
-  - [x] Allow the aspect ratio to be changed so the clip path can be seen in each
-  - [x] Default the preview to a solid colour (orange) instead of the gradient, and make that colour configurable
-  - [x] Make the preview gradient configurable
-- [x] Placeholder images
-  - [x] Varying sizes: a checkbox to randomize the sizes, with a further choice of keeping the aspect ratio or changing it too, and select all / none
-  - [x] Mosaic: batch deltas for block size and cut-out ratio
-  - [x] Swirl: the two colours are "Swirl colour" and "Background colour", with no add / remove
-  - [x] Swirl and Mosaic: the palette variance colours are edited next to the "shuffled" field, not in the generator panel far above
-- [x] Napkin math
-  - [x] Export can include more than one calculation (current vs a stored one, e.g. option 1 vs option 2 in a rental comparison)
-    - [x] When another calculation is added, the current one can be given an optional title; stored ones use their saved titles; titles appear above their respective values
-    - [x] The formula is drawn once; each calculation gets its own "With your values" row and that heading can be changed per calculation
-
-## Feedback round 2 (2026-09-11)
-
-- [x] Placeholder images
-  - [x] Shuffled palette: colours can be added to (and removed from) the shuffled pool for mosaic and swirl, next to the rule
-  - [x] Mosaic: the `Add a colour` button disappears when it can do nothing (four colours already)
-- [x] Napkin math
-  - [x] Export image: comparisons stack side by side in columns under the one formula, each column with its caption, values and result
+- [ ] 
 
 ## For human
 
 This section is for me to keep track of what I need to manually review, feel free to add to this
 
 - [ ] The fresh-install then airplane-mode walk on a REAL handset. Owed since 0.3.0 and still owed: the suite does the emulated equivalent under Playwright (install the bundles, go offline, open a page this profile has never seen), which is not the same thing and is not claimed to be
-- [ ] Look at a formula image on a phone and in a document. The suite proves the PNG decodes at the right size and has ink on it; only a person can say whether the typography reads well at the size they actually paste it
 - [ ] Sanity-check the calorie figures against one external TDEE calculator — the arithmetic is unit-tested against the published equations, but nobody has compared the whole answer to another tool
-- [ ] Run a real photo through the colour extractor at 4, 8 and 16 colours and say whether the palettes look right. Synthetic flat-band images prove the maths; only a photograph proves the judgement
-- [ ] Look at a mosaic and a swirl next to the reference images in the Placeholders TODO lines and say whether they land
 - [ ] Decide about the `@emnapi/core` override in package.json. It has no recorded reason. Vitest 5 now installs cleanly with it in place (0.6.0 Phase 0), so it no longer blocks an update, but `npm update` as a whole still crashes in arborist while it is there
   - [ ] This was a requirement for CI to function on github pages, if you have a better solution to not cause it to crash, I'm all ears
 
