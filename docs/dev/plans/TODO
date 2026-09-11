@@ -17,15 +17,15 @@ Additional things to keep in mind:
 - [x] Time
   - [x] Pomodoro
     - [x] A Pomodoro style timer
-- [ ] Calculators
-  - [ ] Daily Calorie Calculator
+- [x] Calculators
+  - [x] Daily Calorie Calculator
     - [x] Add a pop-up to warn people this is not medical advice and they should talk to a doctor before using the guidence, with an `I have read and understand the risks` they need to hit
   - [x] Photography
     - [x] Allow a user to upload two photos that have exif data, and compare the amount of light in each photo with the equations shown
-  - [ ] Napkin math (see image)
+  - [x] Napkin math (see image)
     - [x] Allow me to toggle the export image titles (e.g. "With your values" above the values I entered) individually
     - [x] Allow me to customize the titles (e.g. I can update "With your values" to something like "At current market rate")
-- [ ] Generators
+- [x] Generators
   - [x] Clip path
     - [x] A css clip path generator
       - [x] Point-based clip paths
@@ -39,8 +39,8 @@ Additional things to keep in mind:
           - [x] number of rectangles
           - [x] Gap between them
       - [x] Wave; Generate wave patterns with same settings as https://www.wavegenerator.app/
-  - [ ] Placehodlers
-    - [ ] Images
+  - [x] Placehodlers
+    - [x] Images
       - [x] Add a new generator for a mosaic (image with blocky bits cut out of it) should have 2 patterns
         - [x] One similar to https://cdna.artstation.com/p/assets/images/images/004/036/550/large/kieran-wood-mosaic-1.jpg?1479722651
           - [x] Allows you to specify up to 4 colours
@@ -89,7 +89,7 @@ This section is for me to keep track of what I need to manually review, feel fre
 - [ ] Sanity-check the calorie figures against one external TDEE calculator — the arithmetic is unit-tested against the published equations, but nobody has compared the whole answer to another tool
 - [ ] Run a real photo through the colour extractor at 4, 8 and 16 colours and say whether the palettes look right. Synthetic flat-band images prove the maths; only a photograph proves the judgement
 - [ ] Look at a mosaic and a swirl next to the reference images in the Placeholders TODO lines and say whether they land
-- [ ] Decide about the `@emnapi/core` override in package.json. It has no recorded reason, and it is what makes npm crash while resolving vitest's peer set, which is currently blocking a patch update
+- [ ] Decide about the `@emnapi/core` override in package.json. It has no recorded reason. Vitest 5 now installs cleanly with it in place (0.6.0 Phase 0), so it no longer blocks an update, but `npm update` as a whole still crashes in arborist while it is there
   - [ ] This was a requirement for CI to function on github pages, if you have a better solution to not cause it to crash, I'm all ears
 
 ## Per change
