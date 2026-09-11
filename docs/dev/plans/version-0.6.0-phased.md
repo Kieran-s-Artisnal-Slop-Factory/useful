@@ -218,8 +218,8 @@ nobody answers.
 | 4 | Time › Pomodoro | **v17** `pomodoro` singleton | — | **DONE.** Wait between phases (Q4) with `auto_advance`; pure transitions in `pomodoro.ts`; engine `completePomodoro` shares `announce` with timers |
 | 5 | Generators › Clip path | — | — | **DONE.** Stateless; 25 presets (23 cssportal + 2 design.dev, Q3); blinds and waves emit percent `polygon()` (seam trick), `path()` only as the wave's secondary copy — see [clip-path.md](../tools/clip-path.md) |
 | **B** | **Checkpoint** — full suite green | | | **PASSED** 2026-09-10 |
-| 6 | Placeholders › batch variation | — | — | `varyOptions`; per-generator controls |
-| 7 | Placeholders › mosaic + swirl generators | — | — | Two `GeneratorId`s |
+| 6 | Placeholders › batch variation | — | — | **DONE.** `varyOptions` + `DEFAULT_BATCH_VARIATION` in images.ts, item 0 varied too; rules seeded from `seed:batch`; random icons resolved by the page; the default batch is byte-for-byte unchanged |
+| 7 | Placeholders › mosaic + swirl generators | — | — | **DONE.** `mosaicLayer` / `swirlLayer` in images.ts, `palette` 1–4 colours via `paletteOf`; cut-outs are the background (Q5, no transparent toggle); batch rule `palette: off / shuffle / random`; thumbnails rebuilt |
 | 8 | Hardening + release | — | — | Docs sweep, payload, offline, cut 0.6.0 |
 | **C** | **Checkpoint** — full suite green, release | | | |
 
@@ -525,7 +525,7 @@ user doc.
 
 ---
 
-## Phase 6 — Placeholders › batch variation
+## Phase 6 — Placeholders › batch variation — DONE
 
 **Goal:** a batch can differ per image in the ways the TODO lists, per
 decision 6.
@@ -573,7 +573,7 @@ and the wrap rules table; user doc.
 
 ---
 
-## Phase 7 — Placeholders › mosaic and swirl generators
+## Phase 7 — Placeholders › mosaic and swirl generators — DONE
 
 **Goal:** two new image generators, per decision 7.
 

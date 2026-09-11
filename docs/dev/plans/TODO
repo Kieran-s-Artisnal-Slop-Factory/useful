@@ -41,44 +41,44 @@ Additional things to keep in mind:
       - [x] Wave; Generate wave patterns with same settings as https://www.wavegenerator.app/
   - [ ] Placehodlers
     - [ ] Images
-      - [ ] Add a new generator for a mosaic (image with blocky bits cut out of it) should have 2 patterns
-        - [ ] One similar to https://cdna.artstation.com/p/assets/images/images/004/036/550/large/kieran-wood-mosaic-1.jpg?1479722651
-          - [ ] Allows you to specify up to 4 colours
-        - [ ] swirl
-          - [ ] One similar to https://cdn.prod.website-files.com/6600e1eab90de089c2d9c9cd/6697271b0a09c18a6a5f8e00_image_92f8b978_1721067589555_1024.jpeg
-      - [ ] Batches should provide the option to differentiate (so you're not downloading the same photo 3 times)
-        - [ ] Available for all relevant types
-          - [ ] Sizes; Should be available for all placeholder image types
-            - [ ] check off and able to specify `n` sizes where `n` is the number of photos in the batch
-          - [ ] Background; Be able to specify that the background should change for each
-        - [ ] Specific options for types
-          - [ ] Colour with a caption
-            - [ ] Ink; Be able to specify the ink color for each
-          - [ ] Gradient
-            - [ ] Angle offset; How much to vary each angle by (e.g. 5 means angle each by 5 degrees, wrapping at the end)
-            - [ ] Stop 1; Allows the stop 1 color to be randomized (make sure it's not the same as stop 2)
-            - [ ] Stop 2; Allows the stop 2 color to be randomized (make sure it's not the same as stop 1)
-            - [ ] Kind; Cycle between linear, radial, and conic gradients for each image
-          - [ ] Noise
-            - [ ] Ink; Be able to specify the ink color for each
-            - [ ] Grain delta; How much to vary the grain by for each image
-            - [ ] Blur delta; How much to vary the blur by for each image
-          - [ ] Flow Field
-            - [ ] Ink; Be able to specify the ink color for each
-            - [ ] Seed; Whether to randomize the seed per image or not (just random chars between 1-12)
-            - [ ] Line Delta; How much to vary the number of lines by for each image, wrap at 400 back to 0+remainder
-          - [ ] Layered Geometry
-            - [ ] Seed; Whether to randomize the seed per image or not (just random chars between 1-12)
-            - [ ] Opacity delta; How much to vary the opacity by per image
-          - [ ] Cut Planes
-            - [ ] Seed; Whether to randomize the seed per image or not (just random chars between 1-12)
-            - [ ] Opacity delta; How much to vary the opacity by per image
-          - [ ] Icon
-            - [ ] Ink; Be able to specify the ink color for each
-            - [ ] Size Delta; How much to vary the size by on each image (wrap at 95% back to 0+remainder)
-            - [ ] Icon; Pick a random icon per image
-          - [ ] Drawn Scene
-            - [ ] Randomizer should allow you to pick which scenes you want to allow to be included in the randomization by category (e.g. any nature, any city) or individual scenec (e.g. Skyline, Running track, Tennis court only)
+      - [x] Add a new generator for a mosaic (image with blocky bits cut out of it) should have 2 patterns
+        - [x] One similar to https://cdna.artstation.com/p/assets/images/images/004/036/550/large/kieran-wood-mosaic-1.jpg?1479722651
+          - [x] Allows you to specify up to 4 colours
+        - [x] swirl
+          - [x] One similar to https://cdn.prod.website-files.com/6600e1eab90de089c2d9c9cd/6697271b0a09c18a6a5f8e00_image_92f8b978_1721067589555_1024.jpeg
+      - [x] Batches should provide the option to differentiate (so you're not downloading the same photo 3 times)
+        - [x] Available for all relevant types
+          - [x] Sizes; Should be available for all placeholder image types
+            - [x] check off and able to specify `n` sizes where `n` is the number of photos in the batch
+          - [x] Background; Be able to specify that the background should change for each
+        - [x] Specific options for types
+          - [x] Colour with a caption
+            - [x] Ink; Be able to specify the ink color for each
+          - [x] Gradient
+            - [x] Angle offset; How much to vary each angle by (e.g. 5 means angle each by 5 degrees, wrapping at the end)
+            - [x] Stop 1; Allows the stop 1 color to be randomized (make sure it's not the same as stop 2)
+            - [x] Stop 2; Allows the stop 2 color to be randomized (make sure it's not the same as stop 1)
+            - [x] Kind; Cycle between linear, radial, and conic gradients for each image
+          - [x] Noise
+            - [x] Ink; Be able to specify the ink color for each
+            - [x] Grain delta; How much to vary the grain by for each image
+            - [x] Blur delta; How much to vary the blur by for each image
+          - [x] Flow Field
+            - [x] Ink; Be able to specify the ink color for each
+            - [x] Seed; Whether to randomize the seed per image or not (just random chars between 1-12)
+            - [x] Line Delta; How much to vary the number of lines by for each image, wrap at 400 back to 0+remainder
+          - [x] Layered Geometry
+            - [x] Seed; Whether to randomize the seed per image or not (just random chars between 1-12)
+            - [x] Opacity delta; How much to vary the opacity by per image
+          - [x] Cut Planes
+            - [x] Seed; Whether to randomize the seed per image or not (just random chars between 1-12)
+            - [x] Opacity delta; How much to vary the opacity by per image
+          - [x] Icon
+            - [x] Ink; Be able to specify the ink color for each
+            - [x] Size Delta; How much to vary the size by on each image (wrap at 95% back to 0+remainder)
+            - [x] Icon; Pick a random icon per image
+          - [x] Drawn Scene
+            - [x] Randomizer should allow you to pick which scenes you want to allow to be included in the randomization by category (e.g. any nature, any city) or individual scenec (e.g. Skyline, Running track, Tennis court only)
 
 ## For human
 
@@ -88,6 +88,7 @@ This section is for me to keep track of what I need to manually review, feel fre
 - [ ] Look at a formula image on a phone and in a document. The suite proves the PNG decodes at the right size and has ink on it; only a person can say whether the typography reads well at the size they actually paste it
 - [ ] Sanity-check the calorie figures against one external TDEE calculator — the arithmetic is unit-tested against the published equations, but nobody has compared the whole answer to another tool
 - [ ] Run a real photo through the colour extractor at 4, 8 and 16 colours and say whether the palettes look right. Synthetic flat-band images prove the maths; only a photograph proves the judgement
+- [ ] Look at a mosaic and a swirl next to the reference images in the Placeholders TODO lines and say whether they land
 - [ ] Decide about the `@emnapi/core` override in package.json. It has no recorded reason, and it is what makes npm crash while resolving vitest's peer set, which is currently blocking a patch update
   - [ ] This was a requirement for CI to function on github pages, if you have a better solution to not cause it to crash, I'm all ears
 

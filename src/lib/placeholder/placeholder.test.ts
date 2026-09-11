@@ -11,7 +11,13 @@ import {
   batchName,
   buildBatch,
   buildImage,
+  DEFAULT_BATCH_VARIATION,
   DEFAULT_IMAGE_OPTIONS,
+  DEFAULT_PALETTE,
+  paletteOf,
+  varyOptions,
+  type BatchVariation,
+  type ImageOptions,
   fitFontSize,
   GENERATORS,
   harmonise,
@@ -340,6 +346,75 @@ describe('filler images', () => {
   });
 });
 
+describe('mosaic and swirl', () => {
+  const palette = ['#112233', '#445566', '#778899', '#aabbcc'];
+  const draw = (over: Partial<ImageOptions>) =>
+    buildImage({ ...DEFAULT_IMAGE_OPTIONS, background: '#ffffff', palette, width: 400, height: 300, ...over });
+  const fills = (svg: string): string[] => [...svg.matchAll(/fill="([^"]+)"/g)].map((m) => m[1]!);
+
+  it('draws both as SVG that parses, deterministically per seed', () => {
+    for (const generator of ['mosaic', 'swirl'] as const) {
+      const svg = draw({ generator, seed: 'one' });
+      expect(svg.startsWith('<svg'), generator).toBe(true);
+      const root = parseSvg(svg);
+      expect(root.attrs.viewBox, generator).toBe('0 0 400 300');
+      expect(svg, generator).toBe(draw({ generator, seed: 'one' }));
+      expect(svg, generator).not.toBe(draw({ generator, seed: 'two' }));
+    }
+  });
+
+  it('paints only with the palette and the background', () => {
+    for (const generator of ['mosaic', 'swirl'] as const) {
+      const used = new Set(fills(draw({ generator })));
+      expect(used.size, generator).toBeGreaterThan(1);
+      for (const fill of used) expect([...palette, '#ffffff'], generator).toContain(fill);
+    }
+    // Every palette colour gets used by the mosaic, and the swirl uses two.
+    expect(new Set(fills(draw({ generator: 'mosaic', cutRatio: 0 }))).size).toBe(5);
+    expect(new Set(fills(draw({ generator: 'swirl' })))).toEqual(new Set(['#112233', '#445566']));
+    // A one-colour palette: the swirl's second tone is the background.
+    expect(new Set(fills(draw({ generator: 'swirl', palette: ['#112233'] })))).toEqual(new Set(['#112233', '#ffffff']));
+  });
+
+  it('cuts nothing at 0, everything at 1, and something in between', () => {
+    const backgroundRects = (cutRatio: number) =>
+      findAll(parseSvg(draw({ generator: 'mosaic', cutRatio })), 'rect').filter((r) => r.attrs.fill === '#ffffff').length;
+    const blocks = (cutRatio: number) => findAll(parseSvg(draw({ generator: 'mosaic', cutRatio })), 'rect').length - 1;
+    // Only the backdrop is background-coloured when nothing is cut.
+    expect(backgroundRects(0)).toBe(1);
+    // 8% of 300 is a 24px block: 17 columns × 13 rows.
+    expect(blocks(0)).toBe(17 * 13);
+    expect(blocks(1)).toBe(0);
+    expect(blocks(0.5)).toBeGreaterThan(0);
+    expect(blocks(0.5)).toBeLessThan(17 * 13);
+    // A bigger block means fewer of them.
+    expect(blocks(0) > findAll(parseSvg(draw({ generator: 'mosaic', cutRatio: 0, blockSize: 20 })), 'rect').length - 1).toBe(true);
+  });
+
+  it('draws the swirl as one filled path that grows with the turns', () => {
+    const path = (turns: number) => findOne(parseSvg(draw({ generator: 'swirl', turns })), 'path')!;
+    expect(findAll(parseSvg(draw({ generator: 'swirl' })), 'path')).toHaveLength(1);
+    expect(path(2).attrs.d!.length).toBeLessThan(path(6).attrs.d!.length);
+    expect(path(2).attrs.d!.endsWith('Z')).toBe(true);
+    // A wider arm covers more of the frame — its path runs further round.
+    const wide = draw({ generator: 'swirl', armWidth: 0.8 });
+    const narrow = draw({ generator: 'swirl', armWidth: 0.2 });
+    expect(wide).not.toBe(narrow);
+  });
+
+  it('falls back to the default palette and caps at four', () => {
+    expect(paletteOf({ ...DEFAULT_IMAGE_OPTIONS, palette: [] })).toEqual(DEFAULT_PALETTE);
+    expect(paletteOf({ ...DEFAULT_IMAGE_OPTIONS, palette: [' ', ''] })).toEqual(DEFAULT_PALETTE);
+    expect(paletteOf({ ...DEFAULT_IMAGE_OPTIONS, palette: ['#000', ' #fff ', 'red', 'blue', 'green'] })).toEqual([
+      '#000',
+      '#fff',
+      'red',
+      'blue',
+    ]);
+    expect(DEFAULT_PALETTE).toHaveLength(4);
+  });
+});
+
 describe('the drawn scenes', () => {
   it('has fifteen of them, five per group, each parsing on its own', () => {
     expect(SCENES).toHaveLength(15);
@@ -387,6 +462,203 @@ describe('batches', () => {
   it('clamps the count', () => {
     expect(buildBatch(DEFAULT_IMAGE_OPTIONS, 0)).toHaveLength(1);
     expect(buildBatch(DEFAULT_IMAGE_OPTIONS, 999)).toHaveLength(50);
+  });
+});
+
+describe('batch variation', () => {
+  const base: ImageOptions = {
+    ...DEFAULT_IMAGE_OPTIONS,
+    gradient: { ...DEFAULT_IMAGE_OPTIONS.gradient, stops: [{ color: '#112233', position: null }, { color: '#445566', position: null }] },
+  };
+  const vary = (over: Partial<BatchVariation>, i: number, n = 5, seed = 7) =>
+    varyOptions(base, i, n, { ...DEFAULT_BATCH_VARIATION, ...over }, mulberry32(seed));
+  const items = (over: Partial<BatchVariation>, n = 5, seed = 7) => {
+    const rng = mulberry32(seed);
+    return Array.from({ length: n }, (_, i) => varyOptions(base, i, n, { ...DEFAULT_BATCH_VARIATION, ...over }, rng));
+  };
+
+  it('with everything off is the batch as it was before variation existed', () => {
+    for (const generator of ['flow', 'noise', 'gradient', 'scene'] as const) {
+      const options = { ...base, generator, seed: 'x' };
+      const plain = buildBatch(options, 4);
+      const explicit = buildBatch(options, 4, DEFAULT_BATCH_VARIATION);
+      expect(explicit.map((b) => [b.name, b.svg])).toEqual(plain.map((b) => [b.name, b.svg]));
+      // The pre-existing contract, spelled out: the seed varied per item and
+      // nothing else, so item n is what that seed draws on its own.
+      expect(plain.map((b) => b.svg)).toEqual([
+        buildImage(options),
+        buildImage({ ...options, seed: 'x-2' }),
+        buildImage({ ...options, seed: 'x-3' }),
+        buildImage({ ...options, seed: 'x-4' }),
+      ]);
+      expect(plain.map((b) => b.name)).toEqual([1, 2, 3, 4].map((i) => `${generator}-1200x675-${i}.svg`));
+    }
+    expect(varyOptions(base, 2, 5, DEFAULT_BATCH_VARIATION, mulberry32(1))).toEqual(base);
+  });
+
+  it('is deterministic for a seed, and leaves the base alone', () => {
+    const all: Partial<BatchVariation> = {
+      background: true,
+      ink: true,
+      stop1: true,
+      stop2: true,
+      randomSeed: true,
+      scenes: ['lake', 'coast'],
+    };
+    const before = JSON.stringify(base);
+    expect(items(all, 6, 3)).toEqual(items(all, 6, 3));
+    expect(items(all, 6, 3)).not.toEqual(items(all, 6, 4));
+    expect(JSON.stringify(base)).toBe(before);
+    const a = buildBatch({ ...base, generator: 'flow' }, 3, { ...DEFAULT_BATCH_VARIATION, background: true });
+    const b = buildBatch({ ...base, generator: 'flow' }, 3, { ...DEFAULT_BATCH_VARIATION, background: true });
+    expect(a.map((x) => x.svg)).toEqual(b.map((x) => x.svg));
+  });
+
+  it('applies a size per index, item 0 included, and names the file from it', () => {
+    const sizes = [
+      { width: 300, height: 200 },
+      { width: 640, height: 360 },
+      { width: 100, height: 100 },
+    ];
+    expect(vary({ sizes }, 0)).toMatchObject(sizes[0]!);
+    expect(vary({ sizes }, 2)).toMatchObject(sizes[2]!);
+    // A shorter list leaves the rest at the base size.
+    expect(vary({ sizes }, 4)).toMatchObject({ width: 1200, height: 675 });
+    const batch = buildBatch(base, 3, { ...DEFAULT_BATCH_VARIATION, sizes });
+    expect(batch.map((b) => b.name)).toEqual(['solid-300x200-1.svg', 'solid-640x360-2.svg', 'solid-100x100-3.svg']);
+    expect(parseSvg(batch[1]!.svg).attrs.viewBox).toBe('0 0 640 360');
+    expect(batch[1]!.options.width).toBe(640);
+  });
+
+  it('rolls a background and an ink per item that are colours and differ', () => {
+    const backgrounds = items({ background: true }).map((o) => o.background);
+    const inks = items({ ink: true }).map((o) => o.foreground);
+    for (const c of [...backgrounds, ...inks]) expect(c).toMatch(/^#[0-9a-f]{6}$/);
+    expect(new Set(backgrounds).size).toBe(5);
+    expect(new Set(inks).size).toBe(5);
+    expect(vary({ background: true }, 1).foreground).toBe(base.foreground);
+  });
+
+  it('offsets the gradient angle by i × offset and wraps at 360', () => {
+    // Base angle 135: 135, 165, 195, 225, 255, ... 345, 375 → 15.
+    expect(items({ angleOffset: 30 }, 9).map((o) => o.gradient.angle)).toEqual([
+      135, 165, 195, 225, 255, 285, 315, 345, 15,
+    ]);
+    expect(vary({ angleOffset: -200 }, 1).gradient.angle).toBe(295);
+    expect(vary({ angleOffset: 30 }, 1).gradient.stops).toEqual(base.gradient.stops);
+  });
+
+  it('re-rolls a stop until it differs from the other one', () => {
+    for (const o of items({ stop1: true })) {
+      expect(o.gradient.stops[0]!.color).not.toBe('#112233');
+      expect(o.gradient.stops[0]!.color).not.toBe(o.gradient.stops[1]!.color);
+      expect(o.gradient.stops[1]!.color).toBe('#445566');
+    }
+    for (const o of items({ stop2: true })) {
+      expect(o.gradient.stops[1]!.color).not.toBe('#445566');
+      expect(o.gradient.stops[0]!.color).toBe('#112233');
+    }
+    for (const o of items({ stop1: true, stop2: true })) {
+      expect(o.gradient.stops[0]!.color).not.toBe(o.gradient.stops[1]!.color);
+    }
+    // An rng that repeats itself: stop 2's first roll matches stop 1, so it
+    // has to roll again and land somewhere else.
+    let calls = 0;
+    const rng = () => [0.1, 0.2, 0.3, 0.1, 0.2, 0.3, 0.9, 0.5, 0.5][calls++ % 9]!;
+    const same = varyOptions(base, 0, 1, { ...DEFAULT_BATCH_VARIATION, stop1: true, stop2: true }, rng);
+    expect(same.gradient.stops[0]!.color).not.toBe(same.gradient.stops[1]!.color);
+    expect(calls).toBe(9);
+  });
+
+  it('cycles the gradient kind between the two SVG can draw', () => {
+    expect(items({ cycleKind: true }, 4).map((o) => o.gradient.kind)).toEqual(['linear', 'radial', 'linear', 'radial']);
+    const radial = { ...base, gradient: { ...base.gradient, kind: 'radial' as const } };
+    const rng = mulberry32(1);
+    expect(
+      [0, 1, 2].map((i) => varyOptions(radial, i, 3, { ...DEFAULT_BATCH_VARIATION, cycleKind: true }, rng).gradient.kind)
+    ).toEqual(['radial', 'linear', 'radial']);
+  });
+
+  it('steps the grain and blur by i × delta and clamps them to the sliders', () => {
+    expect(items({ grainDelta: 0.03 }, 4).map((o) => o.frequency)).toEqual([0.012, 0.042, 0.072, 0.08]);
+    expect(items({ grainDelta: -0.01 }, 3).map((o) => o.frequency)).toEqual([0.012, 0.002, 0.002]);
+    expect(items({ blurDelta: 3 }, 4).map((o) => o.blur)).toEqual([0, 3, 6, 8]);
+  });
+
+  it('gives each item twelve alphanumerics as a seed when asked', () => {
+    const seeds = items({ randomSeed: true }).map((o) => o.seed);
+    for (const seed of seeds) expect(seed).toMatch(/^[A-Za-z0-9]{12}$/);
+    expect(new Set(seeds).size).toBe(5);
+    // The rule replaces the batch's own "-n" suffix rather than adding to it.
+    const batch = buildBatch({ ...base, generator: 'flow' }, 2, { ...DEFAULT_BATCH_VARIATION, randomSeed: true });
+    expect(batch[1]!.options.seed).toMatch(/^[A-Za-z0-9]{12}$/);
+    expect(batch[1]!.svg).toBe(buildImage(batch[1]!.options));
+  });
+
+  it('steps the line count and wraps at 400 back to zero plus the remainder', () => {
+    // Base 90: 90, 250, 410 → 10, 570 → 170.
+    expect(items({ lineDelta: 160 }, 4).map((o) => o.density)).toEqual([90, 250, 10, 170]);
+    expect(items({ lineDelta: 310 }, 2).map((o) => o.density)).toEqual([90, 400]);
+  });
+
+  it('steps the opacity and clamps it to 0.05–1', () => {
+    expect(items({ opacityDelta: 0.2 }, 4).map((o) => o.opacity)).toEqual([0.55, 0.75, 0.95, 1]);
+    expect(items({ opacityDelta: -0.3 }, 3).map((o) => o.opacity)).toEqual([0.55, 0.25, 0.05]);
+  });
+
+  it('steps the icon size, wraps at 0.95 and never goes under 0.1', () => {
+    // Base 0.5: 0.5, 0.8, 1.1 → 0.15, 1.4 → 0.45.
+    expect(items({ sizeDelta: 0.3 }, 4).map((o) => o.iconScale)).toEqual([0.5, 0.8, 0.15, 0.45]);
+    // 0.5 + 0.45 = 0.95 stays; 0.5 + 0.5 = 1 → 0.05 → floored to 0.1.
+    expect(vary({ sizeDelta: 0.45 }, 1).iconScale).toBe(0.95);
+    expect(vary({ sizeDelta: 0.5 }, 1).iconScale).toBe(0.1);
+  });
+
+  it('draws the icon each item was given, cycling a short list', () => {
+    const icons = ['<svg viewBox="0 0 24 24"><path d="M1 1"/></svg>', '<svg viewBox="0 0 24 24"><path d="M2 2"/></svg>'];
+    expect(items({ randomIcon: icons }, 3).map((o) => o.iconSvg)).toEqual([icons[0], icons[1], icons[0]]);
+    expect(vary({ randomIcon: [] }, 0).iconSvg).toBe(base.iconSvg);
+    const batch = buildBatch({ ...base, generator: 'icon' }, 2, { ...DEFAULT_BATCH_VARIATION, randomIcon: icons });
+    expect(batch[0]!.svg).toContain('M1 1');
+    expect(batch[1]!.svg).toContain('M2 2');
+  });
+
+  it('picks a scene per item from the allowed set only', () => {
+    const allowed = ['pitch', 'hoop', 'track'] as const;
+    const picked = items({ scenes: [...allowed] }, 30, 11).map((o) => o.scene);
+    for (const scene of picked) expect(allowed).toContain(scene);
+    expect(new Set(picked).size).toBe(3);
+    expect(vary({ scenes: [] }, 0).scene).toBe(base.scene);
+    expect(vary({ scenes: ['subway'] }, 4).scene).toBe('subway');
+    const batch = buildBatch({ ...base, generator: 'scene' }, 3, { ...DEFAULT_BATCH_VARIATION, scenes: ['subway'] });
+    expect(new Set(batch.map((b) => b.svg)).size).toBe(1);
+  });
+
+  it('shuffles the palette per item, keeping the same colours', () => {
+    const palette = ['#111111', '#222222', '#333333', '#444444'];
+    const shuffledBase = { ...base, palette };
+    const rng = mulberry32(5);
+    const palettes = Array.from({ length: 6 }, (_, i) =>
+      varyOptions(shuffledBase, i, 6, { ...DEFAULT_BATCH_VARIATION, palette: 'shuffle' }, rng).palette
+    );
+    for (const p of palettes) expect([...p].sort()).toEqual(palette);
+    expect(new Set(palettes.map((p) => p.join())).size).toBeGreaterThan(1);
+    // The base is left alone, and off leaves the palette as it was.
+    expect(shuffledBase.palette).toEqual(palette);
+    expect(vary({ palette: 'off' }, 1).palette).toEqual(base.palette);
+  });
+
+  it('draws a new palette per item when asked, with as many colours', () => {
+    const palettes = items({ palette: 'random' }).map((o) => o.palette);
+    for (const p of palettes) {
+      expect(p).toHaveLength(base.palette.length);
+      for (const c of p) expect(c).toMatch(/^#[0-9a-f]{6}$/);
+      expect([...p].sort()).not.toEqual([...base.palette].sort());
+    }
+    expect(new Set(palettes.map((p) => p.join())).size).toBe(5);
+    const batch = buildBatch({ ...base, generator: 'mosaic' }, 2, { ...DEFAULT_BATCH_VARIATION, palette: 'random' });
+    expect(batch[1]!.svg).toBe(buildImage(batch[1]!.options));
+    expect(batch[1]!.svg).not.toContain(base.palette[0]!);
   });
 });
 

@@ -1,12 +1,14 @@
 <script lang="ts">
-  import { onDestroy } from 'svelte';
+  import { onDestroy, untrack } from 'svelte';
   import Card from '../Card.svelte';
+  import ColorField from '../ColorField.svelte';
   import Explainer from '../Explainer.svelte';
   import { copyText, downloadBlob, downloadText } from '../../lib/exportFile';
   import { svgDataUri } from '../../lib/svg/build';
   import { decodeToCanvas, encodeCanvas, TARGETS, type TargetFormat } from '../../lib/img/convert';
   import { zipBlob } from '../../lib/zip';
   import { loadLucide } from '../../lib/gen/logo';
+  import { mulberry32, pick, seedFrom } from '../../lib/random';
   import { DEFAULT_GRADIENT } from '../../lib/gen/gradient';
   import {
     CORPUS_LABELS,
@@ -19,16 +21,19 @@
   } from '../../lib/placeholder/text';
   import {
     DEFAULT_IMAGE_OPTIONS,
+    DEFAULT_PALETTE,
     GENERATORS,
+    MAX_PALETTE,
     MAX_SIDE,
     MIN_SIDE,
     batchName,
     buildBatch,
     buildImage,
+    type BatchVariation,
     type GeneratorId,
     type ImageOptions,
   } from '../../lib/placeholder/images';
-  import { SCENES, SCENE_GROUPS } from '../../lib/placeholder/scenes';
+  import { SCENES, SCENE_GROUPS, type Scene, type SceneId } from '../../lib/placeholder/scenes';
   import THUMBNAILS from '../../lib/placeholder/thumbnails.json';
   import { RATIOS, SIZE_PRESETS, applyRatio, describeSize, matchRatio } from '../../lib/placeholder/size';
 
@@ -47,7 +52,8 @@
    * the seed. Both lists exist so a control is only shown where it does
    * something — an inert picker is worse than a missing one. */
   const USES_INK: GeneratorId[] = ['heading', 'noise', 'flow', 'icon'];
-  const USES_SEED: GeneratorId[] = ['noise', 'flow', 'material', 'planes'];
+  const USES_SEED: GeneratorId[] = ['noise', 'flow', 'material', 'planes', 'mosaic', 'swirl'];
+  const USES_PALETTE: GeneratorId[] = ['mosaic', 'swirl'];
 
   // ---- text ------------------------------------------------------------
   let textOptions = $state<TextOptions>({ ...DEFAULT_TEXT_OPTIONS });
@@ -55,7 +61,25 @@
   let fillerCounts = $derived(countText(filler));
 
   // ---- images ----------------------------------------------------------
-  let image = $state<ImageOptions>({ ...DEFAULT_IMAGE_OPTIONS, gradient: { ...DEFAULT_GRADIENT } });
+  // Copies of the nested defaults: `$state` writes through to the object it
+  // was given, and the palette editor edits in place.
+  let image = $state<ImageOptions>({
+    ...DEFAULT_IMAGE_OPTIONS,
+    gradient: { ...DEFAULT_GRADIENT },
+    palette: [...DEFAULT_PALETTE],
+  });
+
+  /** Add the next default colour not already in the palette, up to four. */
+  function addPaletteColour() {
+    if (image.palette.length >= MAX_PALETTE) return;
+    const next = DEFAULT_PALETTE.find((c) => !image.palette.includes(c)) ?? '#888888';
+    image.palette = [...image.palette, next];
+  }
+
+  function removePaletteColour(i: number) {
+    if (image.palette.length <= 1) return;
+    image.palette = image.palette.filter((_, index) => index !== i);
+  }
   let lockRatio = $state(true);
   let batchCount = $state(3);
   let exportFormat = $state<TargetFormat | 'svg'>('svg');
@@ -71,7 +95,7 @@
    * One small example per generator, rendered once by
    * tools/build-placeholder-thumbs.mjs from the generators' defaults and
    * committed as data. They do not follow the controls — a first version
-   * redrew all nine on every change and the page felt slow for pictures whose
+   * redrew all of them on every change and the page felt slow for pictures whose
    * only job is to say what a flow field looks like; the big preview is the
    * live one.
    */
@@ -108,6 +132,102 @@
     if (image.generator !== 'icon' || iconNames.length === 0) return;
     void loadLucide().then((api) => (image.iconSvg = api.svg(name) ?? null));
   });
+
+  // ---- batch variation ------------------------------------------------
+  /**
+   * "Vary across the batch": each rule is a checkbox plus its parameter, kept
+   * as page state so a parameter survives the rule being toggled off and on.
+   * `batchVariation()` folds it into the library's `BatchVariation`. Rules
+   * for a generator that is not selected are hidden AND passed anyway — they
+   * touch fields that generator never reads, so a stale tick is harmless.
+   */
+  let vary = $state({
+    sizes: false,
+    background: false,
+    ink: false,
+    angleOffset: false,
+    angleOffsetValue: 15,
+    stop1: false,
+    stop2: false,
+    cycleKind: false,
+    grainDelta: false,
+    grainDeltaValue: 0.01,
+    blurDelta: false,
+    blurDeltaValue: 1,
+    randomSeed: false,
+    lineDelta: false,
+    lineDeltaValue: 50,
+    opacityDelta: false,
+    opacityDeltaValue: 0.1,
+    sizeDelta: false,
+    sizeDeltaValue: 0.15,
+    randomIcon: false,
+    scenes: false,
+    palette: false,
+    paletteValue: 'shuffle' as 'shuffle' | 'random',
+  });
+  /** One row per batch item; `sizeRows[0]` is the first image. */
+  let sizeRows = $state<{ width: number; height: number }[]>([]);
+  let allowedScenes = $state<SceneId[]>(SCENES.map((s) => s.id));
+
+  const clampCount = (n: number): number => (Number.isFinite(n) ? Math.min(50, Math.max(1, Math.trunc(n))) : 1);
+
+  // The sizes table follows the batch count: a new row starts at the current
+  // size, a dropped row is forgotten. Existing rows are left alone — someone
+  // who typed six sizes and then bumped the count to seven keeps the six.
+  $effect(() => {
+    const n = clampCount(batchCount);
+    untrack(() => {
+      if (sizeRows.length === n) return;
+      sizeRows = Array.from({ length: n }, (_, i) => sizeRows[i] ?? { width: image.width, height: image.height });
+    });
+  });
+
+  const groupIds = (group: Scene['group']): SceneId[] => SCENES.filter((s) => s.group === group).map((s) => s.id);
+  const groupOn = (group: Scene['group']): boolean => groupIds(group).every((id) => allowedScenes.includes(id));
+
+  function setGroup(group: Scene['group'], on: boolean) {
+    const ids = groupIds(group);
+    allowedScenes = on ? [...new Set([...allowedScenes, ...ids])] : allowedScenes.filter((id) => !ids.includes(id));
+  }
+
+  function setScene(id: SceneId, on: boolean) {
+    allowedScenes = on ? [...new Set([...allowedScenes, id])] : allowedScenes.filter((x) => x !== id);
+  }
+
+  function batchVariation(randomIcon: string[] | null): BatchVariation {
+    return {
+      sizes: vary.sizes ? sizeRows.map((row) => ({ width: row.width, height: row.height })) : null,
+      background: vary.background,
+      ink: vary.ink,
+      angleOffset: vary.angleOffset ? vary.angleOffsetValue : null,
+      stop1: vary.stop1,
+      stop2: vary.stop2,
+      cycleKind: vary.cycleKind,
+      grainDelta: vary.grainDelta ? vary.grainDeltaValue : null,
+      blurDelta: vary.blurDelta ? vary.blurDeltaValue : null,
+      randomSeed: vary.randomSeed,
+      lineDelta: vary.lineDelta ? vary.lineDeltaValue : null,
+      opacityDelta: vary.opacityDelta ? vary.opacityDeltaValue : null,
+      sizeDelta: vary.sizeDelta ? vary.sizeDeltaValue : null,
+      randomIcon,
+      scenes: vary.scenes ? [...allowedScenes] : null,
+      palette: vary.palette ? vary.paletteValue : 'off',
+    };
+  }
+
+  /**
+   * Random icons for a batch: names picked from the fetched Lucide list with
+   * a seeded rng (so the same seed picks the same icons), resolved to markup
+   * here — `buildBatch` never fetches. Null when the rule is off or the list
+   * has not arrived.
+   */
+  async function batchIcons(n: number): Promise<string[] | null> {
+    if (image.generator !== 'icon' || !vary.randomIcon || iconNames.length === 0) return null;
+    const api = await loadLucide();
+    const rng = mulberry32(seedFrom(`${image.seed}:icons`));
+    return Array.from({ length: n }, () => api.svg(pick(rng, iconNames)!) ?? image.iconSvg ?? '');
+  }
 
   let shownIcons = $derived(
     iconQuery.trim() === ''
@@ -150,9 +270,9 @@
 
   const fileBase = () => `${image.generator}-${image.width}x${image.height}`;
 
-  async function rasterize(markup: string, target: TargetFormat): Promise<Blob> {
+  async function rasterize(markup: string, target: TargetFormat, width = image.width): Promise<Blob> {
     const file = new File([markup], 'placeholder.svg', { type: 'image/svg+xml' });
-    const decoded = await decodeToCanvas(file, image.width);
+    const decoded = await decodeToCanvas(file, width);
     return encodeCanvas(decoded.canvas, target, 92);
   }
 
@@ -177,16 +297,18 @@
    * is that it finishes.
    */
   async function downloadBatch() {
-    const items = buildBatch(image, batchCount);
+    const n = clampCount(batchCount);
+    const items = buildBatch(image, n, batchVariation(await batchIcons(n)));
     try {
       const entries = [];
       for (const [index, item] of items.entries()) {
         if (exportFormat === 'svg') {
           entries.push({ name: item.name, data: new TextEncoder().encode(item.svg) });
         } else {
-          const blob = await rasterize(item.svg, exportFormat);
+          // Each item at its own size — a varied batch has no single width.
+          const blob = await rasterize(item.svg, exportFormat, item.options.width);
           entries.push({
-            name: batchName(image, index + 1, items.length, exportFormat),
+            name: batchName(item.options, index + 1, items.length, exportFormat),
             data: new Uint8Array(await blob.arrayBuffer()),
           });
         }
@@ -214,7 +336,7 @@
         <label for="ph-mode">Filler</label>
         <select id="ph-mode" data-testid="ph-mode" bind:value={mode}>
           <option value="text">Text — lorem ipsum or office speak</option>
-          <option value="image">Images — eight generators, seeded</option>
+          <option value="image">Images — eleven generators, seeded</option>
         </select>
       </div>
     </div>
@@ -495,6 +617,95 @@
           </div>
         {/if}
 
+        {#if USES_PALETTE.includes(image.generator)}
+          <div class="stack">
+            <p class="muted small">
+              Palette — up to four colours.
+              {image.generator === 'swirl' ? ' The swirl uses the first two; with one colour the background is the other.' : ''}
+            </p>
+            <div class="row">
+              {#each image.palette as _, i (i)}
+                <div class="palette-entry">
+                  <label for={`ph-palette-${i}`}>Colour {i + 1}</label>
+                  <div class="row">
+                    <ColorField id={`ph-palette-${i}`} testid={`ph-palette-${i}`} bind:value={image.palette[i]} />
+                    <button
+                      class="btn"
+                      type="button"
+                      data-testid={`ph-palette-remove-${i}`}
+                      aria-label={`Remove colour ${i + 1}`}
+                      disabled={image.palette.length <= 1}
+                      onclick={() => removePaletteColour(i)}
+                    >
+                      ×
+                    </button>
+                  </div>
+                </div>
+              {/each}
+              <button
+                class="btn"
+                type="button"
+                data-testid="ph-palette-add"
+                disabled={image.palette.length >= MAX_PALETTE}
+                onclick={addPaletteColour}
+              >
+                Add a colour
+              </button>
+            </div>
+          </div>
+        {/if}
+
+        {#if image.generator === 'mosaic'}
+          <div class="row">
+            <div>
+              <label for="ph-block-size">Block size ({image.blockSize}% of the shorter side)</label>
+              <input
+                id="ph-block-size"
+                data-testid="ph-block-size"
+                type="range"
+                min="2"
+                max="25"
+                step="1"
+                bind:value={image.blockSize}
+              />
+            </div>
+            <div>
+              <label for="ph-cut-ratio">Cut out ({Math.round(image.cutRatio * 100)}% of the blocks)</label>
+              <input
+                id="ph-cut-ratio"
+                data-testid="ph-cut-ratio"
+                type="range"
+                min="0"
+                max="1"
+                step="0.05"
+                bind:value={image.cutRatio}
+              />
+            </div>
+            <p class="muted small">Cut-out blocks show the background, and the cuts gather into patches rather than scattering.</p>
+          </div>
+        {/if}
+
+        {#if image.generator === 'swirl'}
+          <div class="row">
+            <div>
+              <label for="ph-turns">Turns ({image.turns})</label>
+              <input id="ph-turns" data-testid="ph-turns" type="range" min="1" max="8" step="1" bind:value={image.turns} />
+            </div>
+            <div>
+              <label for="ph-arm-width">Arm width ({Math.round(image.armWidth * 100)}% of each turn)</label>
+              <input
+                id="ph-arm-width"
+                data-testid="ph-arm-width"
+                type="range"
+                min="0.1"
+                max="0.9"
+                step="0.05"
+                bind:value={image.armWidth}
+              />
+            </div>
+          </div>
+        {/if}
+
         {#if image.generator === 'scene'}
           <div class="stack">
             {#each SCENE_GROUPS as group (group)}
@@ -596,6 +807,268 @@
           </div>
         </div>
 
+        <fieldset class="vary" data-testid="ph-vary-card">
+          <legend>Vary across the batch</legend>
+          <p class="muted small">
+            Each rule that is on changes one thing from image to image; everything else stays as set
+            above. A varied batch is still seeded — the same seed gives the same batch again.
+          </p>
+          <div class="stack">
+            <label class="check">
+              <input type="checkbox" data-testid="ph-vary-sizes" bind:checked={vary.sizes} />
+              Sizes — one per image
+            </label>
+            {#if vary.sizes}
+              <table class="sizes" data-testid="ph-vary-sizes-value">
+                <thead>
+                  <tr><th scope="col">Image</th><th scope="col">Width</th><th scope="col">Height</th></tr>
+                </thead>
+                <tbody>
+                  {#each sizeRows as row, i (i)}
+                    <tr>
+                      <th scope="row">{i + 1}</th>
+                      <td>
+                        <input
+                          class="num"
+                          type="number"
+                          min={MIN_SIDE}
+                          max={MAX_SIDE}
+                          aria-label={`Image ${i + 1} width`}
+                          data-testid={`ph-vary-size-${i}-w`}
+                          bind:value={row.width}
+                        />
+                      </td>
+                      <td>
+                        <input
+                          class="num"
+                          type="number"
+                          min={MIN_SIDE}
+                          max={MAX_SIDE}
+                          aria-label={`Image ${i + 1} height`}
+                          data-testid={`ph-vary-size-${i}-h`}
+                          bind:value={row.height}
+                        />
+                      </td>
+                    </tr>
+                  {/each}
+                </tbody>
+              </table>
+            {/if}
+
+            <label class="check">
+              <input type="checkbox" data-testid="ph-vary-background" bind:checked={vary.background} />
+              Background — a random colour per image
+            </label>
+
+            {#if USES_INK.includes(image.generator)}
+              <label class="check">
+                <input type="checkbox" data-testid="ph-vary-ink" bind:checked={vary.ink} />
+                Ink — a random colour per image
+              </label>
+            {/if}
+
+            {#if USES_SEED.includes(image.generator)}
+              <label class="check">
+                <input type="checkbox" data-testid="ph-vary-randomSeed" bind:checked={vary.randomSeed} />
+                Seed — twelve random characters per image
+              </label>
+            {/if}
+
+            {#if image.generator === 'gradient'}
+              <div class="rule">
+                <label class="check">
+                  <input type="checkbox" data-testid="ph-vary-angleOffset" bind:checked={vary.angleOffset} />
+                  Angle offset
+                </label>
+                <label class="muted small" for="ph-vary-angle-offset">degrees per image, wrapping at 360</label>
+                <input
+                  id="ph-vary-angle-offset"
+                  class="num"
+                  type="number"
+                  step="1"
+                  data-testid="ph-vary-angleOffset-value"
+                  disabled={!vary.angleOffset}
+                  bind:value={vary.angleOffsetValue}
+                />
+              </div>
+              <label class="check">
+                <input type="checkbox" data-testid="ph-vary-stop1" bind:checked={vary.stop1} />
+                Stop 1 — random, never the same as stop 2
+              </label>
+              <label class="check">
+                <input type="checkbox" data-testid="ph-vary-stop2" bind:checked={vary.stop2} />
+                Stop 2 — random, never the same as stop 1
+              </label>
+              <label class="check">
+                <input type="checkbox" data-testid="ph-vary-cycleKind" bind:checked={vary.cycleKind} />
+                Kind — linear, radial, linear…
+              </label>
+              <p class="muted small">
+                SVG has no conic gradient, so the cycle has two kinds rather than three.
+              </p>
+            {/if}
+
+            {#if image.generator === 'noise'}
+              <div class="rule">
+                <label class="check">
+                  <input type="checkbox" data-testid="ph-vary-grainDelta" bind:checked={vary.grainDelta} />
+                  Grain delta
+                </label>
+                <label class="muted small" for="ph-vary-grain-delta">per image, kept within 0.002–0.08</label>
+                <input
+                  id="ph-vary-grain-delta"
+                  class="num"
+                  type="number"
+                  step="0.002"
+                  data-testid="ph-vary-grainDelta-value"
+                  disabled={!vary.grainDelta}
+                  bind:value={vary.grainDeltaValue}
+                />
+              </div>
+              <div class="rule">
+                <label class="check">
+                  <input type="checkbox" data-testid="ph-vary-blurDelta" bind:checked={vary.blurDelta} />
+                  Blur delta
+                </label>
+                <label class="muted small" for="ph-vary-blur-delta">per image, kept within 0–8</label>
+                <input
+                  id="ph-vary-blur-delta"
+                  class="num"
+                  type="number"
+                  step="0.5"
+                  data-testid="ph-vary-blurDelta-value"
+                  disabled={!vary.blurDelta}
+                  bind:value={vary.blurDeltaValue}
+                />
+              </div>
+            {/if}
+
+            {#if image.generator === 'flow'}
+              <div class="rule">
+                <label class="check">
+                  <input type="checkbox" data-testid="ph-vary-lineDelta" bind:checked={vary.lineDelta} />
+                  Line delta
+                </label>
+                <label class="muted small" for="ph-vary-line-delta">lines per image; past 400 it wraps back round</label>
+                <input
+                  id="ph-vary-line-delta"
+                  class="num"
+                  type="number"
+                  step="10"
+                  data-testid="ph-vary-lineDelta-value"
+                  disabled={!vary.lineDelta}
+                  bind:value={vary.lineDeltaValue}
+                />
+              </div>
+            {/if}
+
+            {#if image.generator === 'material' || image.generator === 'planes'}
+              <div class="rule">
+                <label class="check">
+                  <input type="checkbox" data-testid="ph-vary-opacityDelta" bind:checked={vary.opacityDelta} />
+                  Opacity delta
+                </label>
+                <label class="muted small" for="ph-vary-opacity-delta">per image, kept within 5–100%</label>
+                <input
+                  id="ph-vary-opacity-delta"
+                  class="num"
+                  type="number"
+                  step="0.05"
+                  data-testid="ph-vary-opacityDelta-value"
+                  disabled={!vary.opacityDelta}
+                  bind:value={vary.opacityDeltaValue}
+                />
+              </div>
+            {/if}
+
+            {#if image.generator === 'icon'}
+              <div class="rule">
+                <label class="check">
+                  <input type="checkbox" data-testid="ph-vary-sizeDelta" bind:checked={vary.sizeDelta} />
+                  Size delta
+                </label>
+                <label class="muted small" for="ph-vary-size-delta">of the shorter side per image; past 95% it wraps back round</label>
+                <input
+                  id="ph-vary-size-delta"
+                  class="num"
+                  type="number"
+                  step="0.05"
+                  data-testid="ph-vary-sizeDelta-value"
+                  disabled={!vary.sizeDelta}
+                  bind:value={vary.sizeDeltaValue}
+                />
+              </div>
+              <label class="check">
+                <input
+                  type="checkbox"
+                  data-testid="ph-vary-randomIcon"
+                  disabled={iconNames.length === 0}
+                  bind:checked={vary.randomIcon}
+                />
+                Icon — a random one per image{iconNames.length === 0 ? ' (once the icon set has loaded)' : ''}
+              </label>
+            {/if}
+
+            {#if image.generator === 'scene'}
+              <label class="check">
+                <input type="checkbox" data-testid="ph-vary-scenes" bind:checked={vary.scenes} />
+                Scene — a random one per image, from these
+              </label>
+              {#if vary.scenes}
+                <div class="stack" data-testid="ph-vary-scenes-value">
+                  {#each SCENE_GROUPS as group (group)}
+                    <div>
+                      <label class="check">
+                        <input
+                          type="checkbox"
+                          data-testid={`ph-vary-scenes-group-${group}`}
+                          checked={groupOn(group)}
+                          onchange={(e) => setGroup(group, e.currentTarget.checked)}
+                        />
+                        <strong>Any {group.toLowerCase()}</strong>
+                      </label>
+                      <div class="chips">
+                        {#each SCENES.filter((s) => s.group === group) as scene (scene.id)}
+                          <label class="check">
+                            <input
+                              type="checkbox"
+                              data-testid={`ph-vary-scene-${scene.id}`}
+                              checked={allowedScenes.includes(scene.id)}
+                              onchange={(e) => setScene(scene.id, e.currentTarget.checked)}
+                            />
+                            {scene.label}
+                          </label>
+                        {/each}
+                      </div>
+                    </div>
+                  {/each}
+                  {#if allowedScenes.length === 0}
+                    <p class="warn small">Nothing is allowed, so every image will be the scene chosen above.</p>
+                  {/if}
+                </div>
+              {/if}
+            {/if}
+
+            {#if USES_PALETTE.includes(image.generator)}
+              <div class="rule">
+                <label class="check">
+                  <input type="checkbox" data-testid="ph-vary-palette" bind:checked={vary.palette} />
+                  Palette
+                </label>
+                <select
+                  aria-label="How the palette varies"
+                  data-testid="ph-vary-palette-value"
+                  disabled={!vary.palette}
+                  bind:value={vary.paletteValue}
+                >
+                  <option value="shuffle">shuffled — the same colours in a new order per image</option>
+                  <option value="random">random — new colours per image, as many as above</option>
+                </select>
+              </div>
+            {/if}
+          </div>
+        </fieldset>
+
         <div class="row">
           <button class="btn btn-primary" data-testid="ph-download" onclick={downloadOne}>Download</button>
           <button class="btn" data-testid="ph-download-batch" onclick={downloadBatch}>Download the batch (.zip)</button>
@@ -637,7 +1110,9 @@
       <strong>Everything here is seeded.</strong> The same seed and settings
       always draw the same picture, so a placeholder can be regenerated on
       another machine and match — and a batch is just the seed varied per
-      item, so image 3 of a batch is what that seed produces on its own.
+      item, so image 3 of a batch is what that seed produces on its own. The
+      batch rules are seeded too: the same seed gives the same set of
+      variations.
     </p>
     <p>
       The drawn scenes are hand-written SVG in this repository, not stock art.
@@ -669,6 +1144,53 @@
 
   .warn {
     color: var(--color-danger);
+  }
+
+  .vary {
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    padding: var(--space-3);
+    margin: 0;
+    min-width: 0;
+  }
+
+  .vary legend {
+    font-weight: 600;
+    padding: 0 var(--space-2);
+  }
+
+  .vary > p {
+    margin-top: 0;
+  }
+
+  .rule {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .rule label {
+    margin-bottom: 0;
+  }
+
+  .palette-entry {
+    flex: 0 1 14rem;
+  }
+
+  .palette-entry .row {
+    flex-wrap: nowrap;
+    align-items: stretch;
+  }
+
+  .sizes {
+    border-collapse: collapse;
+  }
+
+  .sizes th,
+  .sizes td {
+    padding: 2px var(--space-2);
+    text-align: left;
   }
 
   .out {

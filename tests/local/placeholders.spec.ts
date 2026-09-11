@@ -197,6 +197,75 @@ test.describe('placeholders — filler images', () => {
     expect((await previewSize(page)).width).toBe(1200);
   });
 
+  test('draws a mosaic and a swirl from the palette, and downloads them', async ({ app }) => {
+    const { page } = app;
+    const before = await app.dumpAll();
+    await app.goto('/tools/placeholders/');
+    await toImageMode(page);
+    const svg = () =>
+      page.getByTestId('ph-preview').evaluate((n) => decodeURIComponent((n as HTMLImageElement).src));
+
+    await page.getByTestId('ph-gen-mosaic').click();
+    await expect.poll(async () => (await previewSize(page)).width, { message: 'mosaic' }).toBe(1200);
+    expect((await previewSize(page)).height).toBe(675);
+    await expect(page.getByTestId('ph-block-size')).toBeVisible();
+    await expect(page.getByTestId('ph-seed')).toBeVisible();
+    await expect(page.getByTestId('ph-fg')).toHaveCount(0);
+    // Four default colours; remove one, add it back; the drawing follows.
+    await expect(page.locator('[data-testid^="ph-palette-"][data-testid$="-pick"]')).toHaveCount(4);
+    await expect(page.getByTestId('ph-palette-add')).toBeDisabled();
+    const four = await svg();
+    await page.getByTestId('ph-palette-remove-3').click();
+    await expect(page.locator('[data-testid^="ph-palette-"][data-testid$="-pick"]')).toHaveCount(3);
+    await expect.poll(async () => await svg()).not.toBe(four);
+    await page.getByTestId('ph-palette-add').click();
+    await expect(page.locator('[data-testid^="ph-palette-"][data-testid$="-pick"]')).toHaveCount(4);
+    await expect.poll(async () => await svg()).toBe(four);
+    // A cut ratio of 0 leaves no cut-outs; the drawing gains blocks.
+    await page.getByTestId('ph-cut-ratio').fill('0');
+    await expect.poll(async () => (await svg()).length).toBeGreaterThan(four.length);
+
+    const mosaic = await downloadBytes(page, () => page.getByTestId('ph-download').click());
+    expect(mosaic.name).toBe('mosaic-1200x675.svg');
+    expect(mosaic.bytes.toString('utf8').startsWith('<svg')).toBe(true);
+
+    await page.getByTestId('ph-gen-swirl').click();
+    await expect.poll(async () => (await previewSize(page)).width, { message: 'swirl' }).toBe(1200);
+    await expect(page.getByTestId('ph-turns')).toBeVisible();
+    await expect(page.getByTestId('ph-block-size')).toHaveCount(0);
+    const three = await svg();
+    await page.getByTestId('ph-turns').fill('6');
+    await expect.poll(async () => (await svg()).length).toBeGreaterThan(three.length);
+
+    const swirl = await downloadBytes(page, () => page.getByTestId('ph-download').click());
+    expect(swirl.name).toBe('swirl-1200x675.svg');
+    expect(swirl.bytes.toString('utf8')).toContain('<path d="M');
+
+    expect(await app.dumpAll()).toEqual(before);
+  });
+
+  test('shuffles the palette across a mosaic batch', async ({ app }) => {
+    const { page } = app;
+    const before = await app.dumpAll();
+    await app.goto('/tools/placeholders/');
+    await toImageMode(page);
+    // The rule only shows for the generators that have a palette.
+    await expect(page.getByTestId('ph-vary-palette')).toHaveCount(0);
+    await page.getByTestId('ph-gen-mosaic').click();
+    await page.getByTestId('ph-batch').fill('3');
+    await expect(page.getByTestId('ph-vary-palette-value')).toBeDisabled();
+    await page.getByTestId('ph-vary-palette').check();
+    await page.getByTestId('ph-vary-palette-value').selectOption('random');
+
+    const archive = await downloadBytes(page, () => page.getByTestId('ph-download-batch').click());
+    const entries = zipEntries(new Uint8Array(archive.bytes));
+    expect(entries.map((e) => e.name)).toEqual(['mosaic-1200x675-1.svg', 'mosaic-1200x675-2.svg', 'mosaic-1200x675-3.svg']);
+    // Random: none of the three uses the default palette's first colour.
+    for (const e of entries) expect(new TextDecoder().decode(e.data)).not.toContain('#e76f51');
+
+    expect(await app.dumpAll()).toEqual(before);
+  });
+
   test('picks a drawn scene', async ({ app }) => {
     const { page } = app;
     await app.goto('/tools/placeholders/');
@@ -256,6 +325,68 @@ test.describe('placeholders — getting them out', () => {
     const bodies = entries.map((e) => new TextDecoder().decode(e.data));
     expect(new Set(bodies).size).toBe(3);
     for (const body of bodies) expect(body).toContain('<svg xmlns=');
+
+    expect(await app.dumpAll()).toEqual(before);
+  });
+
+  test('varies the background across a batch', async ({ app }) => {
+    const { page } = app;
+    const before = await app.dumpAll();
+    await app.goto('/tools/placeholders/');
+    await toImageMode(page);
+    await page.getByTestId('ph-batch').fill('3');
+    await page.getByTestId('ph-vary-background').check();
+
+    const archive = await downloadBytes(page, () => page.getByTestId('ph-download-batch').click());
+    const entries = zipEntries(new Uint8Array(archive.bytes));
+    expect(entries).toHaveLength(3);
+    // The plain-colour generator is one <rect>; its fill is the background.
+    const fills = entries.map(
+      (e) => /<rect[^>]*fill="(#[0-9a-f]{6})"/.exec(new TextDecoder().decode(e.data))?.[1]
+    );
+    expect(new Set(fills).size).toBe(3);
+    for (const fill of fills) expect(fill).not.toBe('#cfd8e3');
+
+    // Seeded: the same seed gives the same three colours again.
+    const again = await downloadBytes(page, () => page.getByTestId('ph-download-batch').click());
+    expect(zipEntries(new Uint8Array(again.bytes)).map((e) => new TextDecoder().decode(e.data))).toEqual(
+      entries.map((e) => new TextDecoder().decode(e.data))
+    );
+
+    expect(await app.dumpAll()).toEqual(before);
+  });
+
+  test('gives each image in a batch its own size', async ({ app }) => {
+    const { page } = app;
+    const before = await app.dumpAll();
+    await app.goto('/tools/placeholders/');
+    await toImageMode(page);
+    await page.getByTestId('ph-batch').fill('3');
+    await page.getByTestId('ph-vary-sizes').check();
+
+    // One row per image, following the batch count.
+    await expect(page.getByTestId('ph-vary-sizes-value').locator('tbody tr')).toHaveCount(3);
+    await page.getByTestId('ph-batch').fill('4');
+    await expect(page.getByTestId('ph-vary-sizes-value').locator('tbody tr')).toHaveCount(4);
+    await page.getByTestId('ph-batch').fill('3');
+    await expect(page.getByTestId('ph-vary-sizes-value').locator('tbody tr')).toHaveCount(3);
+
+    const sizes: [number, number][] = [
+      [300, 200],
+      [640, 360],
+      [100, 100],
+    ];
+    for (const [i, [w, h]] of sizes.entries()) {
+      await page.getByTestId(`ph-vary-size-${i}-w`).fill(String(w));
+      await page.getByTestId(`ph-vary-size-${i}-h`).fill(String(h));
+    }
+
+    const archive = await downloadBytes(page, () => page.getByTestId('ph-download-batch').click());
+    const entries = zipEntries(new Uint8Array(archive.bytes));
+    // sizes[0] applies to the first image — item 0 is varied like the rest.
+    expect(entries.map((e) => e.name)).toEqual(['solid-300x200-1.svg', 'solid-640x360-2.svg', 'solid-100x100-3.svg']);
+    const viewBoxes = entries.map((e) => /viewBox="([^"]+)"/.exec(new TextDecoder().decode(e.data))?.[1]);
+    expect(viewBoxes).toEqual(['0 0 300 200', '0 0 640 360', '0 0 100 100']);
 
     expect(await app.dumpAll()).toEqual(before);
   });

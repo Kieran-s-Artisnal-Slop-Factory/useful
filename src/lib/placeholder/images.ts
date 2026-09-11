@@ -13,7 +13,7 @@
 import { escapeXml } from '../svg/build';
 import { DEFAULT_GRADIENT, type GradientDef } from '../gen/gradient';
 import { hslToRgb, rgbToHex, rgbToHsl } from '../gen/color';
-import { mulberry32, pick, randomInt, seedFrom } from '../random';
+import { mulberry32, pick, randomInt, seedFrom, shuffled } from '../random';
 import { SCENES, type SceneId } from './scenes';
 
 export type GeneratorId =
@@ -25,7 +25,9 @@ export type GeneratorId =
   | 'material'
   | 'planes'
   | 'icon'
-  | 'scene';
+  | 'scene'
+  | 'mosaic'
+  | 'swirl';
 
 export interface GeneratorInfo {
   id: GeneratorId;
@@ -43,7 +45,13 @@ export const GENERATORS: GeneratorInfo[] = [
   { id: 'planes', label: 'Cut planes', note: 'Big diagonal slabs that fill the frame.' },
   { id: 'icon', label: 'An icon', note: 'Any Lucide icon, on any background.' },
   { id: 'scene', label: 'A drawn scene', note: 'Nine hand-drawn scenes: nature, sport, city.' },
+  { id: 'mosaic', label: 'Mosaic', note: 'Blocks from up to four colours, with pieces cut out.' },
+  { id: 'swirl', label: 'Swirl', note: 'A two-tone spiral, turns and arm width to taste.' },
 ];
+
+/** The mosaic and swirl default: warm, cool, and a dark to anchor them. */
+export const DEFAULT_PALETTE = ['#e76f51', '#f4a261', '#2a9d8f', '#264653'];
+export const MAX_PALETTE = 4;
 
 export interface ImageOptions {
   generator: GeneratorId;
@@ -69,6 +77,17 @@ export interface ImageOptions {
   iconSvg: string | null;
   scene: SceneId;
   gradient: GradientDef;
+  /** Mosaic and swirl: 1–4 colours. Mosaic paints every block from it; swirl
+   * uses the first two (the second falls back to the background). */
+  palette: string[];
+  /** Mosaic: block side as a percent of the shorter side, 2–50. */
+  blockSize: number;
+  /** Mosaic: 0–1, the share of blocks cut out to the background. */
+  cutRatio: number;
+  /** Swirl: how many times the spiral goes round before it leaves the frame, 1–12. */
+  turns: number;
+  /** Swirl: 0.1–0.9, the share of each turn painted in the first colour. */
+  armWidth: number;
 }
 
 export const MIN_SIDE = 16;
@@ -91,6 +110,11 @@ export const DEFAULT_IMAGE_OPTIONS: ImageOptions = {
   iconSvg: null,
   scene: 'mountains',
   gradient: DEFAULT_GRADIENT,
+  palette: DEFAULT_PALETTE,
+  blockSize: 8,
+  cutRatio: 0.25,
+  turns: 3,
+  armWidth: 0.5,
 };
 
 const clampSide = (n: number): number =>
@@ -398,6 +422,111 @@ function sceneLayer(options: ImageOptions, w: number, h: number): string {
   );
 }
 
+/** The palette as the generators read it: blanks dropped, at most four, and
+ * the default when nothing is left — a mosaic with no colours is no mosaic. */
+export function paletteOf(options: ImageOptions): string[] {
+  const colours = (options.palette ?? []).map((c) => c.trim()).filter((c) => c.length > 0);
+  return (colours.length > 0 ? colours : DEFAULT_PALETTE).slice(0, MAX_PALETTE);
+}
+
+/**
+ * A mosaic: a grid of square blocks, each painted from the palette or cut
+ * out to the background.
+ *
+ * Two things stop it reading as a checkerboard with holes. The cut-outs are
+ * biased by a smooth seeded field, so they gather into missing patches
+ * rather than salt-and-pepper, and every painted block is inset by a seeded
+ * amount, so the tiles sit at slightly different sizes with the background
+ * showing between them like grout. `cutRatio` 0 paints every block and 1
+ * paints none, exactly — the bias only moves the odds in between.
+ */
+function mosaicLayer(options: ImageOptions, w: number, h: number, rng: () => number): string {
+  const palette = paletteOf(options).map(escapeXml);
+  const short = Math.min(w, h);
+  const block = Math.max(2, (short * clampUnit(options.blockSize, 2, 50)) / 100);
+  const cutRatio = clampUnit(options.cutRatio, 0, 1);
+  const cols = Math.ceil(w / block);
+  const rows = Math.ceil(h / block);
+  // Centre the grid so a partial block, if any, is split between both edges.
+  const ox = (w - cols * block) / 2;
+  const oy = (h - rows * block) / 2;
+  const phases = [rng() * 10, rng() * 10, rng() * 10];
+  const scale = (2.5 + rng() * 2) / Math.max(cols, rows);
+  const field = (c: number, r: number): number =>
+    (Math.sin(c * scale + phases[0]!) + Math.cos(r * scale + phases[1]!) + Math.sin((c - r) * scale * 0.7 + phases[2]!)) / 3;
+
+  const blocks: string[] = [];
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      // Always the same rng calls per block, so one block's outcome never
+      // shifts its neighbours': the odds move with the field, not the draws.
+      const roll = rng();
+      const colour = pick(rng, palette)!;
+      const inset = rng() * block * 0.1;
+      const odds = cutRatio <= 0 ? 0 : cutRatio >= 1 ? 1 : clampUnit(cutRatio + field(c, r) * 0.35, 0, 1);
+      if (roll < odds) continue;
+      const x = ox + c * block + inset;
+      const y = oy + r * block + inset;
+      const side = block - inset * 2;
+      blocks.push(`<rect x="${round(x)}" y="${round(y)}" width="${round(side)}" height="${round(side)}" fill="${colour}"/>`);
+    }
+  }
+  return solidLayer(options, w, h) + blocks.join('');
+}
+
+/**
+ * A two-tone swirl: one logarithmic spiral, drawn twice.
+ *
+ * The frame is painted the second colour, then one filled band in the first
+ * colour: the region between the spiral r = r₀·e^(kθ) and the same spiral
+ * turned by `armWidth` of a revolution. Rotating a log spiral never makes it
+ * cross itself, so the band is one simple path, and because the strip is
+ * measured in angle its share of every turn is `armWidth` at every radius —
+ * the arms stay in proportion from the centre to the corners. `k` is chosen
+ * so the spiral reaches the far corner after exactly `turns` revolutions;
+ * beyond that the path carries on off-frame, which is what closes it without
+ * a chord across the picture.
+ */
+function swirlLayer(options: ImageOptions, w: number, h: number, rng: () => number): string {
+  const palette = paletteOf(options).map(escapeXml);
+  const arm = palette[0]!;
+  const rest = palette[1] ?? escapeXml(options.background);
+  const turns = clampUnit(options.turns, 1, 12);
+  const phi = clampUnit(options.armWidth, 0.1, 0.9) * Math.PI * 2;
+  // Seeded: where the spiral starts, which way it winds, and a nudge off
+  // dead centre so two seeds are not the same picture rotated.
+  const start = rng() * Math.PI * 2;
+  const wind = rng() < 0.5 ? 1 : -1;
+  const cx = w / 2 + (rng() - 0.5) * w * 0.1;
+  const cy = h / 2 + (rng() - 0.5) * h * 0.1;
+  const reach = Math.hypot(Math.max(cx, w - cx), Math.max(cy, h - cy)) * 1.02;
+  const r0 = reach / 400;
+  const theta = turns * Math.PI * 2;
+  const k = Math.log(reach / r0) / theta;
+  const radius = (t: number): number => r0 * Math.exp(k * t);
+  const at = (t: number, angle: number): string =>
+    `${round(cx + radius(t) * Math.cos(start + wind * angle))} ${round(cy + radius(t) * Math.sin(start + wind * angle))}`;
+
+  const step = (Math.PI * 2) / 96;
+  const end = theta + phi;
+  const outward: string[] = [];
+  for (let t = 0; t <= end; t += step) outward.push(at(t, t));
+  outward.push(at(end, end));
+  // Round the far end at a radius that is already off-frame, then trace the
+  // turned spiral back to the centre.
+  const rim: string[] = [];
+  for (let a = end - step; a > theta; a -= step) rim.push(at(end, a));
+  const inward: string[] = [];
+  for (let t = end; t >= 0; t -= step) inward.push(at(t, t - phi));
+  inward.push(at(0, -phi));
+
+  const d = `M${outward.join(' L')} L${[...rim, ...inward].join(' L')} Z`;
+  return (
+    `<rect width="${w}" height="${h}" fill="${rest}"/>` +
+    `<path d="${d}" fill="${arm}"/>`
+  );
+}
+
 /** Build the placeholder as one standalone SVG document. */
 export function buildImage(options: ImageOptions): string {
   const w = clampSide(options.width);
@@ -431,6 +560,12 @@ export function buildImage(options: ImageOptions): string {
     case 'scene':
       body = sceneLayer(options, w, h);
       break;
+    case 'mosaic':
+      body = mosaicLayer(options, w, h, rng);
+      break;
+    case 'swirl':
+      body = swirlLayer(options, w, h, rng);
+      break;
     default:
       body = solidLayer(options, w, h);
   }
@@ -442,17 +577,221 @@ export function buildImage(options: ImageOptions): string {
 }
 
 /**
- * A batch: the same settings with the seed varied per item.
+ * How a batch may differ from item to item (0.6.0 phase 6).
  *
- * The seed is what changes, so item 3 of a batch is exactly what you get by
- * typing that seed on its own — a batch is not a separate code path.
+ * Everything off is the default, and with everything off a batch is exactly
+ * what it was before this type existed: the seed varied per item and nothing
+ * else. Each rule is one line of the TODO: a `null`/`false` is off, anything
+ * else is the rule's parameter. Rules for a generator that is not selected
+ * change fields that generator never reads, so passing them all is harmless.
  */
-export function buildBatch(options: ImageOptions, count: number): { name: string; svg: string }[] {
+export interface BatchVariation {
+  /** One size per item: `sizes[i]` applies to item `i`, item 0 included. A
+   * shorter list leaves the remaining items at the base size. */
+  sizes: { width: number; height: number }[] | null;
+  /** A seeded random background per item. */
+  background: boolean;
+  /** A seeded random `foreground` (the ink) per item. */
+  ink: boolean;
+  /** Gradient: item `i` adds `i × offset` degrees to the angle, wrapping at 360. */
+  angleOffset: number | null;
+  /** Gradient: a random first stop, re-rolled until it differs from the second. */
+  stop1: boolean;
+  /** Gradient: a random second stop, re-rolled until it differs from the first. */
+  stop2: boolean;
+  /** Gradient: linear → radial → linear… from the base kind. SVG has no conic
+   * gradient, so there are two kinds to cycle through, not three. */
+  cycleKind: boolean;
+  /** Noise: item `i` adds `i × delta` to the grain, clamped to 0.002–0.08. */
+  grainDelta: number | null;
+  /** Noise: item `i` adds `i × delta` to the blur, clamped to 0–8. */
+  blurDelta: number | null;
+  /** Twelve random alphanumerics as the seed, per item. */
+  randomSeed: boolean;
+  /** Flow field: item `i` adds `i × delta` lines; past 400 it wraps back to
+   * `0 + remainder`. */
+  lineDelta: number | null;
+  /** Layered geometry and cut planes: item `i` adds `i × delta` opacity,
+   * clamped to 0.05–1. */
+  opacityDelta: number | null;
+  /** Icon: item `i` adds `i × delta` to the scale; past 0.95 it wraps back to
+   * `0 + remainder`, with a floor of 0.1 so the icon never vanishes. */
+  sizeDelta: number | null;
+  /** Icon: Lucide markup already resolved by the page (this module never
+   * fetches); item `i` draws `randomIcon[i % length]`. */
+  randomIcon: string[] | null;
+  /** Scene: the allowed scenes, one picked per item. */
+  scenes: SceneId[] | null;
+  /** Mosaic and swirl: `shuffle` reorders the palette per item (the same
+   * colours, so a batch stays one family); `random` draws new ones, as many
+   * as the base palette has. */
+  palette: 'off' | 'shuffle' | 'random';
+}
+
+export const DEFAULT_BATCH_VARIATION: BatchVariation = {
+  sizes: null,
+  background: false,
+  ink: false,
+  angleOffset: null,
+  stop1: false,
+  stop2: false,
+  cycleKind: false,
+  grainDelta: null,
+  blurDelta: null,
+  randomSeed: false,
+  lineDelta: null,
+  opacityDelta: null,
+  sizeDelta: null,
+  randomIcon: null,
+  scenes: null,
+  palette: 'off',
+};
+
+/** Bounds the deltas clamp or wrap to — the same ones the page's sliders use. */
+export const VARIATION_BOUNDS = {
+  frequency: [0.002, 0.08],
+  blur: [0, 8],
+  density: [10, 400],
+  opacity: [0.05, 1],
+  iconScale: [0.1, 0.95],
+} as const;
+
+const SEED_ALPHABET = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+
+/** Twelve alphanumerics from the rng — a seed someone could have typed. */
+export function randomSeedText(rng: () => number): string {
+  return Array.from({ length: 12 }, () => SEED_ALPHABET[Math.floor(rng() * SEED_ALPHABET.length)]).join('');
+}
+
+/** A random colour that reads as a colour rather than as mud: any hue, a
+ * middling saturation and lightness. */
+export function randomColor(rng: () => number): string {
+  return rgbToHex(hslToRgb([rng() * 360, 0.35 + rng() * 0.5, 0.3 + rng() * 0.45]) as [number, number, number]);
+}
+
+/** Past `max`, back to zero plus the remainder — the TODO's wrap rule. */
+const wrapPast = (value: number, max: number): number => (value > max ? value % max : value);
+
+const round3 = (n: number): number => Math.round(n * 1000) / 1000;
+
+/**
+ * Item `i` of `n`'s options, derived from the base by the rules in
+ * `variation`. Pure: the same rng state and inputs give the same answer,
+ * which is what makes a varied batch reproducible.
+ *
+ * Only an enabled rule pulls from the rng, so turning one rule on does not
+ * reshuffle the others' results. Rules are applied in a fixed order (sizes,
+ * background, ink, gradient, noise, seed, lines, opacity, icon, scene,
+ * palette) for the same reason.
+ */
+export function varyOptions(
+  base: ImageOptions,
+  i: number,
+  n: number,
+  variation: BatchVariation,
+  rng: () => number
+): ImageOptions {
+  const out: ImageOptions = {
+    ...base,
+    gradient: { ...base.gradient, stops: base.gradient.stops.map((s) => ({ ...s })) },
+    palette: [...base.palette],
+  };
+  // `n` is part of the signature so a rule can depend on the batch size (a
+  // future "spread evenly" rule would); none of the current ones do.
+  void n;
+
+  const size = variation.sizes?.[i];
+  if (size) {
+    out.width = clampSide(size.width);
+    out.height = clampSide(size.height);
+  }
+  if (variation.background) out.background = randomColor(rng);
+  if (variation.ink) out.foreground = randomColor(rng);
+
+  if (variation.angleOffset !== null) {
+    const angle = base.gradient.angle + i * variation.angleOffset;
+    out.gradient.angle = ((angle % 360) + 360) % 360;
+  }
+  const rerollStop = (index: number, other: number) => {
+    const stop = out.gradient.stops[index];
+    if (!stop) return;
+    const avoid = out.gradient.stops[other]?.color;
+    let color = randomColor(rng);
+    while (color === avoid) color = randomColor(rng);
+    stop.color = color;
+  };
+  if (variation.stop1) rerollStop(0, 1);
+  if (variation.stop2) rerollStop(1, 0);
+  if (variation.cycleKind) {
+    const start = Math.max(0, SVG_GRADIENT_KINDS.indexOf(base.gradient.kind as (typeof SVG_GRADIENT_KINDS)[number]));
+    out.gradient.kind = SVG_GRADIENT_KINDS[(start + i) % SVG_GRADIENT_KINDS.length]!;
+  }
+
+  if (variation.grainDelta !== null) {
+    out.frequency = round3(clampUnit(base.frequency + i * variation.grainDelta, ...VARIATION_BOUNDS.frequency));
+  }
+  if (variation.blurDelta !== null) {
+    out.blur = round3(clampUnit(base.blur + i * variation.blurDelta, ...VARIATION_BOUNDS.blur));
+  }
+
+  if (variation.randomSeed) out.seed = randomSeedText(rng);
+
+  if (variation.lineDelta !== null) {
+    out.density = Math.round(wrapPast(base.density + i * variation.lineDelta, VARIATION_BOUNDS.density[1]));
+  }
+  if (variation.opacityDelta !== null) {
+    out.opacity = round3(clampUnit(base.opacity + i * variation.opacityDelta, ...VARIATION_BOUNDS.opacity));
+  }
+
+  if (variation.sizeDelta !== null) {
+    const wrapped = wrapPast(round3(base.iconScale + i * variation.sizeDelta), VARIATION_BOUNDS.iconScale[1]);
+    out.iconScale = round3(Math.max(VARIATION_BOUNDS.iconScale[0], wrapped));
+  }
+  if (variation.randomIcon && variation.randomIcon.length > 0) {
+    out.iconSvg = variation.randomIcon[i % variation.randomIcon.length]!;
+  }
+
+  if (variation.scenes && variation.scenes.length > 0) {
+    out.scene = pick(rng, variation.scenes)!;
+  }
+
+  if (variation.palette === 'shuffle') out.palette = shuffled(rng, base.palette);
+  if (variation.palette === 'random') out.palette = base.palette.map(() => randomColor(rng));
+
+  return out;
+}
+
+export interface BatchItem {
+  name: string;
+  svg: string;
+  /** The options item `i` was drawn from — the page rasterizes and names PNGs
+   * from these, so a varied size comes out at that size. */
+  options: ImageOptions;
+}
+
+/**
+ * A batch: the same settings with the seed varied per item, and optionally
+ * more — see `BatchVariation`.
+ *
+ * The seed is what changes by default, so item 3 of a batch is exactly what
+ * you get by typing that seed on its own — a batch is not a separate code
+ * path. `varyOptions` runs for every item, item 0 included, so `sizes[0]`
+ * applies to the first image. The variation rng is seeded from the base seed
+ * (`seed + ':batch'`) once per batch, so a varied batch is as reproducible as
+ * a plain one.
+ */
+export function buildBatch(
+  options: ImageOptions,
+  count: number,
+  variation: BatchVariation = DEFAULT_BATCH_VARIATION
+): BatchItem[] {
   const n = Number.isFinite(count) ? Math.min(50, Math.max(1, Math.trunc(count))) : 1;
-  return Array.from({ length: n }, (_, i) => ({
-    name: batchName(options, i + 1, n),
-    svg: buildImage(i === 0 ? options : { ...options, seed: `${options.seed}-${i + 1}` }),
-  }));
+  const rng = mulberry32(seedFrom(`${options.seed}:batch`));
+  return Array.from({ length: n }, (_, i) => {
+    const seeded = i === 0 ? options : { ...options, seed: `${options.seed}-${i + 1}` };
+    const varied = varyOptions(seeded, i, n, variation, rng);
+    return { name: batchName(varied, i + 1, n), svg: buildImage(varied), options: varied };
+  });
 }
 
 /** `noise-1200x675-03.svg` — generator, size, index, zero-padded so a file

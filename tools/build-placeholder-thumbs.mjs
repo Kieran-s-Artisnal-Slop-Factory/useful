@@ -1,10 +1,10 @@
 /**
  * Renders the placeholder generator picker's example thumbnails, once.
  *
- * The picker shows a small picture beside each of the nine image generators
- * so they can be told apart before one is chosen. A first version drew all
- * nine from the live settings on every change, which made the page feel slow
- * — nine SVGs (two of them filter-heavy) per keystroke, for pictures whose
+ * The picker shows a small picture beside each of the image generators (every
+ * entry in GENERATORS) so they can be told apart before one is chosen. A first
+ * version drew them all from the live settings on every change, which made the
+ * page feel slow — a dozen SVGs (two of them filter-heavy) per keystroke, for pictures whose
  * job is only to say "this is what a flow field looks like". So they are
  * rendered here, at build-script time, from the generators' DEFAULTS, and the
  * page imports the result as data. They do not follow the controls; the big

@@ -2,7 +2,7 @@
 
 `/tools/placeholders/` — filler text and filler images, both seeded, both drawn here. A stateless Svelte island over four pure modules; nothing is written to IndexedDB and nothing is fetched.
 
-_Describes the code as of v0.5.0 (schema v16) — verify against source when in doubt._
+_Describes the code as of v0.6.0 (schema v17) — verify against source when in doubt._
 
 ## File map
 
@@ -10,9 +10,9 @@ _Describes the code as of v0.5.0 (schema v16) — verify against source when in 
 | --- | --- |
 | [random.ts](../../../src/lib/random.ts) | The app's one seeded PRNG, plus `seedFrom`, `randomInt`, `pick`, `shuffled` |
 | [text.ts](../../../src/lib/placeholder/text.ts) | Both corpora and the text generator |
-| [images.ts](../../../src/lib/placeholder/images.ts) | The nine image generators, and batches |
+| [images.ts](../../../src/lib/placeholder/images.ts) | The eleven image generators, batches and `varyOptions` |
 | [scenes.ts](../../../src/lib/placeholder/scenes.ts) | The fifteen hand-drawn scenes |
-| [thumbnails.json](../../../src/lib/placeholder/thumbnails.json) | The picker's nine example pictures (160×90 data URIs), rendered from the defaults by [tools/build-placeholder-thumbs.mjs](../../../tools/build-placeholder-thumbs.mjs) and committed; they do not follow the controls |
+| [thumbnails.json](../../../src/lib/placeholder/thumbnails.json) | The picker's eleven example pictures (160×90 data URIs), rendered from the defaults by [tools/build-placeholder-thumbs.mjs](../../../tools/build-placeholder-thumbs.mjs) and committed; they do not follow the controls |
 | [size.ts](../../../src/lib/placeholder/size.ts) | Ratios, presets and the aspect lock |
 | [PlaceholdersApp.svelte](../../../src/components/apps/PlaceholdersApp.svelte) | The page |
 | [placeholders.spec.ts](../../../tests/local/placeholders.spec.ts), [placeholder.test.ts](../../../src/lib/placeholder/placeholder.test.ts) | Playwright and Vitest |
@@ -42,7 +42,7 @@ Full transcripts, the measured size table, and the conditions that would flip th
 
 ## Images
 
-Nine generators, all SVG-first, all seeded. SVG because a placeholder is mostly flat colour and geometry — it stays a few kilobytes at any size, where a 4000-pixel PNG of a grey rectangle is megabytes of nothing — and because the PNG/JPG exports then rasterize the same document through [convert.ts](../../../src/lib/img/convert.ts) rather than having a second drawing path.
+Eleven generators, all SVG-first, all seeded. SVG because a placeholder is mostly flat colour and geometry — it stays a few kilobytes at any size, where a 4000-pixel PNG of a grey rectangle is megabytes of nothing — and because the PNG/JPG exports then rasterize the same document through [convert.ts](../../../src/lib/img/convert.ts) rather than having a second drawing path.
 
 | Generator | How it is drawn |
 | --- | --- |
@@ -55,8 +55,18 @@ Nine generators, all SVG-first, all seeded. SVG because a placeholder is mostly 
 | Cut planes | 4–6 quadrilateral slabs on one jittered angle, each long enough to run off both edges, under a shared drop shadow. Its palette comes from `harmonise(background)` — two neighbouring hues plus a dark and a light — because a few big slabs in unrelated colours look like a mistake where a dozen small ones look playful, and because it gives the Background picker something to do beyond filling the gaps |
 | An icon | Any Lucide icon at `iconScale` (0.1–0.95 of the shorter side), loaded through the logo generator's own loader so there is one copy of the 2 MB set in the bundle, and only on this generator |
 | A drawn scene | One of fifteen, below |
+| Mosaic | A grid of `blockSize` squares (percent of the shorter side), each painted from `palette` or, with probability `cutRatio`, cut out to the background. Below |
+| Swirl | One logarithmic spiral drawn as a filled band between itself and a copy turned by `armWidth` of a revolution, in the first two palette colours. Below |
 
 **SVG has no conic gradient.** The generator offers linear and radial and says why the third is missing rather than quietly drawing something else.
+
+### Mosaic and swirl
+
+Both (0.6.0 phase 7) draw from `palette: string[]`, one to four colours, read through `paletteOf()` in [images.ts](../../../src/lib/placeholder/images.ts): blanks dropped, capped at `MAX_PALETTE`, and `DEFAULT_PALETTE` when nothing is left. Every `fill` either generator emits is a palette entry or the background — the unit test parses the fills and checks. The page's palette editor is up to four [ColorField](../../../src/components/ColorField.svelte)s (`ph-palette-<i>`) with `ph-palette-add` / `ph-palette-remove-<i>`; the page copies the default palette into its state because `$state` writes through to the array it is given.
+
+`mosaicLayer(options, w, h, rng)` lays a grid of `blockSize`-percent squares, centred so any partial block is split between both edges. Cut-outs (Q5: painted the background, no transparency) are decided per block by `rng() < odds`, where `odds` is `cutRatio` nudged by a smooth seeded sine field — so the holes gather into patches rather than salt-and-pepper — except that 0 and 1 are exact: 0 paints every block and 1 paints none, and the test counts them (17 × 13 at 400×300 and 8%). Each painted block is inset by a seeded 0–10% of its side, which is what makes it read as tiles with pieces missing rather than a checkerboard. Every block makes the same three rng calls whether or not it is cut, so one block's outcome never shifts its neighbours'.
+
+`swirlLayer(options, w, h, rng)` paints the frame in the second colour (the background when the palette has one colour) and one `<path>` in the first: the band between r = r₀·e^(kθ) and the same spiral turned by `armWidth × 2π`. `k` is chosen so the spiral reaches the far corner after `turns` revolutions; the path carries on `armWidth` of a turn past that and closes along a rim at a radius that is already off-frame, so there is no chord across the picture. A rotated log spiral never crosses itself, so the band is one simple path and `armWidth` is the first colour's share of every turn at every radius. The seed sets the start angle, the winding direction and a small nudge off centre.
 
 ## The scenes
 
@@ -64,10 +74,48 @@ Fifteen hand-written SVG scenes — five Nature, five Sport, five City — in [s
 
 Each is drawn in a 160×90 box and placed as a nested `<svg>` with `preserveAspectRatio="xMidYMid slice"`, which is what lets one drawing fill any frame — the proportions hold and the frame crops, exactly like `object-fit: cover`. A background rect is painted behind it so a crop never shows through.
 
-## Sizes and batches
+## Sizes
 
 The aspect lock reads the ratio from the size **before** the edit and recomputes the side that was *not* just typed in — a lock that recomputes the field someone is holding fights the person using it.
 
+## Batches
+
 A batch is the same settings with the seed varied per item (`seed`, `seed-2`, `seed-3`…), so item *n* of a batch is exactly what typing that seed produces on its own — a batch is not a separate code path. Files are named `<generator>-<w>x<h>-<index>.<ext>`, zero-padded to the batch size so a file listing sorts the way the batch was made, and zipped through [zip.ts](../../../src/lib/zip.ts). Rasterizing runs one at a time: fifty canvases at once is how a tab runs out of memory.
 
-Test hooks are prefixed `ph-`: `ph-mode`, `ph-corpus`, `ph-count`, `ph-unit`, `ph-text-seed`, `ph-lorem-start`, `ph-html`, `ph-text`, `ph-text-counts`, `ph-copy-text`, `ph-download-text`, `ph-generators`, `ph-gen-<id>`, `ph-bg`, `ph-fg`, `ph-seed`, `ph-frequency`, `ph-blur`, `ph-density`, `ph-opacity`, `ph-icon-scale`, `ph-heading`, `ph-subheading`, `ph-grad-kind`, `ph-grad-angle`, `ph-grad-stop-<i>`, `ph-icon-search`, `ph-icon-name`, `ph-icons`, `ph-icon-<Name>`, `ph-scene-<id>`, `ph-width`, `ph-height`, `ph-lock`, `ph-size-note`, `ph-ratios`, `ph-ratio-<id>`, `ph-sizes`, `ph-output-card`, `ph-preview`, `ph-format`, `ph-batch`, `ph-download`, `ph-download-batch`, `ph-copy-svg`, `ph-links-card`, `ph-feedback`.
+Since 0.6.0 a batch can also differ per item. `buildBatch(options, count, variation?)` in [images.ts](../../../src/lib/placeholder/images.ts) takes a `BatchVariation` — `DEFAULT_BATCH_VARIATION` is everything off, and with it omitted the output is byte-for-byte what it was before (the unit test pins that). Every item, **item 0 included**, goes through the pure `varyOptions(base, i, n, variation, rng)`, so `sizes[0]` applies to the first image; then the same `buildImage` draws it and `batchName` is taken from the *varied* options, so a varied size shows in the file name. The rng is `mulberry32(seedFrom(seed + ':batch'))`, made once per batch, and only a rule that is on pulls from it — a varied batch is as reproducible as a plain one, and turning one rule on does not reshuffle another's picks.
+
+```mermaid
+flowchart LR
+  base["ImageOptions (the page's settings)"] --> suffix["seed, seed-2 … seed-n"]
+  variation["BatchVariation (one rule per checkbox)"] --> vary
+  rng["rng = mulberry32(seedFrom(seed + ':batch'))"] --> vary
+  suffix --> vary["varyOptions(base, i, n, variation, rng) — once per item, i = 0 included"]
+  vary --> build["buildImage(varied)"]
+  vary --> name["batchName(varied, i + 1, n)"]
+  build --> zip["zipBlob → one .zip"]
+  name --> zip
+```
+
+The rules, one per line of the TODO. "Item *i*" counts from 0; deltas are multiplied by *i*, so the first image is always the base.
+
+| Rule | Shown for | Parameter | Item *i* gets | Bound |
+| --- | --- | --- | --- | --- |
+| `sizes` | all | one `{ width, height }` per item (`ph-vary-size-<i>-w` / `-h`) | `sizes[i]`, clamped like any size; a shorter list leaves the rest at the base | 16–4096 |
+| `background` | all | — | `randomColor(rng)` — any hue, middling saturation and lightness | — |
+| `ink` | heading, noise, flow, icon | — | `randomColor(rng)` as `foreground` | — |
+| `angleOffset` | gradient | degrees | `angle + i × offset`, wrapped into 0–359 | wrap 360 |
+| `stop1` / `stop2` | gradient | — | a random colour, re-rolled until it differs from the other stop | — |
+| `cycleKind` | gradient | — | `SVG_GRADIENT_KINDS[(base + i) % 2]` — linear → radial → linear. SVG has no conic gradient, so two kinds, not three | — |
+| `grainDelta` | noise | per item | `frequency + i × delta` | clamp 0.002–0.08 |
+| `blurDelta` | noise | per item | `blur + i × delta` | clamp 0–8 |
+| `randomSeed` | noise, flow, material, planes | — | `randomSeedText(rng)`: 12 alphanumerics, replacing the `-n` suffix | — |
+| `lineDelta` | flow | lines | `density + i × delta`; past 400 back to `0 + remainder` | wrap 400 |
+| `opacityDelta` | material, planes | per item | `opacity + i × delta` | clamp 0.05–1 |
+| `sizeDelta` | icon | of the shorter side | `iconScale + i × delta`; past 0.95 back to `0 + remainder`, then floored | wrap 0.95, floor 0.1 |
+| `randomIcon` | icon | — | `randomIcon[i % length]` — the **page** picks names from the fetched Lucide list with `mulberry32(seedFrom(seed + ':icons'))` and resolves them to markup in `batchIcons()`; `varyOptions` never fetches | — |
+| `scenes` | scene | allowed `SceneId[]`, by group (`ph-vary-scenes-group-<Group>`) or one at a time (`ph-vary-scene-<id>`) | `pick(rng, scenes)`; an empty list leaves the chosen scene | — |
+| `palette` | mosaic, swirl | `'off' \| 'shuffle' \| 'random'` (`ph-vary-palette-value`) | `shuffle`: `shuffled(rng, palette)` — the same colours in a new order; `random`: `randomColor(rng)` for each entry, so as many colours as the base | — |
+
+The bounds live in `VARIATION_BOUNDS` and match the page's sliders. The page keeps each rule as a checkbox plus a remembered parameter (`vary` in [PlaceholdersApp.svelte](../../../src/components/apps/PlaceholdersApp.svelte)) and folds them into the library type in `batchVariation()`; the sizes table follows the batch count through an effect that adds rows at the current size and drops surplus ones without touching the rest. `buildBatch` returns each item's `options` alongside its SVG so a PNG/JPG batch rasterizes and names every item at its own size.
+
+Test hooks are prefixed `ph-`: `ph-mode`, `ph-corpus`, `ph-count`, `ph-unit`, `ph-text-seed`, `ph-lorem-start`, `ph-html`, `ph-text`, `ph-text-counts`, `ph-copy-text`, `ph-download-text`, `ph-generators`, `ph-gen-<id>`, `ph-bg`, `ph-fg`, `ph-seed`, `ph-frequency`, `ph-blur`, `ph-density`, `ph-opacity`, `ph-icon-scale`, `ph-heading`, `ph-subheading`, `ph-grad-kind`, `ph-grad-angle`, `ph-grad-stop-<i>`, `ph-icon-search`, `ph-icon-name`, `ph-icons`, `ph-icon-<Name>`, `ph-scene-<id>`, `ph-palette-<i>` (plus `-pick`), `ph-palette-add`, `ph-palette-remove-<i>`, `ph-block-size`, `ph-cut-ratio`, `ph-turns`, `ph-arm-width`, `ph-width`, `ph-height`, `ph-lock`, `ph-size-note`, `ph-ratios`, `ph-ratio-<id>`, `ph-sizes`, `ph-output-card`, `ph-preview`, `ph-format`, `ph-batch`, `ph-download`, `ph-download-batch`, `ph-copy-svg`, `ph-links-card`, `ph-feedback`. Batch variation: `ph-vary-card`, `ph-vary-<rule>` for each checkbox (`sizes`, `background`, `ink`, `randomSeed`, `angleOffset`, `stop1`, `stop2`, `cycleKind`, `grainDelta`, `blurDelta`, `lineDelta`, `opacityDelta`, `sizeDelta`, `randomIcon`, `scenes`, `palette`), `ph-vary-<rule>-value` for its parameter, `ph-vary-size-<i>-w` / `ph-vary-size-<i>-h` for the sizes rows, `ph-vary-scenes-group-<Group>` and `ph-vary-scene-<id>` inside the scene picker.
