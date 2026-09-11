@@ -803,6 +803,82 @@ test.describe('napkin math — the image export', () => {
       .toBe(false);
   });
 
+  test('a caption can be turned off without taking its row with it', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/napkin-math/');
+    const before = await app.dumpAll();
+    await openWithMargin(page);
+
+    const withAll = await previewSvg(page);
+    expect(withAll).toContain('WITH YOUR VALUES');
+
+    await page.getByTestId('napkin-image-caption-on-substituted').uncheck();
+    await expect
+      .poll(async () => (await previewSvg(page)).includes('WITH YOUR VALUES'), { timeout: 20_000 })
+      .toBe(false);
+    // The text box is out of play while its caption is off.
+    await expect(page.getByTestId('napkin-image-caption-substituted')).toBeDisabled();
+
+    // The caption went; the row it sat above did not.
+    const glyphs = await previewGlyphs(page);
+    expect(glyphs).toContain('12500');
+    expect(glyphs).toContain('4750');
+    const without = await previewSvg(page);
+    expect(without).toContain('FORMULA');
+    expect(without).toContain('RESULT');
+    expect(without.length).toBeLessThan(withAll.length);
+
+    // Back on, back in the picture — the text was kept, not cleared.
+    await page.getByTestId('napkin-image-caption-on-substituted').check();
+    await expect
+      .poll(async () => (await previewSvg(page)).includes('WITH YOUR VALUES'), { timeout: 20_000 })
+      .toBe(true);
+    await expect(page.getByTestId('napkin-image-caption-substituted')).toHaveValue('With your values');
+
+    expect(await app.dumpAll()).toEqual(before);
+  });
+
+  test('a caption can be reworded, emptied, and reset', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/napkin-math/');
+    const before = await app.dumpAll();
+    await openWithMargin(page);
+
+    await page.getByTestId('napkin-image-caption-formula').fill('Given');
+    await expect
+      .poll(async () => (await previewSvg(page)).includes('GIVEN'), { timeout: 20_000 })
+      .toBe(true);
+    const reworded = await previewSvg(page);
+    expect(reworded).not.toContain('>FORMULA<');
+    expect(reworded).toContain('WITH YOUR VALUES');
+    expect(reworded).toContain('RESULT');
+
+    // Blank means no caption at all, and the row keeps its maths.
+    await page.getByTestId('napkin-image-caption-formula').fill('   ');
+    await expect
+      .poll(async () => (await previewSvg(page)).includes('GIVEN'), { timeout: 20_000 })
+      .toBe(false);
+    expect(await previewGlyphs(page)).toContain('revenue');
+
+    // Reset puts the three defaults back, text and toggles both.
+    await page.getByTestId('napkin-image-caption-on-result').uncheck();
+    await page.getByTestId('napkin-image-captions-reset').click();
+    await expect(page.getByTestId('napkin-image-caption-formula')).toHaveValue('Formula');
+    await expect(page.getByTestId('napkin-image-caption-on-result')).toBeChecked();
+    await expect
+      .poll(async () => (await previewSvg(page)).includes('>FORMULA<'), { timeout: 20_000 })
+      .toBe(true);
+    expect(await previewSvg(page)).toContain('>RESULT<');
+
+    // Turning a row off greys its caption box; the caption itself is untouched.
+    await page.getByTestId('napkin-image-row-result').uncheck();
+    await expect(page.getByTestId('napkin-image-caption-result')).toBeDisabled();
+    await expect(page.getByTestId('napkin-image-caption-result')).toHaveValue('Result');
+
+    // Captions are an export option, not template data: nothing was written.
+    expect(await app.dumpAll()).toEqual(before);
+  });
+
   test('the dark theme changes the ink, not the layout', async ({ app }) => {
     const { page } = app;
     await app.goto('/tools/napkin-math/');

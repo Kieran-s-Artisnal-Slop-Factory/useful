@@ -62,6 +62,76 @@ export function sensorStops(crop1: number, crop2: number): number {
   return 2 * Math.log2(crop1 / crop2);
 }
 
+/* ------------------------------------------------ exposure value (EV100) --- */
+
+/** The three exposure settings a camera writes into EXIF for one photo. */
+export interface Exposure {
+  /** f-number (N). */
+  aperture: number;
+  /** Shutter time in seconds (t). */
+  shutter: number;
+  iso: number;
+}
+
+/**
+ * Exposure value at ISO 100: `EV100 = log2(N² / t) − log2(ISO / 100)`.
+ *
+ * The first term is the classic EV of the aperture/shutter pair; the second
+ * removes the gain, so two photos of the same scene at different ISOs land on
+ * the same number when they were metered the same. Higher EV = the settings
+ * admitted LESS light per unit of gain (brighter scene). f/2.8, 1/250, ISO 100
+ * → ≈ 10.94. NaN when any setting is not positive.
+ */
+export function exposureValue({ aperture, shutter, iso }: Exposure): number {
+  if (!(aperture > 0) || !(shutter > 0) || !(iso > 0)) return NaN;
+  return Math.log2((aperture * aperture) / shutter) - Math.log2(iso / 100);
+}
+
+export interface ExposureComparison {
+  /** EV100 of photo A and photo B, in that order. */
+  ev: [number, number];
+  /** Per-dial stop differences — see the sign convention below. */
+  apertureStops: number;
+  shutterStops: number;
+  isoStops: number;
+  /** `apertureStops + shutterStops + isoStops`. */
+  totalStops: number;
+  /** `2 ** totalStops` — "photo B received N× the light of photo A". */
+  ratio: number;
+}
+
+/**
+ * How much more light photo B received than photo A, decomposed by dial.
+ *
+ * SIGN CONVENTION: positive = photo B received MORE light (or gain) than
+ * photo A on that dial; the total is B minus A in stops. Each row reuses the
+ * existing stop functions with the arguments ordered so that "more light"
+ * comes out positive:
+ *   aperture  apertureStops(N_A, N_B)  = 2·log2(N_A / N_B)  — a smaller
+ *             f-number on B opens the lens wider, so B gets more
+ *   shutter   shutterStops(t_B, t_A)   = log2(t_B / t_A)    — a longer
+ *             shutter on B collects more
+ *   iso       isoStops(iso_B, iso_A)   = log2(iso_B / iso_A) — more gain on
+ *             B, counted as "light" here because it brightens the picture
+ * The total is therefore `EV_A − EV_B`: a lower EV100 means the settings
+ * let in more light. `compareExposures(a, b).totalStops` is exactly
+ * `-compareExposures(b, a).totalStops`.
+ */
+export function compareExposures(a: Exposure, b: Exposure): ExposureComparison {
+  const ap = apertureStops(a.aperture, b.aperture);
+  const sh = shutterStops(b.shutter, a.shutter);
+  const is = isoStops(b.iso, a.iso);
+  const total = ap + sh + is;
+  return {
+    ev: [exposureValue(a), exposureValue(b)],
+    apertureStops: ap,
+    shutterStops: sh,
+    isoStops: is,
+    totalStops: total,
+    ratio: 2 ** total,
+  };
+}
+
 /* ------------------------------------------------------- 1/3-stop scales --- */
 
 /**

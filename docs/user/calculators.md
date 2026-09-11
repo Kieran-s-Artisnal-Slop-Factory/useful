@@ -27,6 +27,8 @@ The page starts at 5 + 3 in 8-bit and goes back to that on reload.
 
 The sensor format you pick for set A is remembered and preselected next time. It is listed on the Preferences page under "Remembered values". Everything else on the page resets on reload.
 
+**Compare two photos**: pick a photo for A and one for B, straight from a camera or phone. Each shows what its EXIF says — camera, f-number, shutter, ISO, focal length — and its exposure value at ISO 100 (`EV100 = log2(N² ÷ t) − log2(ISO ÷ 100)`). Below that, three rows work out the difference one dial at a time, with the equation, the numbers substituted and the result in stops; a total; and a sentence such as "Photo B received about 2.3 stops (≈ 4.9×) more light than photo A". Positive means B got more. A photo without the needed tags says which ones are missing instead. The files stay in your browser and nothing is saved.
+
 ## File transfer
 
 1. Enter the **file size** and pick a unit (KB, MB, GB, TB).
@@ -36,6 +38,8 @@ The sensor format you pick for set A is remembered and preselected next time. It
 The estimate shows the transfer time (for example "1 min 20 s"), the same figure in plain seconds, the link speed spelled both ways ("100 Mbps = 12.5 MB/s") and, if you set an overhead, the effective speed after it. The page starts at 1 GB over 100 Mbps.
 
 ## Daily calories
+
+The first time you open this page it asks you to read a short warning before the form unlocks: the tool is not medical advice, talk to a doctor before acting on any figure, and the equations are averages over groups of people rather than a measurement of you. Press **I have read and understand the risks** and the page remembers that in this browser, so it will not ask again. **Not now** (or Escape) closes the warning without unlocking anything — a **Read the warning** button stays on the page to bring it back, and nothing is saved until you accept.
 
 Read these four things before you read a number off this page.
 
@@ -92,6 +96,9 @@ You get three figures: **Resting (BMR)**, what you would burn lying still all da
 - Set B has no focal length on purpose: focal length does not change how much light reaches the sensor.
 - Sub-second shutter speeds are always displayed as a fraction, so a typed 0.7 s shows up as "1/1" in the equivalents table. What you typed is still what is calculated.
 - Only set A's sensor format is remembered (shown on the Preferences page as `photo_last_format`). Set B's format and all the numbers reset on reload. Picking a format is the only thing on this page that writes anything.
+- **The photo comparison is settings, not a light meter.** EXIF records f-number, shutter and ISO, not how bright the scene was, so "more light" means the camera's settings let more through — a photo of a dark room at f/1.8 for 1/30 reads as receiving more light than a sunny one at f/11 1/500, which is true of the sensor and says nothing about the scene. ISO is counted because it brightens the picture; its row says no light actually moved.
+- **Most images have no exposure tags.** Screenshots, images saved from the web, and anything exported by an editor that strips metadata (including this app's own image tools) will report `FNumber, ExposureTime, ISO` missing. Use the original file from the camera. SVG and formats without an EXIF block get the same message.
+- The two photos are never uploaded anywhere and are not kept: reload the page and both slots are empty.
 
 ### File transfer
 

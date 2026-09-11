@@ -211,10 +211,10 @@ nobody answers.
 | # | Phase | Migration | Pref keys | Notes |
 |---|-------|-----------|-----------|-------|
 | 0 | Groundwork: version bump, adopt the theme.css change, dependency + CI updates | — | — | **DONE.** dicebear 10 + TS 7 held back; vitest 5 landed |
-| 1 | Napkin Math › toggle + edit export captions | — | — | Small; extends 0.5.0 Phase 3 |
-| 2 | Daily Calories › risk acknowledgement | — | `calorie_risk_acknowledged_at` | Small; OfflineSetup pattern |
-| 3 | Photography › compare two photos by EXIF | — | — | Stateless; `exifr` joins HEAVY |
-| **A** | **Checkpoint** — full suite green | | | |
+| 1 | Napkin Math › toggle + edit export captions | — | — | **DONE.** Per-session (Q1); `captionText` in exportImage.ts |
+| 2 | Daily Calories › risk acknowledgement | — | `calorie_risk_acknowledged_at` | **DONE.** Once per browser (Q2); only accepting writes |
+| 3 | Photography › compare two photos by EXIF | — | — | **DONE.** Stateless; `exifr` joined HEAVY; two generated JPEG fixtures (the Unsplash one has no exposure tags) |
+| **A** | **Checkpoint** — full suite green | | | **PASSED** 2026-09-10 |
 | 4 | Time › Pomodoro | **v17** `pomodoro` singleton | — | New tool + engine branch |
 | 5 | Generators › Clip path | — | — | New tool; stateless; largest pure-logic piece |
 | **B** | **Checkpoint** — full suite green | | | |
@@ -252,7 +252,7 @@ checkpoint records its date in the overview table and on its heading. No
 phase past a checkpoint starts before it passes. Workflow verifier agents can
 die on the spend limit — if one does, the parent runs the suite itself.
 
-### Checkpoint A — after Phases 0–3
+### Checkpoint A — after Phases 0–3 — PASSED 2026-09-10 (526 pass; one background-remover flake green on rerun; exifr payload matcher resolved from the built chunk name)
 
 Adds to the baseline: napkin spec's new caption test, calculators spec's new
 acknowledgement + EXIF tests, payload spec with `exifr` on the photography
@@ -307,7 +307,7 @@ section if a pin or override changed.
 
 ---
 
-## Phase 1 — Napkin Math › toggle and edit the export captions
+## Phase 1 — Napkin Math › toggle and edit the export captions — DONE
 
 **Goal:** each of the three rows in the export image can have its caption
 turned off individually, and the caption text can be replaced.
@@ -342,7 +342,7 @@ user doc's export paragraph.
 
 ---
 
-## Phase 2 — Daily Calories › risk acknowledgement
+## Phase 2 — Daily Calories › risk acknowledgement — DONE
 
 **Goal:** the calorie calculator is unusable until the user has read a
 not-medical-advice warning once, per decision 2.
@@ -376,7 +376,7 @@ sequence diagram: mount → read prefs → dialog → accept → write);
 
 ---
 
-## Phase 3 — Photography › compare the light in two photos
+## Phase 3 — Photography › compare the light in two photos — DONE
 
 **Goal:** upload two photos with EXIF and see how much more light one
 received than the other, with the equations shown, per decision 3.

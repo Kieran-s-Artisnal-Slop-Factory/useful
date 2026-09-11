@@ -4,8 +4,35 @@
  * writes NOTHING. The one deliberate write (remembering the sensor format) is
  * audited as an isolated preferences delta.
  */
-import { test, expect } from './helpers/app';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { test, expect, type App } from './helpers/app';
 import { assertIsolatedDelta } from './helpers/oracle';
+
+const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), 'fixtures');
+
+/**
+ * Accept the calorie tool's one-time not-medical-advice warning and wait for
+ * the acknowledgement to land in `preferences`. The form is a disabled
+ * fieldset until then, so every calorie case starts here; the write is waited
+ * on so a `dumpAll()` taken afterwards is a settled baseline.
+ */
+async function acceptCalorieRisk(app: App): Promise<void> {
+  const { page } = app;
+  await expect(page.getByTestId('cal-risk-dialog')).toBeVisible();
+  await page.getByTestId('cal-risk-accept').click();
+  await expect(page.getByTestId('cal-risk-dialog')).toHaveCount(0);
+  await expect
+    .poll(async () => typeof (await app.get('preferences', 'singleton'))?.calorie_risk_acknowledged_at)
+    .toBe('string');
+  await expect(page.getByTestId('cal-age')).toBeEnabled();
+}
+
+/** A fresh visit to the calorie page with the warning already dealt with. */
+async function openCalories(app: App): Promise<void> {
+  await app.goto('/tools/calories/');
+  await acceptCalorieRisk(app);
+}
 
 test.describe('number conversion', () => {
   test('converts between bases and runs bit operations with zero DB writes', async ({ app }) => {
@@ -301,6 +328,79 @@ test.describe('photography', () => {
     await expect(page.getByTestId('ph-format')).toHaveValue('apsc-canon');
     expect(await app.dumpAll()).toEqual(after);
   });
+
+  /**
+   * The fixtures are written by tools/build-exposure-fixtures.mjs: two 8×8
+   * JPEGs whose EXIF says f/2.8 and f/4, both at 1/250 s ISO 100 50 mm. The
+   * Unsplash JPEG carries no exposure tags at all, so it is the "no EXIF"
+   * case alongside the WebP sample, which exifr cannot open.
+   */
+  test('compare two photos: the same photo twice is 0 stops, one stop of aperture reads as such', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/photography/');
+    const before = await app.dumpAll();
+
+    const f28 = join(FIXTURES, 'exposure-f2.8-250-iso100.jpg');
+    await page.getByTestId('photo-cmp-a').setInputFiles(f28);
+    await page.getByTestId('photo-cmp-b').setInputFiles(f28);
+
+    // Per-photo readout: model, f-number, shutter, ISO, focal and EV100
+    // (log2(2.8²/0.004) − log2(1) ≈ 10.94).
+    const readoutA = page.getByTestId('photo-cmp-readout-a');
+    await expect(readoutA).toContainText('Fixture Cam');
+    await expect(readoutA).toContainText('f/2.8');
+    await expect(readoutA).toContainText('1/250');
+    await expect(readoutA).toContainText('ISO 100');
+    await expect(readoutA).toContainText('50mm');
+    await expect(page.getByTestId('photo-cmp-ev-a')).toContainText('EV 10.94');
+    await expect(page.getByTestId('photo-cmp-ev-b')).toContainText('EV 10.94');
+
+    // Identical settings: every row and the total are 0, and the sentence
+    // says so.
+    await expect(page.getByTestId('photo-cmp-aperture')).toHaveText('0');
+    await expect(page.getByTestId('photo-cmp-shutter')).toHaveText('0');
+    await expect(page.getByTestId('photo-cmp-iso')).toHaveText('0');
+    await expect(page.getByTestId('photo-cmp-total')).toContainText('0.0 stops');
+    await expect(page.getByTestId('photo-cmp-result')).toContainText('the same amount of light');
+
+    // Swap B for the f/4 shot: 2·log2(2.8/4) = −1.03 stops, ≈ 0.5×.
+    await page.getByTestId('photo-cmp-b').setInputFiles(join(FIXTURES, 'exposure-f4-250-iso100.jpg'));
+    await expect(page.getByTestId('photo-cmp-aperture')).toHaveText('−1.03');
+    await expect(page.getByTestId('photo-cmp-shutter')).toHaveText('0');
+    await expect(page.getByTestId('photo-cmp-total')).toContainText('−1.0 stops');
+    await expect(page.getByTestId('photo-cmp-result')).toContainText('about 1.0 stops (≈ 0.5×) less light than photo A');
+    // The working shows the substituted values, not only the answer.
+    await expect(page.getByTestId('photo-cmp-aperture-working')).toContainText('2.8');
+    await expect(page.getByTestId('photo-cmp-aperture-working')).toContainText('4');
+
+    expect(await app.dumpAll()).toEqual(before);
+  });
+
+  test('compare two photos: a file without exposure tags names what is missing', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/photography/');
+    const before = await app.dumpAll();
+
+    // A JPEG with no EXIF block at all.
+    await page.getByTestId('photo-cmp-a').setInputFiles(join(FIXTURES, 'saeed-isavy-i-WLGGm6f0o-unsplash.jpg'));
+    const missingA = page.getByTestId('photo-cmp-missing-a');
+    await expect(missingA).toContainText('FNumber');
+    await expect(missingA).toContainText('ExposureTime');
+    await expect(missingA).toContainText('ISO');
+    await expect(page.getByTestId('photo-cmp-result')).toHaveCount(0);
+
+    // A format exifr cannot read at all gets the same answer, on the other side.
+    await page.getByTestId('photo-cmp-b').setInputFiles(join(FIXTURES, 'webp_1000x600_sample_file_8KB.webp'));
+    await expect(page.getByTestId('photo-cmp-missing-b')).toContainText('FNumber');
+
+    // One good photo on side A does not produce a comparison on its own.
+    await page.getByTestId('photo-cmp-a').setInputFiles(join(FIXTURES, 'exposure-f2.8-250-iso100.jpg'));
+    await expect(page.getByTestId('photo-cmp-ev-a')).toContainText('EV 10.94');
+    await expect(page.getByTestId('photo-cmp-missing-a')).toHaveCount(0);
+    await expect(page.getByTestId('photo-cmp-result')).toHaveCount(0);
+
+    expect(await app.dumpAll()).toEqual(before);
+  });
 });
 
 test.describe('file transfer', () => {
@@ -374,7 +474,7 @@ test.describe('daily calories', () => {
    */
   test('computes BMR, maintenance and a goal target with zero DB writes', async ({ app }) => {
     const { page } = app;
-    await app.goto('/tools/calories/');
+    await openCalories(app);
     const before = await app.dumpAll();
 
     // Defaults: 70 kg, 175 cm, 30 y, male, moderately active, Mifflin-St Jeor.
@@ -413,7 +513,7 @@ test.describe('daily calories', () => {
 
   test('Katch-McArdle is refused without body fat, and works with it', async ({ app }) => {
     const { page } = app;
-    await app.goto('/tools/calories/');
+    await openCalories(app);
     const before = await app.dumpAll();
 
     await page.getByTestId('cal-equation').selectOption('katch-mcardle');
@@ -434,7 +534,7 @@ test.describe('daily calories', () => {
 
   test('cautions appear for an aggressive plan without blocking it', async ({ app }) => {
     const { page } = app;
-    await app.goto('/tools/calories/');
+    await openCalories(app);
     const before = await app.dumpAll();
 
     await page.getByTestId('cal-goal-lose').check();
@@ -482,7 +582,7 @@ test.describe('daily calories', () => {
     app,
   }) => {
     const { page } = app;
-    await app.goto('/tools/calories/');
+    await openCalories(app);
     // The registry sweep audits the initial render only, where the goal is
     // "maintain" and the units are metric — so the rate, target-weight and
     // feet/inches fields would otherwise never be checked at all.
@@ -499,7 +599,7 @@ test.describe('daily calories', () => {
 
   test('the unit toggle writes only the preferences singleton and survives reload', async ({ app }) => {
     const { page } = app;
-    await app.goto('/tools/calories/');
+    await openCalories(app);
     const before = await app.dumpAll();
 
     await page.getByTestId('cal-units-imperial').click();
@@ -529,6 +629,73 @@ test.describe('daily calories', () => {
     await page.getByTestId('cal-units-metric').click();
     await expect(page.getByTestId('cal-weight')).toHaveValue('70');
   });
+
+  test('the first visit shows the warning, load writes nothing, accepting writes one field', async ({
+    app,
+  }) => {
+    const { page } = app;
+    // The baseline is taken BEFORE the page is opened: the load itself must
+    // write nothing, dialog or no dialog.
+    const before = await app.dumpAll();
+    await app.goto('/tools/calories/');
+    const dialog = page.getByTestId('cal-risk-dialog');
+    await expect(dialog).toBeVisible();
+    await expect(dialog).toContainText('not medical advice');
+    await expect(page.getByTestId('cal-risk-accept')).toHaveText('I have read and understand the risks');
+    // Locked behind the dialog: the inputs AND the unit toggle.
+    await expect(page.getByTestId('cal-age')).toBeDisabled();
+    await expect(page.getByTestId('cal-units-imperial')).toBeDisabled();
+    expect(await app.dumpAll()).toEqual(before);
+
+    await acceptCalorieRisk(app);
+    const after = await app.dumpAll();
+    assertIsolatedDelta(before, after, [{ store: 'preferences', id: 'singleton' }]);
+
+    // Exactly one preference field changed, and it is a parseable timestamp.
+    const SYNC = new Set(['id', 'updated_at', 'deleted_at', 'server_seq', 'field_updated_at']);
+    const row = (await app.get('preferences', 'singleton'))!;
+    const beforeRow = (before.preferences ?? []).find((r) => r.id === 'singleton') ?? {};
+    const changed = Object.keys(row).filter((k) => !SYNC.has(k) && !Object.is(row[k], beforeRow[k]));
+    expect(changed).toEqual(['calorie_risk_acknowledged_at']);
+    expect(Number.isNaN(Date.parse(row.calorie_risk_acknowledged_at as string))).toBe(false);
+    await expect(page.getByTestId('cal-risk-notice')).toHaveCount(0);
+
+    // Remembered: the next visit asks nothing, the form is live, and the
+    // reload itself writes nothing.
+    await app.goto('/tools/calories/');
+    await expect(page.getByTestId('cal-age')).toBeEnabled();
+    await expect(dialog).toHaveCount(0);
+    await expect(page.getByTestId('cal-risk-notice')).toHaveCount(0);
+    expect(await app.dumpAll()).toEqual(after);
+  });
+
+  test('"Not now" and Escape leave the form locked and write nothing, and the notice reopens the warning', async ({
+    app,
+  }) => {
+    const { page } = app;
+    await app.goto('/tools/calories/');
+    const before = await app.dumpAll();
+    const dialog = page.getByTestId('cal-risk-dialog');
+    await expect(dialog).toBeVisible();
+
+    await page.getByTestId('cal-risk-later').click();
+    await expect(dialog).toHaveCount(0);
+    await expect(page.getByTestId('cal-age')).toBeDisabled();
+    await expect(page.getByTestId('cal-risk-notice')).toBeVisible();
+
+    // The notice's button brings the dialog back; Escape is the other exit.
+    await page.getByTestId('cal-risk-reopen').click();
+    await expect(dialog).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(dialog).toHaveCount(0);
+    await expect(page.getByTestId('cal-age')).toBeDisabled();
+    expect(await app.dumpAll()).toEqual(before);
+
+    // Nothing was remembered, so the next visit asks again.
+    await app.goto('/tools/calories/');
+    await expect(dialog).toBeVisible();
+    expect(await app.dumpAll()).toEqual(before);
+  });
 });
 
 test('explainer drop-downs toggle from the keyboard on every calculator page', async ({ app }) => {
@@ -541,6 +708,9 @@ test('explainer drop-downs toggle from the keyboard on every calculator page', a
   ];
   for (const t of targets) {
     await app.goto(t.path);
+    // The calorie page opens modal until its warning is accepted, and a modal
+    // makes the explainer behind it inert.
+    if (t.path === '/tools/calories/') await acceptCalorieRisk(app);
     const details = page.getByTestId(t.testid);
     await details.locator('summary').focus();
     await page.keyboard.press('Enter');

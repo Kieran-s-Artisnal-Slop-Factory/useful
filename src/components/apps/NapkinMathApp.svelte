@@ -167,10 +167,43 @@
    */
   let imageOpen = $state(false);
   let imageDialog: HTMLDialogElement | undefined = $state();
-  let showFormulaRow = $state(true);
-  let showSubstitutedRow = $state(true);
-  let showResultRow = $state(true);
+  /**
+   * The three rows of the picture (0.6.0 Phase 1). Each can be left out, and
+   * each caption can be turned off or reworded. Like theme and scale this is
+   * per-session: it is never written to the template.
+   */
+  type ImageRowKey = 'formula' | 'substituted' | 'result';
+  interface ImageRow {
+    show: boolean;
+    captionOn: boolean;
+    caption: string;
+  }
+  const IMAGE_ROWS: readonly { key: ImageRowKey; title: string }[] = [
+    { key: 'formula', title: 'Formula' },
+    { key: 'substituted', title: 'With your values' },
+    { key: 'result', title: 'Result' },
+  ];
+  const DEFAULT_CAPTIONS: Record<ImageRowKey, string> = {
+    formula: 'Formula',
+    substituted: 'With your values',
+    result: 'Result',
+  };
+  const freshImageRows = (): Record<ImageRowKey, ImageRow> => ({
+    formula: { show: true, captionOn: true, caption: DEFAULT_CAPTIONS.formula },
+    substituted: { show: true, captionOn: true, caption: DEFAULT_CAPTIONS.substituted },
+    result: { show: true, captionOn: true, caption: DEFAULT_CAPTIONS.result },
+  });
+  let imageRows = $state<Record<ImageRowKey, ImageRow>>(freshImageRows());
   let showImageTitle = $state(true);
+  /** The caption the renderer gets: blank when off, and blank means none. */
+  const rowLabel = (key: ImageRowKey): string =>
+    imageRows[key].captionOn ? imageRows[key].caption.trim() : '';
+  function resetCaptions() {
+    for (const { key } of IMAGE_ROWS) {
+      imageRows[key].captionOn = true;
+      imageRows[key].caption = DEFAULT_CAPTIONS[key];
+    }
+  }
   let imageTheme = $state<'light' | 'dark'>('light');
   let imageTransparent = $state(false);
   let imageDecimals = $state('auto');
@@ -259,20 +292,20 @@
       const rows: { label: string; latex: string }[] = [];
       let note: string | null = null;
 
-      if (showFormulaRow) rows.push({ label: 'Formula', latex: formulaLatex });
+      if (imageRows.formula.show) rows.push({ label: rowLabel('formula'), latex: formulaLatex });
 
-      if (showSubstitutedRow) {
+      if (imageRows.substituted.show) {
         const subbed = await substitutedLatex(formulaLatex, readInputs());
         if (token !== imageToken || destroyed) return;
         if (subbed.ok) {
-          rows.push({ label: 'With your values', latex: subbed.latex });
+          rows.push({ label: rowLabel('substituted'), latex: subbed.latex });
         } else {
           note = subbed.reason;
         }
       }
 
-      if (showResultRow && result !== null) {
-        rows.push({ label: 'Result', latex: `= ${formatNumberLatex(result, decimalsValue())}` });
+      if (imageRows.result.show && result !== null) {
+        rows.push({ label: rowLabel('result'), latex: `= ${formatNumberLatex(result, decimalsValue())}` });
       }
 
       if (rows.length === 0) {
@@ -332,9 +365,11 @@
 
   // Any option change re-renders, but only while the dialog is actually open.
   $effect(() => {
-    void showFormulaRow;
-    void showSubstitutedRow;
-    void showResultRow;
+    for (const { key } of IMAGE_ROWS) {
+      void imageRows[key].show;
+      void imageRows[key].captionOn;
+      void imageRows[key].caption;
+    }
     void showImageTitle;
     void imageTheme;
     void imageTransparent;
@@ -1287,22 +1322,44 @@
     <div class="image-options">
       <fieldset>
         <legend class="eyebrow">Rows</legend>
-        <label class="check">
-          <input type="checkbox" data-testid="napkin-image-row-formula" bind:checked={showFormulaRow} />
-          <span>Formula</span>
-        </label>
-        <label class="check">
-          <input type="checkbox" data-testid="napkin-image-row-substituted" bind:checked={showSubstitutedRow} />
-          <span>With your values</span>
-        </label>
-        <label class="check">
-          <input type="checkbox" data-testid="napkin-image-row-result" bind:checked={showResultRow} />
-          <span>Result</span>
-        </label>
+        {#each IMAGE_ROWS as { key, title } (key)}
+          <div class="image-row">
+            <label class="check">
+              <input type="checkbox" data-testid={`napkin-image-row-${key}`} bind:checked={imageRows[key].show} />
+              <span>{title}</span>
+            </label>
+            <label class="check muted small">
+              <input
+                type="checkbox"
+                aria-label={`${title} caption`}
+                data-testid={`napkin-image-caption-on-${key}`}
+                bind:checked={imageRows[key].captionOn}
+              />
+              <span>caption</span>
+            </label>
+            <input
+              type="text"
+              class="image-caption"
+              aria-label={`${title} caption text`}
+              placeholder="No caption"
+              data-testid={`napkin-image-caption-${key}`}
+              disabled={!imageRows[key].show || !imageRows[key].captionOn}
+              bind:value={imageRows[key].caption}
+            />
+          </div>
+        {/each}
         <label class="check">
           <input type="checkbox" data-testid="napkin-image-title" bind:checked={showImageTitle} />
           <span>Title</span>
         </label>
+        <button
+          type="button"
+          class="btn btn-sm image-captions-reset"
+          data-testid="napkin-image-captions-reset"
+          onclick={resetCaptions}
+        >
+          Reset captions
+        </button>
       </fieldset>
 
       <div>
@@ -1680,6 +1737,31 @@
     display: flex;
     flex-direction: column;
     gap: var(--space-1);
+  }
+
+  /* One line per row: the row toggle, the caption toggle, the caption text. */
+  .image-row {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+  }
+
+  .image-row .check:first-child {
+    min-width: 8.5rem;
+  }
+
+  .image-caption {
+    flex: 1 1 7rem;
+    min-width: 6rem;
+    margin: 0;
+    padding: 0.125rem var(--space-2);
+    font-size: 0.875rem;
+  }
+
+  .image-captions-reset {
+    align-self: flex-start;
+    margin-top: var(--space-1);
   }
 
   /* A checkerboard, so a transparent export does not read as a white one. */

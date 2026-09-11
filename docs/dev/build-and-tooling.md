@@ -19,6 +19,7 @@ _Describes the code as of v0.5.0 (schema v16) — verify against source when in 
 | [tools/build-city-dataset.mjs](../../tools/build-city-dataset.mjs) | Compacts a GeoNames dump into [cities.json](../../src/lib/time/cities.json). |
 | [tools/build-figlet-fonts.mjs](../../tools/build-figlet-fonts.mjs) | Vendors thirty-seven FIGlet fonts into `public/figlet/`, writes their `PROVENANCE.txt` and [fonts.json](../../src/lib/ascii/fonts.json), and **fails** on a font it cannot account for. |
 | [tools/build-image-fixtures.mjs](../../tools/build-image-fixtures.mjs) | Writes the two binary TIFF fixtures the image specs upload. |
+| [tools/build-exposure-fixtures.mjs](../../tools/build-exposure-fixtures.mjs) | Writes the two tiny JPEG fixtures with known EXIF exposure (f/2.8 and f/4 at 1/250 s ISO 100) that the photography compare-two-photos spec uploads. |
 | [tools/build-math-assets.mjs](../../tools/build-math-assets.mjs) | Vendors MathLive's twenty KaTeX faces, `mathlive-fonts.css` (verbatim) and a stripped `katex.css` into `public/math/`, writes its `PROVENANCE.txt`. |
 | [tools/build-placeholder-thumbs.mjs](../../tools/build-placeholder-thumbs.mjs) | Renders the placeholder picker's nine example thumbnails from the generators' defaults (esbuild-bundles the real generator code) into `src/lib/placeholder/thumbnails.json`. |
 | [tools/build-excalidraw-assets.mjs](../../tools/build-excalidraw-assets.mjs) | Vendors Excalidraw's web fonts (eight families, 25 `.woff2`, ~430 KB; the 13 MB CJK family deliberately not) into `public/excalidraw/fonts/`, writes its `PROVENANCE.txt`. |
@@ -165,6 +166,19 @@ Writes two files into [tests/local/fixtures/](../../tests/local/fixtures/):
 - `broken.tiff` — 64 bytes: the little-endian TIFF magic `II*\0` followed by `0xAB` filler, for the graceful-failure case.
 
 Both are committed. PNG/JPG/WebP inputs are encoded in-page with a canvas at test time and the SVG fixture is checked in as text, so this script covers only the formats the browser cannot mint. Re-run it only if the fixtures are lost or their shape needs to change; the other checked-in files in that directory (the large PNG/JPG/WebP/TIFF/SVG samples and the AVIF photo) are hand-added, not generated.
+
+### `build-exposure-fixtures.mjs` — JPEGs with a known exposure
+
+```sh
+node tools/build-exposure-fixtures.mjs
+```
+
+Writes two 421-byte files into [tests/local/fixtures/](../../tests/local/fixtures/), each an 8×8 flat-colour JPEG from `sharp` with EXIF inserted by `piexifjs` (the library the image editor uses to write JPEG metadata):
+
+- `exposure-f2.8-250-iso100.jpg` — FNumber 28/10, ExposureTime 1/250, ISO 100, FocalLength 50, Make `Useful`, Model `Fixture Cam`.
+- `exposure-f4-250-iso100.jpg` — the same at FNumber 4/1: one stop of aperture less light.
+
+They exist because the Unsplash JPEG already in the directory carries no exposure tags at all (it is now the "no EXIF" case in the same spec). A canvas cannot mint EXIF, so these cannot be made in-page. Both are committed; re-run only if they are lost.
 
 ### `preview-server.mjs` — the static server for `dist/`
 

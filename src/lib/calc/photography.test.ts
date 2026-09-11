@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   apertureStops,
+  compareExposures,
   equivalentSettings,
+  exposureValue,
   formatById,
   FORMATS,
   formatShutter,
@@ -128,6 +130,82 @@ describe('shutter parsing and formatting', () => {
     expect(formatShutter(1 / 250)).toBe('1/250');
     expect(formatShutter(1.5)).toBe('1.5s');
     expect(formatShutter(0)).toBe('—');
+  });
+});
+
+describe('exposureValue (EV100)', () => {
+  const base = { aperture: 2.8, shutter: 1 / 250, iso: 100 };
+
+  it('f/2.8 1/250 ISO 100 ≈ 10.94', () => {
+    expect(exposureValue(base)).toBeCloseTo(10.94, 2);
+  });
+
+  it('doubling the ISO lowers EV100 by exactly one', () => {
+    expect(exposureValue({ ...base, iso: 200 })).toBeCloseTo(exposureValue(base) - 1, 10);
+  });
+
+  it('is NaN for any non-positive setting', () => {
+    expect(Number.isNaN(exposureValue({ ...base, aperture: 0 }))).toBe(true);
+    expect(Number.isNaN(exposureValue({ ...base, shutter: -1 }))).toBe(true);
+    expect(Number.isNaN(exposureValue({ ...base, iso: NaN }))).toBe(true);
+  });
+});
+
+describe('compareExposures (positive = photo B received more light)', () => {
+  const a = { aperture: 2.8, shutter: 1 / 250, iso: 100 };
+
+  it('identical photos differ by nothing', () => {
+    const c = compareExposures(a, { ...a });
+    expect(c.apertureStops).toBe(0);
+    expect(c.shutterStops).toBe(0);
+    expect(c.isoStops).toBe(0);
+    expect(c.totalStops).toBe(0);
+    expect(c.ratio).toBe(1);
+    expect(c.ev[0]).toBeCloseTo(c.ev[1], 10);
+  });
+
+  it('aperture: B one stop wider (f/2 vs f/2.8) → +1 on that dial', () => {
+    const c = compareExposures({ ...a, aperture: 2.8284 }, { ...a, aperture: 2 });
+    expect(c.apertureStops).toBeCloseTo(1, 3);
+    expect(c.shutterStops).toBe(0);
+    expect(c.totalStops).toBeCloseTo(1, 3);
+  });
+
+  it('shutter: B twice as long → +1', () => {
+    const c = compareExposures(a, { ...a, shutter: 1 / 125 });
+    expect(c.shutterStops).toBeCloseTo(1, 10);
+    expect(c.totalStops).toBeCloseTo(1, 10);
+    expect(c.ratio).toBeCloseTo(2, 10);
+  });
+
+  it('iso: B at twice the gain → +1', () => {
+    const c = compareExposures(a, { ...a, iso: 200 });
+    expect(c.isoStops).toBe(1);
+    expect(c.totalStops).toBe(1);
+  });
+
+  it('combined: the dials add, and the total equals EV_A − EV_B', () => {
+    const b = { aperture: 4, shutter: 1 / 60, iso: 400 };
+    const c = compareExposures(a, b);
+    expect(c.apertureStops).toBeCloseTo(2 * Math.log2(2.8 / 4), 10);
+    expect(c.shutterStops).toBeCloseTo(Math.log2(250 / 60), 10);
+    expect(c.isoStops).toBe(2);
+    expect(c.totalStops).toBeCloseTo(c.apertureStops + c.shutterStops + c.isoStops, 10);
+    expect(c.totalStops).toBeCloseTo(c.ev[0] - c.ev[1], 10);
+    expect(c.ratio).toBeCloseTo(2 ** c.totalStops, 10);
+  });
+
+  it('is antisymmetric: compare(a,b).totalStops === -compare(b,a).totalStops', () => {
+    const b = { aperture: 5.6, shutter: 1 / 30, iso: 800 };
+    expect(compareExposures(a, b).totalStops).toBeCloseTo(-compareExposures(b, a).totalStops, 10);
+    expect(compareExposures(a, b).ev).toEqual([...compareExposures(b, a).ev].reverse());
+  });
+
+  it('the fixture pair: f/4 vs f/2.8 at the same shutter and ISO is −1 stop for B', () => {
+    const c = compareExposures(a, { ...a, aperture: 4 });
+    // Nominal 2.8 is really 2^1.5, so this is −1.03, like the stops card.
+    expect(c.totalStops).toBeCloseTo(-1.03, 2);
+    expect(c.ratio).toBeCloseTo(0.49, 2);
   });
 });
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { EXPORT_THEMES, fontFaceRules, formatNumberLatex, imageFilename } from './exportImage';
+import { EXPORT_THEMES, captionText, fontFaceRules, formatNumberLatex, imageFilename } from './exportImage';
 
 /* `buildCalculationSvg` and `layoutRow` measure real text in a real shadow
    root, so they live in the Playwright suite, which decodes the PNG they
@@ -49,6 +49,30 @@ describe('formatNumberLatex', () => {
   it('handles zero in both modes', () => {
     expect(formatNumberLatex(0)).toBe('0');
     expect(formatNumberLatex(0, 2)).toBe('0.00');
+  });
+});
+
+describe('captionText', () => {
+  // The dialog turns a caption off by handing the builder '' (0.6.0 Phase 1),
+  // and a caption the user has emptied arrives as whitespace. Both have to
+  // mean "no caption line", or a switched-off caption would still cost the
+  // row its 18 px of headroom.
+  it('treats blank as none, whitespace included', () => {
+    expect(captionText('')).toBe('');
+    expect(captionText('   ')).toBe('');
+    expect(captionText('\t\n')).toBe('');
+    expect(captionText(undefined)).toBe('');
+    expect(captionText(null)).toBe('');
+  });
+
+  it('draws a caption trimmed and in capitals, as the picture always has', () => {
+    expect(captionText('With your values')).toBe('WITH YOUR VALUES');
+    expect(captionText('  Given ')).toBe('GIVEN');
+  });
+
+  it('keeps a custom caption intact apart from the case', () => {
+    expect(captionText('At current market rate')).toBe('AT CURRENT MARKET RATE');
+    expect(captionText('Q3 (est.)')).toBe('Q3 (EST.)');
   });
 });
 

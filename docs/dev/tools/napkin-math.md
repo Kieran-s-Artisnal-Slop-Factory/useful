@@ -242,11 +242,19 @@ The preview is an `<img>` of a blob URL rather than inlined markup. That is the 
 
 ### The dialog
 
-A native `<dialog>`, opened with `showModal()` from an effect rather than from the click handler, because `showModal()` is what brings the backdrop, the focus trap and Escape. Its state is local to the export and never touches the template: which rows (`showFormulaRow`, `showSubstitutedRow`, `showResultRow`, `showImageTitle`), `imageTheme`, `imageTransparent`, `imageDecimals`, `imageScale`. The result row is offered only when there is a result to put in it, and **Export image** is not rendered at all until the formula parses — it sits outside the `fields.length === 0` branch on purpose, so a formula with no free variables (`2+2`) still offers a picture even though it has nothing to fill in.
+A native `<dialog>`, opened with `showModal()` from an effect rather than from the click handler, because `showModal()` is what brings the backdrop, the focus trap and Escape. Its state is local to the export and never touches the template: the three rows (`imageRows`, see below), `showImageTitle`, `imageTheme`, `imageTransparent`, `imageDecimals`, `imageScale`. The result row is offered only when there is a result to put in it, and **Export image** is not rendered at all until the formula parses — it sits outside the `fields.length === 0` branch on purpose, so a formula with no free variables (`2+2`) still offers a picture even though it has nothing to fill in.
 
 `rebuildImage` runs on open and on any option change — but only while the dialog is open — and carries an `imageToken` for the same reason the parse and evaluate paths do: a slow render must not overwrite a newer one. Closing revokes the blob URL and drops the SVG. Nothing here reads or writes a row: the export renders the calculation on screen and adds no data model of its own.
 
 Three actions come off the built SVG: `downloadImageSvg` (`downloadText`, `image/svg+xml`), `downloadImagePng` and `copyImagePng`, the last two sharing one `rasterize()` that puts any refusal from `svgToPngBlob` into the dialog's error line rather than throwing it.
+
+### The captions (0.6.0 Phase 1)
+
+Each row's caption can be turned off on its own and reworded. The per-row state in [NapkinMathApp.svelte](../../../src/components/apps/NapkinMathApp.svelte) is `imageRows: Record<'formula' | 'substituted' | 'result', { show, captionOn, caption }>`, with the defaults (`Formula`, `With your values`, `Result`) in `DEFAULT_CAPTIONS`. The **Rows** fieldset draws one line per row from the `IMAGE_ROWS` list — the row checkbox (`napkin-image-row-*`, unchanged from 0.5.0), a **caption** checkbox (`napkin-image-caption-on-*`) and a text box (`napkin-image-caption-*`) that is disabled while either checkbox is off. **Reset captions** (`napkin-image-captions-reset`) restores the three defaults and turns every caption back on; it leaves the row toggles alone.
+
+`rebuildImage` hands the renderer `rowLabel(key)` — the trimmed caption when it is on, `''` when it is off — and never a different row shape, so `CalculationRow` did not change. `captionText` in [exportImage.ts](../../../src/lib/napkin/exportImage.ts) is the one place that decides what a caption is: trimmed, upper-cased, and the empty string for blank or whitespace, which `buildCalculationSvg` reads as "no caption line at all" (no `<text>`, and no `LABEL_HEIGHT + LABEL_GAP` added to the picture). It is a pure function precisely so the blank case is covered by Vitest rather than only by the Playwright pass that measures real glyphs.
+
+Captions are **per-session** (plan Q1), like the theme, transparency, decimals and scale: they are not written to the template, and closing the dialog does not reset them. Saving them on the template would mean a new optional `export_captions` field, a mirror row in `schema.ts` and a `patch()` on save — cheap to add later, and not asked for yet.
 
 ### There is no `<foreignObject>` in the output, and there must never be one
 
@@ -321,7 +329,7 @@ Each of these cost time, each would cost it again, and each fails quietly rather
 ### What the tests cover
 
 - [substitute.test.ts](../../../src/lib/napkin/substitute.test.ts) — the tree walk in Vitest against plain JSON, then `substitutedLatex` against the **real** engine for the cases that decide whether the feature is honest: the square root that must stay a square root, the subtraction that must stay `5-(-7)`, `\mathrm{rate}` next to `\mathrm{rated}`, and each refusal.
-- [exportImage.test.ts](../../../src/lib/napkin/exportImage.test.ts) — the arithmetic and naming around the builder. `formatNumberLatex` groups thousands with `\,` rather than a comma, because the row above it is rendered by the Compute Engine, which writes `\,`; four digits stay unbroken, since `1,000` reads worse than `1000` in a formula. `imageFilename` cannot emit a separator or a traversal.
+- [exportImage.test.ts](../../../src/lib/napkin/exportImage.test.ts) — the arithmetic and naming around the builder. `formatNumberLatex` groups thousands with `\,` rather than a comma, because the row above it is rendered by the Compute Engine, which writes `\,`; four digits stay unbroken, since `1,000` reads worse than `1000` in a formula. `imageFilename` cannot emit a separator or a traversal. `captionText` turns blank and whitespace into no caption, which is what the dialog's caption toggle relies on.
 - [napkin-math.spec.ts](../../../tests/local/napkin-math.spec.ts) — `layoutRow` and `buildCalculationSvg` measure real text, so they live in Playwright: no `<foreignObject>`, no non-`data:` `url(`, no `var(--`, a fraction drawing more than one `<rect>`, the middle row carrying `12500` and `4750` while the bottom row carries `7750`, a PNG whose IHDR is exactly 3× the preview at 3× and which is too large to be blank, every dialog control carrying an accessible name, and **zero writes** across the whole flow.
 
 ## Offline

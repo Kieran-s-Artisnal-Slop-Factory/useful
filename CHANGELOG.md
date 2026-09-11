@@ -2,6 +2,10 @@
 
 ## Features
 
+* Napkin Math's image export lets you turn each row's caption off on its own and reword it — "With your values" can become "At current market rate" for one picture. Each row in the dialog now has a caption checkbox and a text box beside its row toggle, and a **Reset captions** button restores the three defaults. A blank caption draws no caption line at all. Like the theme and PNG size this is an export option, not template data: nothing is saved.
+* **Daily Calories** now asks you to read a warning before the form unlocks: the tool is not medical advice, a doctor should be consulted before acting on any figure, and the equations are population estimates. Pressing **I have read and understand the risks** stores `calorie_risk_acknowledged_at` in preferences so the page asks once per browser. **Not now** or Escape closes the dialog without saving anything and leaves the form locked behind a **Read the warning** button. Page load itself still writes nothing.
+* **Photography** gained a **Compare two photos** card: pick two photos and it reads their EXIF (f-number, shutter, ISO, focal length, camera) to show each one's EV100 and how many stops — and how many times — more light one received than the other, one dial at a time with the equation and the substituted numbers. A photo without exposure tags says which tags are missing. The EXIF parser loads only once a photo is chosen, the files stay in the browser, and nothing is saved.
+
 ## Bug Fixes
 
 ## Other

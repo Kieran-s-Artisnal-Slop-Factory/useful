@@ -49,6 +49,7 @@ Writers, one per tool: [TimersApp.svelte](../../src/components/apps/TimersApp.sv
 | `sql_last_engine` | `string` (`'sqlite'` / `'pglite'`) | `sqlite` (first entry of `engines`) | `SqlPlaygroundApp.pickEngine` | switching engines |
 | `offline_prompt_seen` | `boolean` | the post-install offer has not been made | `OfflineSetup.close` | clicking "Not now" in the install dialog |
 | `offline_ready_at` | `string` (UTC ISO) `[timestamp]` | no offline download has ever completed | `OfflinePanel.start` | after **every** chosen bundle reports `done` |
+| `calorie_risk_acknowledged_at` | `string` (UTC ISO) `[timestamp]` | the calorie tool's not-medical-advice warning opens on every visit and the form stays disabled | `CalorieCalculatorApp.acceptRisks` | clicking `I have read and understand the risks` — **not** "Not now" or Escape, which write nothing so the warning is asked again |
 
 Plus the `SyncFields` every row carries: `id`, `updated_at`, `deleted_at`, `server_seq`, `field_updated_at`.
 

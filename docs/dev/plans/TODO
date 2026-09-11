@@ -19,12 +19,12 @@ Additional things to keep in mind:
     - [ ] A Pomodoro style timer
 - [ ] Calculators
   - [ ] Daily Calorie Calculator
-    - [ ] Add a pop-up to warn people this is not medical advice and they should talk to a doctor before using the guidence, with an `I have read and understand the risks` they need to hit
-  - [ ] Photography
-    - [ ] Allow a user to upload two photos that have exif data, and compare the amount of light in each photo with the equations shown
+    - [x] Add a pop-up to warn people this is not medical advice and they should talk to a doctor before using the guidence, with an `I have read and understand the risks` they need to hit
+  - [x] Photography
+    - [x] Allow a user to upload two photos that have exif data, and compare the amount of light in each photo with the equations shown
   - [ ] Napkin math (see image)
-    - [ ] Allow me to toggle the export image titles (e.g. "With your values" above the values I entered) individually
-    - [ ] Allow me to customize the titles (e.g. I can update "With your values" to something like "At current market rate")
+    - [x] Allow me to toggle the export image titles (e.g. "With your values" above the values I entered) individually
+    - [x] Allow me to customize the titles (e.g. I can update "With your values" to something like "At current market rate")
 - [ ] Generators
   - [ ] Clip path
     - [ ] A css clip path generator

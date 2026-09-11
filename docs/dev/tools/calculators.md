@@ -10,7 +10,8 @@ _Describes the code as of v0.5.0 (schema v16) — verify against source when in 
 | --- | --- |
 | [numberBase.ts](../../../src/lib/calc/numberBase.ts) | Base parsing/formatting, signed/unsigned readings, NOT / one's / two's complement — all `bigint` |
 | [binaryOps.ts](../../../src/lib/calc/binaryOps.ts) | The eleven two-operand operations, each returning the answer **and** the steps that produced it — ripple add/subtract, shift-and-add multiply, restoring long division, columnar AND/OR/XOR, and the three shifts |
-| [photography.ts](../../../src/lib/calc/photography.ts) | Sensor formats, total-light equivalence, stop formulas, 1/3-stop snapping, shutter parse/format |
+| [photography.ts](../../../src/lib/calc/photography.ts) | Sensor formats, total-light equivalence, stop formulas, 1/3-stop snapping, shutter parse/format, EV100 and the two-photo comparison |
+| [exifExposure.ts](../../../src/lib/calc/exifExposure.ts) | `readExposure(file)` — the lazy `exifr` import and the "which tags are missing" verdict for the two-photo comparison; `exposureFromExif` is the pure half |
 | [transfer.ts](../../../src/lib/calc/transfer.ts) | Size and speed unit tables, `transferSeconds`, duration and rate formatting |
 | [calories.ts](../../../src/lib/calc/calories.ts) | The three resting-rate equations, the five activity multipliers, `plan()` with its `steps[]` and `warnings[]`, the intake floors, and the kg⇄lb / cm⇄ft-in helpers |
 | [NumberBaseApp.svelte](../../../src/components/apps/NumberBaseApp.svelte) | `/tools/number-conversion/` — page title "Programming" |
@@ -190,6 +191,8 @@ Types: `SensorFormatId = 'mft' | 'apsc' | 'apsc-canon' | 'ff'`, `SensorFormat { 
 | `parseShutter(text)` | → `number \| null` | Seconds from `1/250`, `0.5`, `2`, `2s`, `0.4s`; trailing `s` and internal whitespace stripped; `null` for junk, zero, negatives, or a zero denominator |
 | `formatShutter(seconds)` | → `string` | ≥ 1 s: `2s` / `1.5s` (one decimal); < 1 s: `1/round(1/s)`; `—` for non-positive |
 | `formatStops(stops)` | → `string` | Rounded to 2 decimals, leading `+` or `−` (U+2212), `0` when it rounds to zero |
+| `exposureValue({ aperture, shutter, iso })` | → `number` | EV100 `log2(N²/t) − log2(ISO/100)`; `NaN` unless all three are positive |
+| `compareExposures(a, b)` | → `ExposureComparison` | `{ ev: [evA, evB], apertureStops, shutterStops, isoStops, totalStops, ratio: 2 ** totalStops }` — positive = photo B received more light |
 
 ### Equivalence model (total light)
 
@@ -254,6 +257,42 @@ sequenceDiagram
 ```
 
 Restore validates the stored id through `formatById`, so an unknown value is ignored rather than crashing the select. The write is fire-and-forget (`void putSingleton(...)`). The Preferences page lists the key read-only under "Remembered values" (it is not in that page's `KNOWN` set, so it falls into `otherFields`).
+
+### Compare two photos (0.6.0)
+
+The third card takes two real photos and says how much more light one received than the other, from their EXIF. EXIF carries no absolute light measurement, so the comparison is in **stops, not lux** (0.6.0 decision 3): each photo gets an exposure value normalised to ISO 100,
+
+```
+EV100 = log2(N² / t) − log2(ISO / 100)
+```
+
+(`exposureValue` in [photography.ts](../../../src/lib/calc/photography.ts); f/2.8, 1/250 s, ISO 100 → 10.94), and the difference is decomposed by dial with the three existing stop functions, ordered so that **positive = photo B received more**:
+
+| Row | Formula | `compareExposures` field |
+| --- | --- | --- |
+| Aperture | `apertureStops(N_A, N_B) = 2·log2(N_A / N_B)` | `apertureStops` |
+| Shutter | `shutterStops(t_B, t_A) = log2(t_B / t_A)` | `shutterStops` |
+| ISO | `isoStops(ISO_B, ISO_A) = log2(ISO_B / ISO_A)` | `isoStops` |
+
+`totalStops` is their sum, which equals `EV_A − EV_B` (a lower EV100 means the settings admitted more light), and `ratio = 2 ** totalStops`. `compareExposures(a, b).totalStops === −compareExposures(b, a).totalStops` exactly. ISO is counted as "light" because it brightens the picture; the row's meaning string says no photons moved.
+
+Reading the file is the only impure step and lives in [exifExposure.ts](../../../src/lib/calc/exifExposure.ts) so `photography.ts` stays dependency-free. `readExposure(file)` imports `exifr` lazily — the same library the image editor's metadata panel uses ([raster/exif.ts](../../../src/lib/raster/exif.ts)) — and parses with `pick: ['FNumber', 'ExposureTime', 'ISO', 'FocalLength', 'Model']`. `exposureFromExif(parsed)` (pure, unit-tested) returns `{ ok: true, exposure }` or `{ ok: false, missing: ExposureTag[] }` naming the absent or non-positive tags among `FNumber`, `ExposureTime`, `ISO`; `FocalLength` and `Model` are readout only. A format exifr cannot open (SVG, the WebP sample) throws inside the library and is caught into the same "all three missing" answer as a JPEG with no EXIF block.
+
+```mermaid
+flowchart LR
+  F["File input (photo-cmp-a / photo-cmp-b)"] --> P["pickPhoto(side, file)"]
+  P --> R["readExposure — lazy import('exifr')"]
+  R --> X{"exposureFromExif"}
+  X -- ok --> S["PhotoExposure: aperture, shutter, iso, focal, model"]
+  X -- missing tags --> M["photo-cmp-missing-a / -b"]
+  S --> E["exposureValue → EV100 readout"]
+  S --> C["compareExposures(a, b)"]
+  C --> T["three rows, total, verdict (photo-cmp-result)"]
+```
+
+In [PhotographyApp.svelte](../../../src/components/apps/PhotographyApp.svelte) `pickPhoto(side, event)` guards against a slow earlier file overwriting a later pick on the same side with a per-side token, then sets `photoA` / `photoB`; `comparison` is a `$derived` over the two that is `null` until both reads are `ok`. Each row shows the equation in words, the substituted values (`photo-cmp-<dial>-working`) and `formatStops` of the result (`photo-cmp-<dial>`); the total (`photo-cmp-total`) is one decimal with its sign, and the verdict reads "Photo B received about 1.0 stops (≈ 0.5×) less light than photo A" — or "the same amount of light" under a twentieth of a stop. Test hooks: `photo-cmp-a`, `photo-cmp-b` (file inputs), `photo-cmp-readout-<side>`, `photo-cmp-ev-<side>`, `photo-cmp-missing-<side>`, `photo-cmp-result`. Stateless: the files stay in memory and the card touches nothing in `repo.ts`.
+
+`exifr` joins the `HEAVY` list in [payload.spec.ts](../../../tests/local/payload.spec.ts): it must not load with the photography page (the "light tool" probe) and must arrive once a file is chosen. The chunk is already reached by the service worker's crawl (the image editor's dynamic import references it), so the precache audit needs no change for this card.
 
 ## File transfer
 
@@ -417,13 +456,44 @@ sequenceDiagram
 
 Restore validates the stored value against the two literals rather than trusting the row, so junk is ignored instead of putting the form into a third state. The write is fire-and-forget (`void putSingleton(...)`). Like `photo_last_format`, `calorie_units` is not in the Preferences page's `KNOWN` set, so it surfaces read-only under "Remembered values" — nothing stored is invisible.
 
+### The risk acknowledgement (0.6.0)
+
+The page is unusable until a not-medical-advice warning has been read once per browser, on the pattern [OfflineSetup.svelte](../../../src/components/chrome/OfflineSetup.svelte) already uses: a native `<dialog data-testid="cal-risk-dialog">` opened with `showModal()` from a `queueMicrotask` (the element is behind an `{#if}`, so it has to exist first). The same `onMount` that restores `calorie_units` reads `preferences.calorie_risk_acknowledged_at`; a string means accepted, anything else opens the dialog. The three input cards sit inside `<fieldset class="form" disabled={acknowledged !== true}>` (`display: contents`, so it draws nothing), which is what stops anything being typed around the dialog — including the unit toggle, whose buttons are in the first card's actions. `acknowledged` starts `null`, so the form is locked from the first paint rather than flashing enabled and then locking once the read returns.
+
+The copy says what the tool is, that it is not medical advice, that a doctor should be consulted before acting on any figure, and that the equations are population estimates. The primary button reads exactly `I have read and understand the risks` (`cal-risk-accept`) and is the only exit that writes: `putSingleton('preferences', { calorie_risk_acknowledged_at: new Date().toISOString() })`. `Not now` (`cal-risk-later`) and Escape both go through the dialog's `close()`, whose `onclose` clears `riskOpen` and nothing else — no write, the form stays locked, and an inline notice (`cal-risk-notice`) with a `Read the warning` button (`cal-risk-reopen`) brings the dialog back. This differs from the offline offer on purpose: that one records any answer because re-asking would be nagging, whereas here a dismissed warning has not been read, so the next visit asks again. Page load writes nothing either way. The Estimate card is outside the fieldset and still renders the default body's figures behind the dialog — they describe nobody.
+
+```mermaid
+sequenceDiagram
+  participant U as User
+  participant A as CalorieCalculatorApp
+  participant D as dialog cal-risk-dialog
+  participant R as repo.ts
+  A->>R: onMount getSingleton('preferences')
+  R-->>A: prefs
+  alt calorie_risk_acknowledged_at is a string
+    A->>A: acknowledged = true, fieldset enabled
+  else absent
+    A->>A: acknowledged = false, fieldset stays disabled
+    A->>D: riskOpen = true then showModal() in a microtask
+    alt accept
+      U->>D: I have read and understand the risks
+      D->>A: acceptRisks - acknowledged = true, close()
+      A->>R: putSingleton('preferences', { calorie_risk_acknowledged_at: ISO now })
+    else Not now or Escape
+      U->>D: close()
+      D->>A: onclose - riskOpen = false, no write
+      A->>A: notice with Read the warning reopens it
+    end
+  end
+```
+
 ### App wiring
 
 `CalorieCalculatorApp.svelte` keeps every input as a `$state` string, parses with a local `num()` that returns `null` for blank or non-finite text, and derives three things: `body` (null when age, weight or height will not parse), `goal`, and `result = body ? plan(...) : null`. `ok` and `problem` split that result, and exactly one of the Estimate card and the "Not enough to work with" card renders — never both, and neither when `body` is null.
 
 The Estimate card closes with a paragraph saying the figure is an estimate rather than a prescription and telling the reader to weigh themselves over a fortnight and adjust from what happened. It sits next to the number on purpose, not in a footnote. Below the cards, `explainer-calories` ("Which equation, and where the numbers come from") carries three paragraphs: which equation to pick and why, the activity multiplier as the biggest error source, and the 7 700 kcal constant's optimism over long plans.
 
-Test hooks: `cal-units-metric` / `cal-units-imperial` (both carrying `aria-pressed`), `cal-sex-male` / `cal-sex-female`, `cal-age`, `cal-height` or `cal-height-ft` / `cal-height-in`, `cal-weight`, `cal-bodyfat`, `cal-activity`, `cal-equation`, `cal-equation-note`, `cal-goal-maintain` / `cal-goal-lose` / `cal-goal-gain`, `cal-rate`, `cal-target`, and on the way out `cal-bmr`, `cal-tdee`, `cal-target-kcal`, `cal-weeks`, `cal-steps`, `cal-problem`, and `cal-warning` with a `data-warning` attribute carrying the `Warning['id']` so a spec can assert on one caution by name.
+Test hooks: `cal-risk-dialog`, `cal-risk-accept`, `cal-risk-later`, `cal-risk-notice`, `cal-risk-reopen`, `cal-form` (the disabled fieldset), `cal-units-metric` / `cal-units-imperial` (both carrying `aria-pressed`), `cal-sex-male` / `cal-sex-female`, `cal-age`, `cal-height` or `cal-height-ft` / `cal-height-in`, `cal-weight`, `cal-bodyfat`, `cal-activity`, `cal-equation`, `cal-equation-note`, `cal-goal-maintain` / `cal-goal-lose` / `cal-goal-gain`, `cal-rate`, `cal-target`, and on the way out `cal-bmr`, `cal-tdee`, `cal-target-kcal`, `cal-weeks`, `cal-steps`, `cal-problem`, and `cal-warning` with a `data-warning` attribute carrying the `Warning['id']` so a spec can assert on one caution by name.
 
 ## Tests
 
@@ -431,12 +501,14 @@ Test hooks: `cal-units-metric` / `cal-units-imperial` (both carrying `aria-press
 | --- | --- | --- |
 | [numberBase.test.ts](../../../src/lib/calc/numberBase.test.ts) | vitest (`npm run test:unit`) | Parsing per base, prefixes/separators, negative decimals as two's complement, range on both ends, padding, grouping, signed round-trip, hand-computed NOT/one's/two's table across all widths |
 | [binaryOps.test.ts](../../../src/lib/calc/binaryOps.test.ts) | vitest | Every operation at every width, signed and unsigned, over a table of fixed traps plus a seeded sample, checked against BigInt's own arithmetic (which already has C's semantics for `/`, `%` and `>>`) rather than against numbers copied out of the code's own output; the trace contract on every one of them; `0xFF + 1` (carry, no overflow) against `0x7F + 1` (overflow, no carry); multiplication dropping high bits with the partial products read back out of the drawn rows; `-7 / 2` and `-7 % 2` at each width; the most-negative-over-−1 overflow; arithmetic against logical shift on a negative value; shifting by ≥ the width; and the proof that `signed` changes the bits of nothing but division and modulo |
-| [photography.test.ts](../../../src/lib/calc/photography.test.ts) | vitest | Crop factors, the 20 mm f/2.8 → 40 mm f/5.6 example, exact stop formulas (m4/3 vs APS-C ≈ 0.83), snapping including table fallbacks, shutter parse/format, `formatStops` sign trimming |
+| [photography.test.ts](../../../src/lib/calc/photography.test.ts) | vitest | Crop factors, the 20 mm f/2.8 → 40 mm f/5.6 example, exact stop formulas (m4/3 vs APS-C ≈ 0.83), snapping including table fallbacks, shutter parse/format, `formatStops` sign trimming; `exposureValue` (f/2.8 1/250 ISO 100 ≈ 10.94, ISO doubling = −1, NaN guards) and `compareExposures` (identity, one stop on each dial, a combined case equal to `EV_A − EV_B`, antisymmetry, the f/2.8-vs-f/4 fixture pair at −1.03) |
+| [exifExposure.test.ts](../../../src/lib/calc/exifExposure.test.ts) | vitest | `exposureFromExif` mapping, array-wrapped ISO, missing-tag order; `readExposure` with `exifr` mocked — the exact `pick` list, and a thrown "Unknown file format" reported as all three tags missing |
 | [transfer.test.ts](../../../src/lib/calc/transfer.test.ts) | vitest | Unit tables, hand-computed durations across unit combinations, overhead, null on impossible input, `formatDuration` carry, `speedBothWays` |
 | [calories.test.ts](../../../src/lib/calc/calories.test.ts) | vitest | Each equation against hand-computed figures for both sexes (70 kg / 175 cm / 30 y and three other bodies), the 166 kcal Mifflin sex gap, Katch–McArdle ignoring sex/age/height, every refusal string, `tdee` at three multipliers, the delta being linear in the rate and taking its magnitude, `weeksToGoal` including its null cases, every warning trigger with its boundary tested on both sides, the full stacked warning list in order, the shape and count of `steps[]` from three rows to five, and the unit helpers — exact constants, round-trips to six places, and a sweep of a metre of heights proving `cmToFeetInches` never reports 12 inches |
-| [calculators.spec.ts](../../../tests/local/calculators.spec.ts) | Playwright (`npm test`) | Each page end-to-end with `dumpAll()` before/after asserting zero writes; the format pick audited with `assertIsolatedDelta` to `preferences/singleton` and restored after a reload that itself writes nothing; explainers toggle from the keyboard on all four pages. The visualizer adds six zero-write cases: stepping a trace by mouse and by keyboard, editing an operand restarting it at step 1, carry-without-overflow against overflow-without-carry, division by zero refused with no table drawn, signed division truncating toward zero with the sign as its own step, multiplication's out-of-width columns, arithmetic against logical shift, and a width change truncating both operands. The `daily calories` block adds four more: the default body's BMR/TDEE/target and the sex, activity, rate and target-weight moves that change them, all at zero writes; Katch–McArdle refused with `cal-bmr` absent and then working once body fat is entered, plus `body-fat-ignored` when the equation changes back; an aggressive plan raising `aggressive-rate`, `below-bmr` and `below-floor` while `cal-target-kcal` stays visible, and the losing-only cautions clearing when the goal flips to gain; and the unit toggle audited with `assertIsolatedDelta`, checked as the same body restated (154.32 lb, 5 ft 9 in, BMR within 3 kcal), restored across a reload that writes nothing, then toggled back to a clean 70 |
+| [calculators.spec.ts](../../../tests/local/calculators.spec.ts) | Playwright (`npm test`) | Each page end-to-end with `dumpAll()` before/after asserting zero writes; the format pick audited with `assertIsolatedDelta` to `preferences/singleton` and restored after a reload that itself writes nothing; explainers toggle from the keyboard on all four pages. The visualizer adds six zero-write cases: stepping a trace by mouse and by keyboard, editing an operand restarting it at step 1, carry-without-overflow against overflow-without-carry, division by zero refused with no table drawn, signed division truncating toward zero with the sign as its own step, multiplication's out-of-width columns, arithmetic against logical shift, and a width change truncating both operands. The `daily calories` block adds four more: the default body's BMR/TDEE/target and the sex, activity, rate and target-weight moves that change them, all at zero writes; Katch–McArdle refused with `cal-bmr` absent and then working once body fat is entered, plus `body-fat-ignored` when the equation changes back; an aggressive plan raising `aggressive-rate`, `below-bmr` and `below-floor` while `cal-target-kcal` stays visible, and the losing-only cautions clearing when the goal flips to gain; and the unit toggle audited with `assertIsolatedDelta`, checked as the same body restated (154.32 lb, 5 ft 9 in, BMR within 3 kcal), restored across a reload that writes nothing, then toggled back to a clean 70. Every calorie case (and the explainer sweep's calorie stop) goes through `acceptCalorieRisk` / `openCalories` first, since the form is a disabled fieldset until the warning is accepted. Two 0.6.0 cases cover the warning itself: the first visit shows the dialog with the inputs and unit toggle disabled and the load having written nothing, accepting writes exactly the one `calorie_risk_acknowledged_at` field (an isolated delta, and a parseable timestamp) and a reload asks nothing and writes nothing; and "Not now" then `Read the warning` then Escape leaves the form locked with the database byte-identical, so the next visit asks again |
 | [a11y.spec.ts](../../../tests/local/a11y.spec.ts) | Playwright | All four routes are in the every-page sweep (accessible names, labelled fields, heading structure) — its `ROUTES` list is derived from `REGISTRY`, so registering a tool enrols it; palette keyboard navigation lands on Photography; an explainer opens from the keyboard |
-| [offline.spec.ts](../../../tests/local/offline.spec.ts), [payload.spec.ts](../../../tests/local/payload.spec.ts) | Playwright | Use `/tools/photography/` as the "light tool" probe: served from cache offline, and pulls none of the heavy bundles |
+| [offline.spec.ts](../../../tests/local/offline.spec.ts), [payload.spec.ts](../../../tests/local/payload.spec.ts) | Playwright | Use `/tools/photography/` as the "light tool" probe: served from cache offline, and pulls none of the heavy bundles — `exifr` included, which a second case then watches arrive only after a photo is chosen |
+| [calculators.spec.ts](../../../tests/local/calculators.spec.ts) (`photography` › compare two photos) | Playwright | The generated fixtures (see [build-and-tooling.md](../build-and-tooling.md)) uploaded to both inputs → readouts (model, f/2.8, 1/250, ISO 100, 50mm, EV 10.94), every row `0`, "the same amount of light"; the f/4 fixture on B → aperture `−1.03`, total `−1.0 stops`, "≈ 0.5× less light", substituted values visible; the Unsplash JPEG (no EXIF) and the WebP sample → `photo-cmp-missing-<side>` naming `FNumber`, `ExposureTime`, `ISO` with no result drawn, and one good photo alone drawing none either. Both at zero writes |
 
 ## Known limits and decisions
 

@@ -69,6 +69,7 @@ You need a formula before the button does anything, and the **Result** row only 
 What the dialog offers:
 
 - **Rows** — tick **Formula**, **With your values**, **Result** and **Title** (the template's name, so an untitled one has nothing to show) in any combination. The preview redraws each time you change one.
+- **Captions** — each row has a small caption above it, and each is yours to change. Untick **caption** beside a row to draw that row without one, or type a new one in the box beside it: "With your values" can become "At current market rate" for this picture. An empty box means no caption. **Reset captions** puts the three originals back. Captions are an export setting, not part of the template: they are not saved with it, and the next visit starts with the defaults.
 - **Theme** — light or dark. The colours are written into the file rather than taken from your theme here, so it looks the same on someone else's screen as it does on yours.
 - **Transparent background** — leaves the paper out, so the picture sits on whatever colour you paste it onto. Choose the theme to match: dark text on a dark slide disappears.
 - **Decimals in the result** — the number as this page shows it, or rounded to 0–4 places. This changes the picture only. Your calculation and the number on the page are untouched.

@@ -96,12 +96,46 @@
     void putSingleton<Partial<Preferences>>('preferences', { calorie_units: next });
   }
 
+  /**
+   * The not-medical-advice warning, on the OfflineSetup pattern: a native
+   * `<dialog>` shown once per browser. `null` until the preference has been
+   * read, so the form is disabled from the first paint rather than flashing
+   * enabled and then locking. Unlike the offline offer, only ACCEPTING is
+   * recorded — "Not now" and Escape write nothing and leave the form disabled
+   * behind a notice that reopens the dialog.
+   */
+  let acknowledged = $state<boolean | null>(null);
+  let riskDialog = $state<HTMLDialogElement | null>(null);
+  let riskOpen = $state(false);
+
+  function openWarning() {
+    if (riskOpen) return;
+    riskOpen = true;
+    // Wait for the element to exist before showing it.
+    queueMicrotask(() => riskDialog?.showModal());
+  }
+
+  function dismissWarning() {
+    // The dialog's onclose does the bookkeeping, so Escape and the button agree.
+    riskDialog?.close();
+  }
+
+  async function acceptRisks() {
+    acknowledged = true;
+    riskDialog?.close();
+    await putSingleton<Partial<Preferences>>('preferences', {
+      calorie_risk_acknowledged_at: new Date().toISOString(),
+    });
+  }
+
   onMount(async () => {
     // Restoring writes nothing; page load never touches the database.
     const prefs = await getSingleton<Preferences>('preferences');
     if (prefs?.calorie_units === 'imperial' || prefs?.calorie_units === 'metric') {
       convertTo(prefs.calorie_units);
     }
+    acknowledged = typeof prefs?.calorie_risk_acknowledged_at === 'string';
+    if (!acknowledged) openWarning();
   });
 
   let unitLabel = $derived(weightUnit(units));
@@ -149,6 +183,20 @@
 </div>
 
 <div class="stack">
+  {#if acknowledged === false}
+    <div class="notice" role="status" data-testid="cal-risk-notice">
+      <p>
+        The form is locked until you have read the warning. This tool is not
+        medical advice.
+      </p>
+      <button class="btn btn-sm" data-testid="cal-risk-reopen" onclick={openWarning}>
+        Read the warning
+      </button>
+    </div>
+  {/if}
+
+  <!-- Disabled until the warning is accepted, so nothing can be typed around the dialog. -->
+  <fieldset class="form" disabled={acknowledged !== true} data-testid="cal-form">
   <Card title="You">
     {#snippet actions()}
       <div class="units" role="group" aria-label="Unit system">
@@ -281,6 +329,7 @@
       {/if}
     </div>
   </Card>
+  </fieldset>
 
   {#if problem}
     <Card title="Not enough to work with">
@@ -371,7 +420,93 @@
   </Explainer>
 </div>
 
+{#if riskOpen}
+  <dialog
+    bind:this={riskDialog}
+    class="risk-dialog"
+    data-testid="cal-risk-dialog"
+    aria-labelledby="cal-risk-title"
+    onclose={() => {
+      riskOpen = false;
+    }}
+  >
+    <h2 id="cal-risk-title">Before you use this</h2>
+    <p class="small">
+      This page estimates how many calories you burn in a day and how many to eat
+      to hold, lose or gain weight. It is arithmetic over published equations,
+      nothing more.
+    </p>
+    <p class="small">
+      <strong>It is not medical advice.</strong> Talk to a doctor before acting on
+      any figure here, and especially before eating less than you do now. A plan
+      that suits one person can be harmful to another, and the page cannot know
+      which you are.
+    </p>
+    <p class="small muted">
+      The equations are population estimates: lines fitted through groups of
+      people. Two people with identical inputs genuinely differ by a few hundred
+      kcal a day, so the number is a starting point to check against the scale,
+      not a target to trust.
+    </p>
+    <div class="row end">
+      <button class="btn" data-testid="cal-risk-later" onclick={dismissWarning}>Not now</button>
+      <button class="btn btn-primary" data-testid="cal-risk-accept" onclick={acceptRisks}>
+        I have read and understand the risks
+      </button>
+    </div>
+  </dialog>
+{/if}
+
 <style>
+  /* The lock is a fieldset for the disabled semantics only, not for the box. */
+  .form {
+    display: contents;
+    border: 0;
+    padding: 0;
+    margin: 0;
+    min-width: 0;
+  }
+
+  .notice {
+    display: flex;
+    gap: var(--space-3);
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    border: 1.5px solid var(--color-warning);
+    padding: var(--space-3);
+    font-size: var(--font-size-sm);
+  }
+
+  .risk-dialog {
+    /* The global reset kills the UA's auto-centering margin. */
+    margin: auto;
+    width: min(38rem, calc(100vw - 2rem));
+    border: 1.5px solid var(--border-strong-color);
+    background: var(--surface-color);
+    color: var(--text-color);
+    padding: var(--space-5);
+  }
+
+  .risk-dialog::backdrop {
+    background: rgb(0 0 0 / 0.4);
+  }
+
+  .risk-dialog h2 {
+    font-size: var(--font-size-lg);
+    margin-bottom: var(--space-2);
+  }
+
+  .risk-dialog p + p {
+    margin-top: var(--space-2);
+  }
+
+  .row.end {
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    margin-top: var(--space-4);
+  }
+
   .grid {
     display: grid;
     gap: var(--space-3);

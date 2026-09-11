@@ -4,9 +4,12 @@
   import Explainer from '../Explainer.svelte';
   import { getSingleton, putSingleton } from '../../lib/db/repo';
   import type { Preferences } from '../../lib/db/types';
+  import { readExposure, type ExposureRead } from '../../lib/calc/exifExposure';
   import {
     apertureStops,
+    compareExposures,
     equivalentSettings,
+    exposureValue,
     FORMATS,
     formatById,
     formatShutter,
@@ -139,6 +142,106 @@
   function fmtX(stops: number): string {
     const r = Math.round(stops * 100) / 100;
     return `${r} ${r === 1 ? 'stop' : 'stops'}`;
+  }
+
+  // Set C — two real photos, read from their EXIF. Nothing here is stored:
+  // the files stay in the browser and the page writes nothing.
+  type Side = 'a' | 'b';
+  interface Photo {
+    name: string;
+    read: ExposureRead;
+  }
+  let photoA = $state<Photo | null>(null);
+  let photoB = $state<Photo | null>(null);
+  let reading = $state<Record<Side, boolean>>({ a: false, b: false });
+  // A slower earlier file must not overwrite a later pick on the same side.
+  const picks: Record<Side, number> = { a: 0, b: 0 };
+
+  async function pickPhoto(side: Side, event: Event) {
+    const file = (event.currentTarget as HTMLInputElement).files?.[0];
+    if (!file) return;
+    const token = ++picks[side];
+    reading[side] = true;
+    const read = await readExposure(file);
+    if (token !== picks[side]) return;
+    reading[side] = false;
+    const photo = { name: file.name, read };
+    if (side === 'a') photoA = photo;
+    else photoB = photo;
+  }
+
+  let comparison = $derived.by(() => {
+    if (!photoA?.read.ok || !photoB?.read.ok) return null;
+    const a = photoA.read.exposure;
+    const b = photoB.read.exposure;
+    const c = compareExposures(a, b);
+    const rows = [
+      {
+        id: 'aperture',
+        name: 'Aperture',
+        equation: '2 × log2(N_A ÷ N_B)',
+        values: `2 × log2(${fmtN(a.aperture)} ÷ ${fmtN(b.aperture)})`,
+        stops: c.apertureStops,
+        meaning:
+          c.apertureStops === 0
+            ? 'Same f-number.'
+            : `B's lens was ${fmtX(Math.abs(c.apertureStops))} ${c.apertureStops > 0 ? 'wider' : 'narrower'}.`,
+      },
+      {
+        id: 'shutter',
+        name: 'Shutter',
+        equation: 'log2(t_B ÷ t_A)',
+        values: `log2(${formatShutter(b.shutter)} ÷ ${formatShutter(a.shutter)})`,
+        stops: c.shutterStops,
+        meaning:
+          c.shutterStops === 0
+            ? 'Same exposure time.'
+            : `B stayed open ${fmtX(Math.abs(c.shutterStops))} ${c.shutterStops > 0 ? 'longer' : 'shorter'}.`,
+      },
+      {
+        id: 'iso',
+        name: 'ISO',
+        equation: 'log2(ISO_B ÷ ISO_A)',
+        values: `log2(${fmtN(b.iso)} ÷ ${fmtN(a.iso)})`,
+        stops: c.isoStops,
+        meaning:
+          c.isoStops === 0
+            ? 'Same gain.'
+            : `B used ${fmtX(Math.abs(c.isoStops))} ${c.isoStops > 0 ? 'more' : 'less'} gain — no light moved.`,
+      },
+    ];
+    return { ...c, rows };
+  });
+
+  /** The headline sentence. |total| under a twentieth of a stop is "the same". */
+  let verdict = $derived.by(() => {
+    if (!comparison) return '';
+    const t = comparison.totalStops;
+    if (Math.abs(t) < 0.05) {
+      return 'Photo A and photo B received the same amount of light (within a twentieth of a stop).';
+    }
+    return `Photo B received about ${Math.abs(t).toFixed(1)} stops (≈ ${fmtRatio(comparison.ratio)}×) ${t > 0 ? 'more' : 'less'} light than photo A.`;
+  });
+
+  /** Plain number for the substituted equations: up to 2 decimals, no trailing zeros. */
+  function fmtN(n: number): string {
+    return String(Math.round(n * 100) / 100);
+  }
+
+  /** "0.5", "4.9", "32" — a light ratio, one decimal until it stops mattering. */
+  function fmtRatio(r: number): string {
+    return r >= 10 ? String(Math.round(r)) : r.toFixed(1);
+  }
+
+  /** The total with its sign and one decimal: "+2.3", "−1.0", "0.0". */
+  function fmtTotal(stops: number): string {
+    const r = Math.round(stops * 10) / 10;
+    if (r === 0) return '0.0';
+    return (r > 0 ? '+' : '−') + Math.abs(r).toFixed(1);
+  }
+
+  function fmtEv(ev: number): string {
+    return `EV ${ev.toFixed(2)}`;
   }
 </script>
 
@@ -322,6 +425,120 @@
       </Explainer>
     </div>
   </Card>
+
+  <Card title="Compare two photos">
+    <div class="stack">
+      <p class="muted small">
+        Pick two photos straight from a camera or phone. Their EXIF settings (f-number,
+        shutter, ISO) say how much light each one received; the files never leave this
+        browser and nothing is saved.
+      </p>
+      {#snippet photoSide(s: Side, photo: Photo | null)}
+        <div class="stack">
+          <div>
+            <label for={'photo-cmp-' + s}>Photo {s.toUpperCase()}</label>
+            <input
+              id={'photo-cmp-' + s}
+              data-testid={'photo-cmp-' + s}
+              type="file"
+              accept="image/*"
+              onchange={(e) => pickPhoto(s, e)}
+            />
+          </div>
+          {#if reading[s]}
+            <p class="muted small" role="status">Reading…</p>
+          {:else if photo?.read.ok}
+            {@const x = photo.read.exposure}
+            <dl class="readout" data-testid={'photo-cmp-readout-' + s}>
+              <dt>File</dt>
+              <dd class="filename">{photo.name}</dd>
+              <dt>Camera</dt>
+              <dd>{x.model || '—'}</dd>
+              <dt>Aperture</dt>
+              <dd class="mono">f/{fmtN(x.aperture)}</dd>
+              <dt>Shutter</dt>
+              <dd class="mono">{formatShutter(x.shutter)}</dd>
+              <dt>ISO</dt>
+              <dd class="mono">ISO {fmtN(x.iso)}</dd>
+              <dt>Focal</dt>
+              <dd class="mono">{x.focal === null ? '—' : `${fmtN(x.focal)}mm`}</dd>
+              <dt>EV100</dt>
+              <dd class="mono" data-testid={'photo-cmp-ev-' + s}>{fmtEv(exposureValue(x))}</dd>
+            </dl>
+          {:else if photo}
+            <p class="error" role="status" data-testid={'photo-cmp-missing-' + s}>
+              No exposure data in {photo.name} — missing {photo.read.missing.join(', ')}.
+              Cameras write these tags; screenshots, edited exports and most web images
+              don't carry them.
+            </p>
+          {/if}
+        </div>
+      {/snippet}
+      <div class="grid">
+        {@render photoSide('a', photoA)}
+        {@render photoSide('b', photoB)}
+      </div>
+
+      {#if comparison}
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Dial</th>
+                <th>Equation</th>
+                <th>Stops (B − A)</th>
+                <th>Meaning</th>
+              </tr>
+            </thead>
+            <tbody>
+              {#each comparison.rows as row (row.id)}
+                <tr>
+                  <td>{row.name}</td>
+                  <td class="mono small" data-testid={'photo-cmp-' + row.id + '-working'}>
+                    {row.equation}<br />= {row.values}
+                  </td>
+                  <td class="mono" data-testid={'photo-cmp-' + row.id}>{formatStops(row.stops)}</td>
+                  <td class="muted small">{row.meaning}</td>
+                </tr>
+              {/each}
+            </tbody>
+          </table>
+        </div>
+        <div class="totals" data-testid="photo-cmp-result">
+          <div class="line">
+            <span class="eyebrow">Total</span>
+            <p data-testid="photo-cmp-total">
+              {fmtTotal(comparison.totalStops)} stops
+              <span class="muted small">
+                — aperture + shutter + ISO, which is EV_A − EV_B = {comparison.ev[0].toFixed(2)} −
+                {comparison.ev[1].toFixed(2)}
+              </span>
+            </p>
+          </div>
+          <p data-testid="photo-cmp-verdict">{verdict}</p>
+        </div>
+      {:else}
+        <p class="muted">Waiting for two photos with exposure data.</p>
+      {/if}
+
+      <Explainer summary="How the photos are compared" testid="explainer-photo-compare">
+        <p>
+          EXIF has no light meter reading, but it does record the three settings that set
+          the exposure. Each photo's <strong>EV100</strong> is
+          <code>log2(N² ÷ t) − log2(ISO ÷ 100)</code>: the classic exposure value of the
+          f-number and shutter time, corrected back to ISO 100 so gain does not hide light.
+          A lower EV means the settings let in more light.
+        </p>
+        <p>
+          The three rows are the same stop formulas as the card above, ordered so that a
+          positive number means photo B got more: a wider aperture, a longer shutter or a
+          higher ISO. They add up to EV<sub>A</sub> − EV<sub>B</sub>, and one stop is a
+          doubling, so the light ratio is 2 to that power. ISO is counted because it
+          brightens the picture, even though it moves no photons — the row says so.
+        </p>
+      </Explainer>
+    </div>
+  </Card>
 </div>
 
 <style>
@@ -361,5 +578,25 @@
 
   .line p .muted {
     font-weight: 400;
+  }
+
+  .readout {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: var(--space-1) var(--space-3);
+    margin: 0;
+    font-size: var(--font-size-sm);
+  }
+
+  .readout dt {
+    color: var(--color-text-muted, inherit);
+  }
+
+  .readout dd {
+    margin: 0;
+  }
+
+  .filename {
+    overflow-wrap: anywhere;
   }
 </style>

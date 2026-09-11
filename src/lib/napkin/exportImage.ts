@@ -38,7 +38,10 @@ import { renderFormulaSet } from '../codegen/formulaMarkup';
 import { escapeXml } from '../svg/build';
 
 export interface CalculationRow {
-  /** Small caption above the row. Omitted when blank. */
+  /**
+   * Small caption above the row. Omitted when blank — whitespace counts as
+   * blank, so a caption the dialog has turned off or emptied costs no height.
+   */
   label: string;
   /** The row's content as LaTeX. */
   latex: string;
@@ -126,6 +129,16 @@ function hasPaintedPseudo(element: Element, which: '::before' | '::after'): bool
   const style = getComputedStyle(element, which);
   if (!style.content || style.content === 'none') return false;
   return isPainted(style.backgroundColor) || (parseFloat(style.borderTopWidth) || 0) > 0;
+}
+
+/**
+ * The caption as it is drawn: trimmed and in capitals, or the empty string
+ * when there is nothing to draw. The builder skips the caption line entirely
+ * on an empty result, so this is the single place that decides "blank means
+ * none".
+ */
+export function captionText(label: string | null | undefined): string {
+  return (label ?? '').trim().toUpperCase();
 }
 
 /** Only the `@font-face` rules — the layout CSS is for measuring, not output. */
@@ -309,7 +322,7 @@ export async function buildCalculationSvg(
   const titleWidth = titleText ? titleText.length * 8.2 : 0;
   const contentWidth = Math.max(120, titleWidth, ...layouts.map((row) => row.width));
   const labelled = usable.map((row, index) => ({
-    label: row.label.trim(),
+    label: captionText(row.label),
     layout: layouts[index]!,
   }));
 
@@ -341,7 +354,7 @@ export async function buildCalculationSvg(
       parts.push(
         `<text x="${padding}" y="${y + 11}" font-family="ui-sans-serif, system-ui, sans-serif" ` +
           `font-size="11" letter-spacing="0.06em" fill="${palette.muted}">` +
-          `${escapeXml(row.label.toUpperCase())}</text>`
+          `${escapeXml(row.label)}</text>`
       );
       y += LABEL_HEIGHT + LABEL_GAP;
     }

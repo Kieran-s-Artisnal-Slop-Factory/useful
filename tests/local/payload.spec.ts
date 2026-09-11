@@ -41,6 +41,8 @@ function chunksContaining(marker: string): RegExp {
 
 /** Resolved once: the scan reads every chunk in the build. */
 const CODEMIRROR_CHUNKS = chunksContaining('@codemirror');
+/** exifr builds to `full.esm.<hash>.js`, so it is resolved from the build too. */
+const EXIFR_CHUNKS = chunksContaining('exifr');
 
 /** How many FIGlet fonts the app ships — read from the catalogue the build
  * script writes, so this stays true when the list changes. */
@@ -91,6 +93,10 @@ const HEAVY = [
   // chunk filename rather than the word: `/figlet/standard.flf` is a font
   // file the service worker precaches, and it is not this.
   { label: 'figlet', match: /figlet[^/]*\.js/i },
+  // The EXIF parser: ~60 KB, wanted by the image editor's metadata panel and
+  // by Photography's "Compare two photos" card — and on both pages only once
+  // a file has been chosen. Never on load, never on any other page.
+  { label: 'exifr', match: EXIFR_CHUNKS },
 ];
 
 /** Record every request URL the page makes while `work` runs. */
@@ -167,6 +173,20 @@ test.describe('payload discipline', () => {
         []
       );
     }
+  });
+
+  test('photography fetches the EXIF parser only once a photo is chosen', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/photography/');
+    // The comparison card is on the page from the start; the parser is not.
+    await expect(page.getByTestId('photo-cmp-a')).toBeVisible();
+    const used = await watch(page, async () => {
+      await page.getByTestId('photo-cmp-a').setInputFiles(
+        join(HERE, 'fixtures', 'exposure-f2.8-250-iso100.jpg')
+      );
+      await expect(page.getByTestId('photo-cmp-ev-a')).toContainText('EV');
+    });
+    expect(used.some((u) => EXIFR_CHUNKS.test(u)), 'exifr should arrive on demand').toBe(true);
   });
 
   test('opening the background remover does not download the model on its own', async ({ app }) => {
