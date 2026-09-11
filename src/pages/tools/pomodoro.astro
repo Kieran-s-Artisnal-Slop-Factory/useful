@@ -1,0 +1,8 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import PomodoroApp from '../../components/apps/PomodoroApp.svelte';
+---
+
+<Layout title="Pomodoro">
+  <PomodoroApp client:only="svelte" />
+</Layout>

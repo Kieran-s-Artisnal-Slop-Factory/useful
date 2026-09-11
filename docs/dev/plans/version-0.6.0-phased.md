@@ -215,9 +215,9 @@ nobody answers.
 | 2 | Daily Calories › risk acknowledgement | — | `calorie_risk_acknowledged_at` | **DONE.** Once per browser (Q2); only accepting writes |
 | 3 | Photography › compare two photos by EXIF | — | — | **DONE.** Stateless; `exifr` joined HEAVY; two generated JPEG fixtures (the Unsplash one has no exposure tags) |
 | **A** | **Checkpoint** — full suite green | | | **PASSED** 2026-09-10 |
-| 4 | Time › Pomodoro | **v17** `pomodoro` singleton | — | New tool + engine branch |
-| 5 | Generators › Clip path | — | — | New tool; stateless; largest pure-logic piece |
-| **B** | **Checkpoint** — full suite green | | | |
+| 4 | Time › Pomodoro | **v17** `pomodoro` singleton | — | **DONE.** Wait between phases (Q4) with `auto_advance`; pure transitions in `pomodoro.ts`; engine `completePomodoro` shares `announce` with timers |
+| 5 | Generators › Clip path | — | — | **DONE.** Stateless; 25 presets (23 cssportal + 2 design.dev, Q3); blinds and waves emit percent `polygon()` (seam trick), `path()` only as the wave's secondary copy — see [clip-path.md](../tools/clip-path.md) |
+| **B** | **Checkpoint** — full suite green | | | **PASSED** 2026-09-10 |
 | 6 | Placeholders › batch variation | — | — | `varyOptions`; per-generator controls |
 | 7 | Placeholders › mosaic + swirl generators | — | — | Two `GeneratorId`s |
 | 8 | Hardening + release | — | — | Docs sweep, payload, offline, cut 0.6.0 |
@@ -258,7 +258,7 @@ Adds to the baseline: napkin spec's new caption test, calculators spec's new
 acknowledgement + EXIF tests, payload spec with `exifr` on the photography
 page, data spec with the new preference column.
 
-### Checkpoint B — after Phases 4–5
+### Checkpoint B — after Phases 4–5 — PASSED 2026-09-10 (539 pass; the clip-path drag spec needed the handle scrolled into view first)
 
 Adds: migration v17 round-trip in the data spec, the pomodoro and clip-path
 specs, a11y sweep over two new routes, offline spec over two new SHELL
@@ -424,7 +424,7 @@ compare); user doc.
 
 ---
 
-## Phase 4 — Time › Pomodoro
+## Phase 4 — Time › Pomodoro — DONE
 
 **Goal:** a Pomodoro timer as its own tool under Time, driven by the
 notification engine, per decision 4.
@@ -471,7 +471,13 @@ branch; [data-layer.md](../data-layer.md) migration table; user doc.
 
 ---
 
-## Phase 5 — Generators › Clip path
+## Phase 5 — Generators › Clip path — DONE
+
+> Implemented 2026-09-10. Deviation from decision 5: blinds and waves emit
+> `polygon()` in percent, not `path()` — `path()` is pixel-bound (no viewBox),
+> and one polygon can trace disjoint strips by doubling back along a
+> zero-width seam. `path()` remains as the wave's secondary copy. Rationale
+> and the preset table: [clip-path.md](../tools/clip-path.md).
 
 **Goal:** a CSS `clip-path` generator with point shapes, circle, ellipse,
 blinds and waves, per decision 5.

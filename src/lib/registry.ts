@@ -67,7 +67,7 @@ export const REGISTRY: ToolDef[] = [
     id: 'timers',
     name: 'Timers',
     description: 'Countdown timers with sound, vibration and notifications',
-    aliases: ['countdown', 'alarm', 'pomodoro'],
+    aliases: ['countdown', 'alarm'],
     category: 'Time',
     route: '/tools/timers/',
     icon: 'timer',
@@ -80,6 +80,15 @@ export const REGISTRY: ToolDef[] = [
     category: 'Time',
     route: '/tools/stopwatch/',
     icon: 'watch',
+  },
+  {
+    id: 'pomodoro',
+    name: 'Pomodoro',
+    description: 'Focus rounds and breaks on a cycle, with a notice at each turn',
+    aliases: ['focus', 'tomato', 'work timer', 'break', 'pomodoro timer'],
+    category: 'Time',
+    route: '/tools/pomodoro/',
+    icon: 'timer-reset',
   },
   {
     id: 'timezones',
@@ -709,6 +718,15 @@ export const REGISTRY: ToolDef[] = [
     category: 'Generators',
     route: '/tools/qr/',
     icon: 'qr-code',
+  },
+  {
+    id: 'clip-path',
+    name: 'Clip path',
+    description: 'Build a CSS clip-path: polygons, circles, ellipses, blinds and waves',
+    aliases: ['clip', 'mask', 'polygon', 'shape', 'css shapes', 'wave', 'blinds'],
+    category: 'Generators',
+    route: '/tools/clip-path/',
+    icon: 'shapes',
   },
   // The home page is not a tool: the brand in the top bar is its link, and a
   // sidebar row for it would only duplicate that. Preferences folded into

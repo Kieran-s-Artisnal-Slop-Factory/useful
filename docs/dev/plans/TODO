@@ -14,9 +14,9 @@ Additional things to keep in mind:
 
 ## Features & fixes
 
-- [ ] Time
-  - [ ] Pomodoro
-    - [ ] A Pomodoro style timer
+- [x] Time
+  - [x] Pomodoro
+    - [x] A Pomodoro style timer
 - [ ] Calculators
   - [ ] Daily Calorie Calculator
     - [x] Add a pop-up to warn people this is not medical advice and they should talk to a doctor before using the guidence, with an `I have read and understand the risks` they need to hit
@@ -26,19 +26,19 @@ Additional things to keep in mind:
     - [x] Allow me to toggle the export image titles (e.g. "With your values" above the values I entered) individually
     - [x] Allow me to customize the titles (e.g. I can update "With your values" to something like "At current market rate")
 - [ ] Generators
-  - [ ] Clip path
-    - [ ] A css clip path generator
-      - [ ] Point-based clip paths
-        - [ ] All polygon presets from https://www.cssportal.com/css-clip-path-generator/
-        - [ ] Chevron and "message" from https://design.dev/tools/clip-path-shapes/
-      - [ ] circle; with radius slider
-      - [ ] elipse; width and height
-      - [ ] Blinds; Clip path with multiple rectangles
-        - [ ] Reference https://www.sarasoueidan.com/assets/images/clipping-example-5.png
-        - [ ] Allow varying 
-          - [ ] number of rectangles
-          - [ ] Gap between them
-      - [ ] Wave; Generate wave patterns with same settings as https://www.wavegenerator.app/
+  - [x] Clip path
+    - [x] A css clip path generator
+      - [x] Point-based clip paths
+        - [x] All polygon presets from https://www.cssportal.com/css-clip-path-generator/
+        - [x] Chevron and "message" from https://design.dev/tools/clip-path-shapes/
+      - [x] circle; with radius slider
+      - [x] elipse; width and height
+      - [x] Blinds; Clip path with multiple rectangles
+        - [x] Reference https://www.sarasoueidan.com/assets/images/clipping-example-5.png
+        - [x] Allow varying
+          - [x] number of rectangles
+          - [x] Gap between them
+      - [x] Wave; Generate wave patterns with same settings as https://www.wavegenerator.app/
   - [ ] Placehodlers
     - [ ] Images
       - [ ] Add a new generator for a mosaic (image with blocky bits cut out of it) should have 2 patterns

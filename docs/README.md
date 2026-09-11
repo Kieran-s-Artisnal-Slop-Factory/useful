@@ -30,6 +30,7 @@ Per tool, under [`dev/tools/`](dev/tools/):
 [calculators](dev/tools/calculators.md) ·
 [text tools](dev/tools/text-tools.md) ·
 [generators](dev/tools/generators.md) ·
+[clip path](dev/tools/clip-path.md) ·
 [image tools](dev/tools/image-tools.md) ·
 [colour extractor](dev/tools/color-extractor.md) ·
 [base64](dev/tools/base64.md) ·
@@ -69,7 +70,7 @@ the app.
 | [scheduler.md](user/scheduler.md) | Events and TODOs across list, board and calendar |
 | [calculators.md](user/calculators.md) | Number bases, photography equivalence, file-transfer times, daily calorie needs |
 | [text-tools.md](user/text-tools.md) | Diff, Similarity and Text analysis — compare, score and count text |
-| [generators.md](user/generators.md) | Themes and colours, gradients, glassmorphism, regex, QR |
+| [generators.md](user/generators.md) | Themes and colours, gradients, glassmorphism, regex, QR, clip path |
 | [secrets.md](user/secrets.md) | Passwords, keys, tokens and identifiers |
 | [hashing.md](user/hashing.md) | MD5, SHA-1, SHA-2, SHA-3, SHAKE, HMAC, salt and pepper |
 | [encryption.md](user/encryption.md) | AES with a password, RSA keys, key agreement, bcrypt, one-time pad |

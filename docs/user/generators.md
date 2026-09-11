@@ -1,6 +1,6 @@
 # Generators
 
-Five small tools that turn a few inputs into something you can copy or download: Themes (color conversion, harmonies and a CSS theme builder), Gradients, Glassmorphism, Regex snippets and QR code. They all work offline and remember nothing — reload the page and you start from the defaults.
+Six small tools that turn a few inputs into something you can copy or download: Themes (color conversion, harmonies and a CSS theme builder), Gradients, Glassmorphism, Regex snippets, QR code and Clip path. They all work offline and remember nothing — reload the page and you start from the defaults.
 
 _Describes the code as of v0.5.0 (schema v16) — verify against source when in doubt._
 
@@ -36,6 +36,18 @@ If the pattern does not compile, the error is shown and the snippets and tester 
 
 **Read.** Upload an image containing a QR code, or — if your device has a camera — click **Scan with camera**, allow access when the browser asks, and hold the code up. The decoded text appears below; if it is a web address you also get an "Open link" link that opens in a new tab.
 
+## Clip path
+
+Builds a CSS `clip-path:` line and shows it applied to a sample so you can see the cut before you copy it. Pick a kind along the top:
+
+- **Polygon.** Start from one of 25 presets — triangle, trapezoid, parallelogram, rhombus, pentagon to decagon, bevel, rabbet, left and right arrows, points and chevrons, star, cross, two message bubbles, close and frame — then shape it by hand. Drag the round handles on the preview to move points. Double-click an edge to add a point there, or double-click empty space to add one at the end. Right-click a handle to remove it (or focus it and press Delete); a **Remove point** button also appears for the handle you last touched. A focused handle moves with the arrow keys, 1 % at a time, 5 % with Shift. **Reset to preset** puts the last preset back. Shapes never go below three points.
+- **Circle.** A radius and a centre, all in percent.
+- **Ellipse.** Horizontal and vertical radii and a centre.
+- **Blinds.** A number of equal strips with a gap between them, stacked top to bottom or side by side — the picture shows through the strips only.
+- **Wave.** One edge of the box becomes a wave: how many waves, how tall (peak to trough), a phase to slide it along, the waveform (sine, triangle, square, sawtooth) and which edge (top or bottom).
+
+The preview shows a gradient by default; choose an image with the file picker or drop one on the preview to see your own picture clipped. **Copy CSS** puts the `clip-path: …;` line on the clipboard. Every value is a percentage, so the same line fits an element of any size.
+
 ## Gotchas
 
 - **Nothing here is saved.** These pages have no memory: reloading or navigating away resets every field to its default. Copy or download what you want to keep. (Unlike the timers, image tools or SQL playground, they do not add anything to the Preferences page.)
@@ -50,3 +62,6 @@ If the pattern does not compile, the error is shown and the snippets and tester 
 - **Camera permission is asked only when you click Scan**, never on page load. If you deny it, or no camera works, upload an image instead. Scanning stops after the first successful read; click Scan again for another. Leaving the page stops the camera.
 - **Reading is fully local.** Uploaded and camera images never leave your device, and decoded links are shown but never opened for you.
 - **Glassmorphism needs something behind it.** The blur only shows when the panel sits over other content — over a plain background it looks like a tinted box.
+- **Clip path blinds and waves are polygons.** A single `polygon()` can hold several separate strips (its outline doubles back along the box edge between them), which is why the blinds line looks long. Waves are sampled — sixteen points per wave — rather than drawn as curves, so a very tall wave on a very large element shows faint straight segments. The wave kind also offers a `path()` spelling, but that one is in pixels and only fits a 100 × 100 px box; use the polygon unless you know you need it.
+- **A circle's percent radius is measured against the box's diagonal**, not its width, so `circle(50%)` on a wide box is larger than half the width. That is how CSS defines it, not a quirk of the tool.
+- **Handles stay inside the box.** You cannot drag a point past the edge of the preview, and the preview image is never saved — reload and it is gone.

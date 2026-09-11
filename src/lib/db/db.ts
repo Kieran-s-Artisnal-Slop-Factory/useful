@@ -226,6 +226,14 @@ const MIGRATIONS: Migration[] = [
       db.createObjectStore('http_flows', { keyPath: 'id' });
     }
   },
+  // v17 — 0.6.0 Phase 4 (Pomodoro): one singleton row holding the schedule,
+  // the live phase and today's tally, on the stopwatch pattern. No indexes:
+  // there is exactly one row and it is read by its fixed id.
+  (db) => {
+    if (!db.objectStoreNames.contains('pomodoro')) {
+      db.createObjectStore('pomodoro', { keyPath: 'id' });
+    }
+  },
 ];
 
 export const DB_VERSION = MIGRATIONS.length;

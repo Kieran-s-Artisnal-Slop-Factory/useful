@@ -129,6 +129,40 @@ export interface Stopwatch extends SyncFields {
 }
 
 /**
+ * The one Pomodoro cycle (singleton row). The schedule (four durations and
+ * the round count), the live phase, the completion actions and today's tally
+ * all live here. The notification engine drives it exactly like a timer:
+ * `end_at` is an absolute deadline, nothing is written per tick, and the
+ * engine writes once per phase transition. Pure transitions live in
+ * src/lib/time/pomodoro.ts.
+ */
+export interface Pomodoro extends SyncFields {
+  work_ms: number;
+  short_break_ms: number;
+  long_break_ms: number;
+  /** Work rounds per cycle; the last one is followed by the long break. */
+  rounds_before_long: number;
+  phase: 'work' | 'short_break' | 'long_break';
+  /** 1-based work round within the current cycle. */
+  round: number;
+  /** `done` = a phase just completed and the next one waits for Start. */
+  state: 'idle' | 'running' | 'paused' | 'done';
+  /** UTC ISO deadline; non-null only while state === 'running'. */
+  end_at: string | null;
+  /** Remaining budget while paused; non-null only while state === 'paused'. */
+  paused_remaining_ms: number | null;
+  /** Start the next phase by itself when one completes live. */
+  auto_advance: boolean;
+  sound: boolean;
+  vibrate: boolean;
+  notify: boolean;
+  /** Work rounds finished on `completed_today_date`; stale on a new day. */
+  completed_today: number;
+  /** Local YYYY-MM-DD the tally belongs to; '' until the first completion. */
+  completed_today_date: string;
+}
+
+/**
  * A calendar event. Recurring events expand VIRTUALLY: the rule lives here and
  * occurrences are computed at render and scan time (src/lib/scheduler/
  * occurrences.ts), never written. Events are never "completed", so the
@@ -531,6 +565,7 @@ export const STORES: Record<string, StoreDef> = {
   preferences: { indexes: [], singleton: true, fieldMerge: true },
   timers: { indexes: [] },
   stopwatch: { indexes: [], singleton: true },
+  pomodoro: { indexes: [], singleton: true },
   // series_id: a series has to be able to find the occurrences that were
   // pulled out of it — to render them, and to take them with it when it goes.
   events: { indexes: [{ name: 'start' }, { name: 'series_id' }] },

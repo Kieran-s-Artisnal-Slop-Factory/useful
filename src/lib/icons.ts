@@ -114,6 +114,14 @@ export const ICONS: Record<string, string> = {
   braces:
     '<path d="M8 3H7a2 2 0 0 0-2 2v5a2 2 0 0 1-2 2 2 2 0 0 1 2 2v5c0 1.1.9 2 2 2h1"/>' +
     '<path d="M16 21h1a2 2 0 0 0 2-2v-5c0-1.1.9-2 2-2a2 2 0 0 1-2-2V5a2 2 0 0 0-2-2h-1"/>',
+  // Lucide "timer-reset" — the Pomodoro page.
+  'timer-reset':
+    '<path d="M10 2h4"/><path d="M12 14v-4"/>' +
+    '<path d="M4 13a8 8 0 0 1 8-7 8 8 0 1 1-5.3 14L4 17.6"/><path d="M9 17H4v5"/>',
+  // Lucide "shapes" — the clip-path generator.
+  shapes:
+    '<path d="M8.3 10a.7.7 0 0 1-.626-1.079L11.4 3a.7.7 0 0 1 1.198-.043L16.3 8.9a.7.7 0 0 1-.572 1.1Z"/>' +
+    '<rect x="3" y="14" width="7" height="7" rx="1"/><circle cx="17.5" cy="17.5" r="3.5"/>',
   scissors:
     '<circle cx="6" cy="6" r="3"/><path d="M8.12 8.12 12 12"/><path d="M20 4 8.12 15.88"/>' +
     '<circle cx="6" cy="18" r="3"/><path d="M14.8 14.8 20 20"/>',

@@ -1,19 +1,21 @@
 # Time tools
 
-Three tools under the Time category: countdown **timers** (rows in the `timers` store, driven by the [notification engine](../notification-engine.md)), a **stopwatch** (the `stopwatch` singleton), and a **timezone converter** built on the browser's Intl database with a lazily-loaded GeoNames city dataset. Timers and the stopwatch derive their display from stored absolute instants, so nothing is written per tick and reload cannot drift them; the converter stores nothing but the zone pair.
+Four tools under the Time category: countdown **timers** (rows in the `timers` store, driven by the [notification engine](../notification-engine.md)), a **stopwatch** (the `stopwatch` singleton), a **Pomodoro** cycle (the `pomodoro` singleton, also driven by the engine), and a **timezone converter** built on the browser's Intl database with a lazily-loaded GeoNames city dataset. Timers, the stopwatch and the pomodoro derive their display from stored absolute instants, so nothing is written per tick and reload cannot drift them; the converter stores nothing but the zone pair.
 
-_Describes the code as of v0.5.0 (schema v16) — verify against source when in doubt._
+_Describes the code as of v0.6.0 (schema v17) — verify against source when in doubt._
 
 ## Where it lives
 
 | File | Role |
 | --- | --- |
-| [timers.astro](../../../src/pages/tools/timers.astro), [stopwatch.astro](../../../src/pages/tools/stopwatch.astro), [timezones.astro](../../../src/pages/tools/timezones.astro) | Routes `/tools/timers/`, `/tools/stopwatch/`, `/tools/timezones/`. |
+| [timers.astro](../../../src/pages/tools/timers.astro), [stopwatch.astro](../../../src/pages/tools/stopwatch.astro), [pomodoro.astro](../../../src/pages/tools/pomodoro.astro), [timezones.astro](../../../src/pages/tools/timezones.astro) | Routes `/tools/timers/`, `/tools/stopwatch/`, `/tools/pomodoro/`, `/tools/timezones/`. |
 | [TimersApp.svelte](../../../src/components/apps/TimersApp.svelte) | Timer list, form, start/pause/reset/edit/delete, defaults remembering. |
 | [StopwatchApp.svelte](../../../src/components/apps/StopwatchApp.svelte) | The stopwatch and its lap table. |
+| [PomodoroApp.svelte](../../../src/components/apps/PomodoroApp.svelte) | The pomodoro readout, ring, round dots, Start/Pause/Resume/Skip/Reset and the settings card. |
+| [pomodoro.ts](../../../src/lib/time/pomodoro.ts) | Pure transitions: `nextPhase`, `startPhase`, `pausePatch`, `resumePatch`, `resetPatch`, `durationFor`, `completionLabel`, `completedToday`, `localDate`, `POMODORO_DEFAULTS`. |
 | [TimezonesApp.svelte](../../../src/components/apps/TimezonesApp.svelte) | Converter page; remembers the zone pair. |
 | [ZonePicker.svelte](../../../src/components/apps/ZonePicker.svelte) | Combobox merging IANA-zone hits and city hits. |
-| [engine.svelte.ts](../../../src/lib/time/engine.svelte.ts) | Owns `engineState.timers` / `engineState.now`; completes timers. See [notification-engine.md](../notification-engine.md). |
+| [engine.svelte.ts](../../../src/lib/time/engine.svelte.ts) | Owns `engineState.timers` / `engineState.pomodoro` / `engineState.now`; completes timers and pomodoro phases. See [notification-engine.md](../notification-engine.md). |
 | [duration.ts](../../../src/lib/time/duration.ts) | `hmsToMs`, `msToHms`, `formatCountdown`, `formatElapsed`, `remainingMs`. |
 | [timezone.ts](../../../src/lib/time/timezone.ts) | `zoneOffsetMinutes`, `wallTimeToInstant`, `instantInZone`, `offsetLabel`, `allZones`, `isValidZone`, `currentZone`, `zoneDisplayName`. |
 | [cities.ts](../../../src/lib/time/cities.ts), [cities.json](../../../src/lib/time/cities.json) | `loadCities`, `citiesLoaded`, `searchCities`; the ~1.4 MB dataset. |
@@ -94,6 +96,81 @@ Invariants: `end_at` iff running; `paused_remaining_ms` iff paused; `done` is se
 - `formatElapsed` shows tenths, rounding **down** (`H:MM:SS.t` / `M:SS.t`).
 - Reload restores from the row; a running stopwatch keeps counting because `started_at` is absolute.
 
+## Pomodoro
+
+One `pomodoro` singleton (store created by DB migration **v17**, plain row — no `fieldMerge`) holds the schedule, the live phase, the completion actions and today's tally. The engine drives it the way it drives a timer: an absolute `end_at`, nothing written per tick, one write per transition. The arithmetic is pure and lives in [pomodoro.ts](../../../src/lib/time/pomodoro.ts); the page and the engine only choose which patch to write.
+
+### Data model
+
+`Pomodoro` in [types.ts](../../../src/lib/db/types.ts):
+
+| Field | Meaning |
+| --- | --- |
+| `work_ms`, `short_break_ms`, `long_break_ms` | Phase lengths. Defaults 25 / 5 / 15 minutes (`POMODORO_DEFAULTS`); at least `MIN_PHASE_MS` (1 s). |
+| `rounds_before_long` | Work rounds per cycle; default 4. The round whose number divides by it (`isLastRound`) is followed by the long break. |
+| `phase` | `'work' \| 'short_break' \| 'long_break'`. |
+| `round` | 1-based work round within the cycle. Unchanged by work → break; +1 by short break → work; back to 1 by long break → work. |
+| `state` | `'idle' \| 'running' \| 'paused' \| 'done'`. `done` = a phase just completed and the *next* one (already set in `phase`) waits for Start. |
+| `end_at` | UTC ISO deadline. Non-null **only** while running. |
+| `paused_remaining_ms` | Banked budget. Non-null **only** while paused. |
+| `auto_advance` | Start the next phase by itself on a live completion (Q4: default off). |
+| `sound`, `vibrate`, `notify` | Completion actions, same meaning as a timer's. |
+| `completed_today`, `completed_today_date` | Work rounds finished on that local date. `completedToday(row, today)` reads 0 when the date is not today, so a new day resets the count with no scheduler; the date is stamped on every `nextPhase`. |
+
+### State machine
+
+```mermaid
+stateDiagram-v2
+  [*] --> idle: first Start creates the row (or a settings change)
+  idle --> running: Start (startPhase)
+  running --> paused: Pause (pausePatch)
+  paused --> running: Resume (resumePatch)
+  running --> done: engine, end_at <= now, auto_advance off
+  running --> running: engine, end_at <= now, auto_advance on (nextPhase + startPhase)
+  done --> running: Start (startPhase, next phase)
+  idle --> idle: Skip (nextPhase, not counted)
+  running --> idle: Skip / Reset
+  paused --> idle: Skip / Reset
+  done --> idle: Skip / Reset
+```
+
+The phase cycle (`nextPhase`), with `N = rounds_before_long`:
+
+```mermaid
+stateDiagram-v2
+  direction LR
+  work --> short_break: round % N != 0 (round kept)
+  work --> long_break: round % N == 0 (round kept)
+  short_break --> work: round + 1
+  long_break --> work: round = 1
+```
+
+Who writes what — every transition is one `putSingleton('pomodoro', patch)` (`write` in `PomodoroApp`, `completePomodoro` in the engine). `putSingleton` merges into the existing row, so a patch carries only the fields that move; the very first write of all carries `POMODORO_DEFAULTS` overlaid with the settings draft so the row is complete from the moment it exists.
+
+| Transition | Function | Patch |
+| --- | --- | --- |
+| start (idle or done) | `start` → `startPhase(row, now)` | `{ state: 'running', end_at: now + durationFor(phase), paused_remaining_ms: null }`. Also `dismissNotice(POMODORO_NOTICE_ID)`, `unlockAudio()`, and the notification-permission request when `notify`. |
+| pause | `pause` → `pausePatch(row, now)` | `{ state: 'paused', end_at: null, paused_remaining_ms: remainingMs(end_at, now) }` |
+| resume | `resume` → `resumePatch(row, now)` | `{ state: 'running', end_at: now + paused_remaining_ms, paused_remaining_ms: null }` |
+| skip | `skip` → `nextPhase(row, today, false)` | next phase, `state: 'idle'`, deadline cleared, tally re-stamped **without** +1. |
+| reset | `reset` → `resetPatch()` | `{ phase: 'work', round: 1, state: 'idle', end_at: null, paused_remaining_ms: null }`. No row yet → no write. |
+| complete | engine `completePomodoro(missed)` | `nextPhase(row, today)` (+1 when the finished phase was work) then either `startPhase` on the new phase (`auto_advance` and not missed) or `state: 'done'`. One write. |
+| settings | `commit` / `commitDuration` / `commitRounds` | `{ [field]: value }` — only when it differs from the stored value. A duration under `MIN_PHASE_MS` or a round count under 1 is refused with `pom-settings-error` and nothing is written. |
+
+Invariants: `end_at` iff running; `paused_remaining_ms` iff paused; `done` is set only by the engine; a settings change never touches `state`/`end_at`, so the phase running now keeps the deadline it started with.
+
+### Display
+
+- `row = engineState.pomodoro ?? POMODORO_DEFAULTS` — the page renders whatever the engine last loaded; with no row it shows the defaults and writes nothing.
+- `remaining`: running → `remainingMs(end_at, engineState.now)`; paused → `paused_remaining_ms`; idle/done → `durationFor(row, phase)`. Formatted with `formatCountdown` (rounds up, like a timer).
+- The ring is a `conic-gradient` driven by `--pct = 1 - remaining / phase length` (0 while idle). The dots are one per round: `done` for rounds before the current one (or the current one once its break has begun), `current` for the running work round, `todo` otherwise.
+- Buttons per state: running → Pause; paused → Resume; idle/done → Start (labelled `Start short break` / `Start long break` / `Start focus` when done). Skip and Reset always.
+- `pom-today` shows `completedToday(row, localDate(engineState.now))`.
+
+### Settings card
+
+Four number inputs (minutes, `step="any"` so a 30 s break is `0.5`; displayed to two decimals via `msToMin`) and the round count, each committed on `change`; the three completion checkboxes and auto-advance committed on toggle. Vibrate and notify render only where the platform offers them, as on the timers page. A change applies from the next phase.
+
 ## Timezones
 
 ### Conversion (Intl only, no tz data shipped)
@@ -156,16 +233,19 @@ sequenceDiagram
 | `auto_remember_based_on_last_value` | `PreferencesApp` | read by `rememberDefaults` (default `true`) |
 | `tz_last_from`, `tz_last_to` | `TimezonesApp.remember` | on pick / swap / "= my zone"; shown read-only under "Remembered values" on the Preferences page |
 
-Loading any of the three pages writes nothing. The stopwatch writes only its singleton; the timezone page writes only `preferences`.
+Loading any of the four pages writes nothing. The stopwatch and the pomodoro write only their own singleton (the pomodoro reads `timer_alarm_seconds` through the engine but never writes `preferences`); the timezone page writes only `preferences`.
 
 ## Tests
 
-- Unit (`npm run test:unit`, vitest): [duration.test.ts](../../../src/lib/time/duration.test.ts) (round-trip, clamping, round-up countdown, round-down elapsed, `remainingMs` clamp), [timezone.test.ts](../../../src/lib/time/timezone.test.ts) (UTC/DST/half-hour offsets, winter/summer wall→instant, round-trip across zones incl. `Pacific/Chatham`, deterministic DST-skipped time, zone catalog, display names), [cities.test.ts](../../../src/lib/time/cities.test.ts) (osaka/red deer/munich resolve, every zone Intl-valid, metropolis ranks first, short queries ignored).
-- Browser (`npm run test:data`, production build, oracle-audited): [time.spec.ts](../../../tests/local/time.spec.ts) — create writes the row plus only the defaults singleton; running timer survives reload with no writes; pause banks / resume restores; expiry, MISSED, Save & start, delete-on-complete, remembered defaults, alarm loop and preference cap, auto-remember off; stopwatch writes only its singleton and survives reload; timezone page load writes nothing, Edmonton→Tokyo conversion and remembered pair, Osaka via the dataset, swap.
+- Unit (`npm run test:unit`, vitest): [duration.test.ts](../../../src/lib/time/duration.test.ts) (round-trip, clamping, round-up countdown, round-down elapsed, `remainingMs` clamp), [pomodoro.test.ts](../../../src/lib/time/pomodoro.test.ts) (`nextPhase` for every edge incl. the long-break boundary, the skip-does-not-count rule and the day rollover; `startPhase` / `pausePatch` / `resumePatch` maths and their round trip; `resetPatch`; `completionLabel`; `localDate`), [timezone.test.ts](../../../src/lib/time/timezone.test.ts) (UTC/DST/half-hour offsets, winter/summer wall→instant, round-trip across zones incl. `Pacific/Chatham`, deterministic DST-skipped time, zone catalog, display names), [cities.test.ts](../../../src/lib/time/cities.test.ts) (osaka/red deer/munich resolve, every zone Intl-valid, metropolis ranks first, short queries ignored).
+- Browser (`npm run test:data`, production build, oracle-audited): [time.spec.ts](../../../tests/local/time.spec.ts) — create writes the row plus only the defaults singleton; running timer survives reload with no writes; pause banks / resume restores; expiry, MISSED, Save & start, delete-on-complete, remembered defaults, alarm loop and preference cap, auto-remember off; stopwatch writes only its singleton and survives reload; timezone page load writes nothing, Edmonton→Tokyo conversion and remembered pair, Osaka via the dataset, swap. [pomodoro.spec.ts](../../../tests/local/pomodoro.spec.ts) — fresh page shows defaults and writes nothing; Start writes one running row, Pause moves only `state` / `end_at` / `paused_remaining_ms`, Resume restores the deadline, reload changes nothing; Skip walks a two-round cycle through the long break and back without counting, Reset writes only the singleton; a `rawPut` running row 1.5 s from its deadline raises the DONE banner, counts, parks the break in `done` and Start begins it; the same with `auto_advance` starts the break itself; a row 60 s overdue on round 4 surfaces as MISSED, crosses into the long break and does not auto-start; settings write only the singleton, refuse sub-second phases, and come back on reload. The data spec's "every column survives a backup round trip" group picks the store up from `TABLES`.
 
 ## Known limits and decisions
 
-- No per-tick writes anywhere: timers store `end_at`, the stopwatch stores `started_at`; display is derived from the wall clock. This is what makes reload, navigation and background-tab throttling drift-free.
+- No per-tick writes anywhere: timers and the pomodoro store `end_at`, the stopwatch stores `started_at`; display is derived from the wall clock. This is what makes reload, navigation and background-tab throttling drift-free.
+- The pomodoro is one cycle for the whole app (singleton), like the stopwatch. There is no history beyond today's count, and the count is per browser profile — it rides backups with the row but is not merged across devices.
+- A missed pomodoro completion never auto-advances, even with `auto_advance` on: the phase ended while the app was closed, and starting a break now would be a deadline nobody asked for. The row parks in `done` and Start begins the next phase.
+- Changing the round count mid-cycle does not clamp `round`; `isLastRound` is modular, so a round past the new count still reaches the long break on the next multiple.
 - Editing a running timer does not reschedule it (see the transition table) — the deadline was set by the user's start gesture and stays.
 - Timers are never hard-deleted by the UI (`softDelete` tombstones), so a delete-on-complete timer still round-trips backups as a tombstone.
 - The stopwatch has no lap-editing and a single global instance by design (singleton row).

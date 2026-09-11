@@ -2,7 +2,7 @@
 
 IndexedDB is the source of truth. There is no server: every row a tool creates lives in one database (`useful`) in the visitor's browser profile, and the only way it leaves is the JSON backup file. Four modules under `src/lib/db/` own it — the schema ([types.ts](../../src/lib/db/types.ts)), the connection and migrations ([db.ts](../../src/lib/db/db.ts)), the only sanctioned read/write path ([repo.ts](../../src/lib/db/repo.ts)), and backup export/import ([export.ts](../../src/lib/db/export.ts)) — plus a change queue that nothing drains yet ([outbox.ts](../../src/lib/db/outbox.ts)) and a persistent-storage request ([persistence.ts](../../src/lib/db/persistence.ts)).
 
-_Describes the code as of v0.5.0 (schema v16) — verify against source when in doubt._
+_Describes the code as of v0.6.0 (schema v17) — verify against source when in doubt._
 
 ## File map
 
@@ -65,6 +65,11 @@ Flags:
 | v10 | `napkin_templates`, `napkin_calculations` (+ index `template_id`). |
 | v11 | `config_schemas`. |
 | v12 | `notes` (+ indexes `parent_id`, `tags` multiEntry — the first multiEntry index in the schema), `note_assets` (+ index `note_id`). |
+| v13 | `compose_projects`. |
+| v14 | `web_playgrounds`. |
+| v15 | `http_environments`, `http_requests` (+ index `environment_id`), and the **local-only** `http_secrets` (+ index `environment_id`) — created here, deliberately absent from `STORES`, so never exported. |
+| v16 | `http_flows`. |
+| v17 | `pomodoro` — one singleton row (the `stopwatch` pattern): schedule, live phase, completion actions and today's tally. No indexes. |
 
 Conventions, each enforced by nothing but review:
 

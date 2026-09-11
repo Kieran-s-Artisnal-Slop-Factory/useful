@@ -1,6 +1,6 @@
 # Generators
 
-Five stateless tools under the Generators category — Themes (color conversion, harmonies, CSS theme builder), Gradients, Glassmorphism, Regex snippets (plus live tester and symbol reference) and QR code (create and read). Each is a Svelte island over a pure TypeScript module in `src/lib/gen/`; the UI only binds inputs and renders what the module returns. None of them touch IndexedDB — each tool's main Playwright scenario wraps the whole interaction in a zero-write window.
+Six stateless tools under the Generators category — Themes (color conversion, harmonies, CSS theme builder), Gradients, Glassmorphism, Regex snippets (plus live tester and symbol reference), QR code (create and read) and Clip path (documented on its own page: [clip-path.md](clip-path.md)). Each is a Svelte island over a pure TypeScript module in `src/lib/gen/`; the UI only binds inputs and renders what the module returns. None of them touch IndexedDB — each tool's main Playwright scenario wraps the whole interaction in a zero-write window.
 
 _Describes the code as of v0.5.0 (schema v16) — verify against source when in doubt._
 
@@ -13,18 +13,19 @@ _Describes the code as of v0.5.0 (schema v16) — verify against source when in 
 | Glassmorphism | `/tools/glassmorphism/` | [GlassApp.svelte](../../../src/components/apps/GlassApp.svelte) | [glass.ts](../../../src/lib/gen/glass.ts) | `glass.test.ts` |
 | Regex snippets | `/tools/regex/` | [RegexApp.svelte](../../../src/components/apps/RegexApp.svelte) | [regexgen.ts](../../../src/lib/gen/regexgen.ts), [regexTester.ts](../../../src/lib/gen/regexTester.ts), [regexRef.ts](../../../src/lib/gen/regexRef.ts) | `regexgen.test.ts`, `regexTester.test.ts` |
 | QR code | `/tools/qr/` | [QrApp.svelte](../../../src/components/apps/QrApp.svelte) | [qr.ts](../../../src/lib/gen/qr.ts) | `qr.test.ts` |
+| Clip path | `/tools/clip-path/` | [ClipPathApp.svelte](../../../src/components/apps/ClipPathApp.svelte) | [clipPath.ts](../../../src/lib/gen/clipPath.ts) | `clipPath.test.ts` — see [clip-path.md](clip-path.md) |
 
 Shared pieces:
 
 - [ColorField.svelte](../../../src/components/ColorField.svelte) — free-form CSS color text + synced native picker. Used by theme role slots, gradient stops and the glass tint.
 - [exportFile.ts](../../../src/lib/exportFile.ts) — the download / copy pipeline (`downloadBlob`, `downloadText`, `downloadDataUrl`, `dataUrlToBlob`, `copyText`, `copyPng`). Built for the QR tool; reused by the image tools.
 - [prism.ts](../../../src/lib/prism.ts) — the single Prism entry point (core + grammars in guaranteed order). The regex island imports from here, never from `prismjs`.
-- Registry entries live in [registry.ts](../../../src/lib/registry.ts) (`colors`, `gradients`, `glassmorphism`, `regex`, `qr`; category `Generators`).
-- E2E: [generators.spec.ts](../../../tests/local/generators.spec.ts).
+- Registry entries live in [registry.ts](../../../src/lib/registry.ts) (`colors`, `gradients`, `glassmorphism`, `regex`, `qr`, `clip-path`; category `Generators`).
+- E2E: [generators.spec.ts](../../../tests/local/generators.spec.ts); the clip path tool has its own [clip-path.spec.ts](../../../tests/local/clip-path.spec.ts).
 
 Dependencies: `qrcode` (encode, imported by `qr.ts`) and `qr-scanner` (decode, imported by `QrApp.svelte` — it is DOM-bound, so it stays out of the pure module); `prismjs` is bundled through `prism.ts`. Both are static imports. Everything else is dependency-free TS.
 
-## Conventions shared by all five
+## Conventions shared by all six
 
 - **Stateless.** Component state is local runes; nothing reads or writes `preferences` or any store. The specs take `app.dumpAll()` before and after and require equality.
 - **One string, two consumers.** Wherever a preview and a copyable output exist, both come from the same pure function output (`gradientCss` drives the preview `style` and `gradientDeclaration` wraps it; `glassProperties` feeds both `glassCss` and `glassInlineStyle`; `buildTheme().vars` drives the preview and `buildTheme().css` is what is copied). The preview can never disagree with the text.
