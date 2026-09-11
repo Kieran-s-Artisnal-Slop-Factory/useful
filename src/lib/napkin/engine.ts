@@ -38,6 +38,8 @@ export interface Boxed {
   isFinite: boolean | undefined;
   isNaN: boolean | undefined;
   re: number;
+  /** Imaginary part; 0 for a real number. */
+  im: number;
   toString(): string;
 }
 
@@ -168,7 +170,10 @@ export async function evaluateFormula(
 
   if (!out.isNumberLiteral) return { value: null, error: 'Fill in every input to see a result.' };
   if (out.isNaN === true) return { value: null, error: 'That is not a number (0 ÷ 0, or similar).' };
-  if (out.isReal !== true) return { value: null, error: 'That answer is not a real number.' };
+  // Compute Engine 0.128 leaves `isReal` undefined on a plain numeric literal,
+  // so the question is asked of the imaginary part directly.
+  if (out.isReal === false || (out.im ?? 0) !== 0)
+    return { value: null, error: 'That answer is not a real number.' };
   if (out.isFinite !== true) return { value: null, error: 'That answer is infinite.' };
   if (!Number.isFinite(out.re)) return { value: null, error: 'That answer is infinite.' };
   return { value: out.re, error: null };

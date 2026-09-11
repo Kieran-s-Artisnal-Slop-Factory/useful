@@ -102,7 +102,7 @@
   --shadow-2: light-dark(0 16px 40px rgb(16 42 94 / 0.22), 0 18px 44px rgb(4 16 30 / 0.5));
 
   /* Layout */
-  --page-max-width: 75rem;
+  --page-max-width: 81rem;
   --navbar-height: 3.5rem;
   --sidebar-width: 15rem;
   /* The sidebar's category rail; collapsed, the sidebar is this wide. */

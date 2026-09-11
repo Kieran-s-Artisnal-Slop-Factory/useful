@@ -41,6 +41,7 @@ export const TABLES: TableMeta[] = [
       { name: 'config_last_schema_id', type: 'text', nullable: true, references: null },
       { name: 'napkin_last_template_id', type: 'text', nullable: true, references: null },
       { name: 'calorie_units', type: 'text', nullable: true, references: null },
+      { name: 'calorie_risk_acknowledged_at', type: 'text', nullable: true, references: null },
       { name: 'web_last_playground_id', type: 'text', nullable: true, references: null },
       { name: 'http_active_environment_id', type: 'text', nullable: true, references: null },
       { name: 'http_last_request_id', type: 'text', nullable: true, references: null },

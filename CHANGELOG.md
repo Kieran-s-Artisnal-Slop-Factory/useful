@@ -1,3 +1,17 @@
+# 0.6.0 (unreleased)
+
+## Features
+
+## Bug Fixes
+
+## Other
+
+* Widened the page to 81rem so side-by-side calculator layouts have room.
+* Updated dependencies: Compute Engine 0.128.6, mermaid 12.0.0, React 19.3.0, sqlite-wasm 3.53.4, lucide-static 1.44.0, and Vitest 5.0.0. Vitest 5 resolves cleanly with the existing `@emnapi/core` override, which unblocked the update that 0.5.0 could not make.
+* Held back two majors: `@dicebear/core` 10 has no matching `@dicebear/collection` release yet, and TypeScript 7 is outside the peer range of `@astrojs/svelte`. Both stay on their current majors until upstream catches up.
+* Napkin Math's evaluator now checks the imaginary part directly when deciding whether an answer is real, because Compute Engine 0.128 no longer sets `isReal` on plain numeric literals.
+* CI moved to `actions/checkout@v7`, `setup-node@v7`, `configure-pages@v6`, `upload-pages-artifact@v5` and Node 24 (the LTS line).
+
 # 0.5.0 — September 9th, 2026
 
 > **No migrations in this release.** Schema remains at **v16**. Existing data and backups are unchanged. The only new persistent preference is the calorie calculator's unit system.

@@ -65,6 +65,9 @@ export interface Preferences extends SyncFields {
    * tool remembers: body measurements deliberately never persist, because a
    * preference row rides every backup export and a weight is not a setting. */
   calorie_units?: 'metric' | 'imperial';
+  /** ISO time the calorie tool's not-medical-advice warning was accepted. Absent
+   * until then, and the tool stays disabled behind the warning. */
+  calorie_risk_acknowledged_at?: string;
   /** The napkin-math template to reopen. */
   napkin_last_template_id?: string;
   /** Last engine picked in the SQL playground ('sqlite' / 'pglite'). */

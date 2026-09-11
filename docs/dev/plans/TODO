@@ -8,9 +8,9 @@ Additional things to keep in mind:
 
 ## Maintenance
 
-- [ ] Check all dependencies and do updates
-  - [ ] Frontend
-  - [ ] CI
+- [x] Check all dependencies and do updates
+  - [x] Frontend (dicebear 10 and TypeScript 7 held back; see CHANGELOG)
+  - [x] CI
 
 ## Features & fixes
 
