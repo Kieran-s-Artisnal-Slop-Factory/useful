@@ -24,6 +24,7 @@
     DEFAULT_PALETTE,
     GENERATORS,
     MAX_PALETTE,
+    MAX_SHUFFLE_POOL,
     MAX_SIDE,
     MIN_SIDE,
     batchName,
@@ -194,6 +195,36 @@
   let sizeRows = $state<{ width: number; height: number; on: boolean }[]>([]);
   let allowedScenes = $state<SceneId[]>(SCENES.map((s) => s.id));
 
+  /**
+   * The shuffle pool (feedback round 2): the colours the `shuffle` palette
+   * rule deals from, up to `MAX_SHUFFLE_POOL`. Its own state rather than a
+   * view of the generator's palette, because the point is to be BIGGER than
+   * what one image can hold — a mosaic takes four of it, a swirl two. It is
+   * filled from the generator's current colours the first time the rule is
+   * set to shuffled (and whenever it is empty), then it is the user's: it
+   * survives the rule being toggled and the generator being switched.
+   */
+  let shufflePool = $state<string[]>([]);
+  $effect(() => {
+    if (!vary.palette || vary.paletteValue !== 'shuffle') return;
+    const own = options.palette;
+    untrack(() => {
+      if (shufflePool.length === 0) shufflePool = own.slice(0, MAX_SHUFFLE_POOL);
+    });
+  });
+
+  /** Add the next default colour not already in the pool, then a grey. */
+  function addPoolColour() {
+    if (shufflePool.length >= MAX_SHUFFLE_POOL) return;
+    const next = DEFAULT_PALETTE.find((c) => !shufflePool.includes(c)) ?? '#888888';
+    shufflePool = [...shufflePool, next];
+  }
+
+  function removePoolColour(i: number) {
+    if (shufflePool.length <= 1) return;
+    shufflePool = shufflePool.filter((_, index) => index !== i);
+  }
+
   const clampCount = (n: number): number => (Number.isFinite(n) ? Math.min(50, Math.max(1, Math.trunc(n))) : 1);
 
   // The sizes table follows the batch count: a new row starts at the current
@@ -269,6 +300,7 @@
       blockSizeDelta: vary.blockSizeDelta ? vary.blockSizeDeltaValue : null,
       cutRatioDelta: vary.cutRatioDelta ? vary.cutRatioDeltaValue : null,
       palette: vary.palette ? vary.paletteValue : 'off',
+      shufflePool: [...shufflePool],
     };
   }
 
@@ -711,15 +743,13 @@
                   </div>
                 </div>
               {/each}
-              <button
-                class="btn"
-                type="button"
-                data-testid="ph-palette-add"
-                disabled={image.palette.length >= MAX_PALETTE}
-                onclick={addPaletteColour}
-              >
-                Add a colour
-              </button>
+              <!-- Gone, not greyed, at four: a button that can do nothing
+                   is a question, not a control (feedback round 2). -->
+              {#if image.palette.length < MAX_PALETTE}
+                <button class="btn" type="button" data-testid="ph-palette-add" onclick={addPaletteColour}>
+                  Add a colour
+                </button>
+              {/if}
             </div>
           </div>
         {/if}
@@ -1208,36 +1238,54 @@
                   disabled={!vary.palette}
                   bind:value={vary.paletteValue}
                 >
-                  <option value="shuffle">shuffled — the same colours in a new order per image</option>
+                  <option value="shuffle">shuffled — each image deals its colours from a pool</option>
                   <option value="random">random — new colours per image, as many as above</option>
                 </select>
               </div>
               {#if vary.palette && vary.paletteValue === 'shuffle'}
-                <!-- The colours being reordered, right where the rule is:
-                     the same state as the generator panel, so an edit in
-                     either place is the same edit. -->
-                <div class="row" data-testid="ph-vary-palette-colours">
-                  {#if image.generator === 'swirl'}
-                    <div class="palette-entry">
-                      <label for="ph-vary-swirl-color">Swirl colour</label>
-                      <ColorField id="ph-vary-swirl-color" testid="ph-vary-swirl-color" bind:value={swirl.color} />
-                    </div>
-                    <div class="palette-entry">
-                      <label for="ph-vary-swirl-background">Background colour</label>
-                      <ColorField
-                        id="ph-vary-swirl-background"
-                        testid="ph-vary-swirl-background"
-                        bind:value={swirl.background}
-                      />
-                    </div>
-                  {:else}
-                    {#each image.palette as _, i (i)}
+                <!-- The pool the rule deals from, right where the rule is.
+                     Its own colours (feedback round 2): it starts as the
+                     generator's, and can grow past what one image holds, so
+                     shuffling has more to draw from than four (or two). -->
+                <div class="stack" data-testid="ph-vary-palette-colours">
+                  <p class="muted small">
+                    {#if image.generator === 'swirl'}
+                      Each image takes its swirl colour and its background colour from this pool, shuffled — up to
+                      {MAX_SHUFFLE_POOL} colours.
+                    {:else}
+                      Each image takes its {options.palette.length === 1 ? 'colour' : `${options.palette.length} colours`}
+                      from this pool, shuffled — up to {MAX_SHUFFLE_POOL} colours.
+                    {/if}
+                  </p>
+                  <div class="row">
+                    {#each shufflePool as _, i (i)}
                       <div class="palette-entry">
-                        <label for={`ph-vary-palette-${i}`}>Colour {i + 1}</label>
-                        <ColorField id={`ph-vary-palette-${i}`} testid={`ph-vary-palette-${i}`} bind:value={image.palette[i]} />
+                        <label for={`ph-vary-palette-${i}`}>Pool colour {i + 1}</label>
+                        <div class="row">
+                          <ColorField
+                            id={`ph-vary-palette-${i}`}
+                            testid={`ph-vary-palette-${i}`}
+                            bind:value={shufflePool[i]}
+                          />
+                          <button
+                            class="btn"
+                            type="button"
+                            data-testid={`ph-vary-palette-remove-${i}`}
+                            aria-label={`Remove pool colour ${i + 1}`}
+                            disabled={shufflePool.length <= 1}
+                            onclick={() => removePoolColour(i)}
+                          >
+                            ×
+                          </button>
+                        </div>
                       </div>
                     {/each}
-                  {/if}
+                    {#if shufflePool.length < MAX_SHUFFLE_POOL}
+                      <button class="btn" type="button" data-testid="ph-vary-palette-add" onclick={addPoolColour}>
+                        Add a colour
+                      </button>
+                    {/if}
+                  </div>
                 </div>
               {/if}
             {/if}

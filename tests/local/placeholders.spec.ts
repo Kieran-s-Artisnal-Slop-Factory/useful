@@ -211,15 +211,19 @@ test.describe('placeholders — filler images', () => {
     await expect(page.getByTestId('ph-block-size')).toBeVisible();
     await expect(page.getByTestId('ph-seed')).toBeVisible();
     await expect(page.getByTestId('ph-fg')).toHaveCount(0);
-    // Four default colours; remove one, add it back; the drawing follows.
+    // Four default colours, so nothing to add (the button is gone, not
+    // greyed); remove one and it comes back; add and it goes again; the
+    // drawing follows.
     await expect(page.locator('[data-testid^="ph-palette-"][data-testid$="-pick"]')).toHaveCount(4);
-    await expect(page.getByTestId('ph-palette-add')).toBeDisabled();
+    await expect(page.getByTestId('ph-palette-add')).toHaveCount(0);
     const four = await svg();
     await page.getByTestId('ph-palette-remove-3').click();
     await expect(page.locator('[data-testid^="ph-palette-"][data-testid$="-pick"]')).toHaveCount(3);
+    await expect(page.getByTestId('ph-palette-add')).toBeVisible();
     await expect.poll(async () => await svg()).not.toBe(four);
     await page.getByTestId('ph-palette-add').click();
     await expect(page.locator('[data-testid^="ph-palette-"][data-testid$="-pick"]')).toHaveCount(4);
+    await expect(page.getByTestId('ph-palette-add')).toHaveCount(0);
     await expect.poll(async () => await svg()).toBe(four);
     // A cut ratio of 0 leaves no cut-outs; the drawing gains blocks.
     await page.getByTestId('ph-cut-ratio').fill('0');
@@ -467,29 +471,90 @@ test.describe('placeholders — getting them out', () => {
     await expect.poll(async () => await svg()).not.toBe(two);
     await expect.poll(async () => await svg()).toContain('#123456');
 
-    // Nothing under the rule until it is on; shuffled shows the pair, bound
-    // to the same colours as the panel above; random shows no fields.
+    // Nothing under the rule until it is on. Shuffled shows a POOL (feedback
+    // round 2): it starts as the swirl's two colours, but it is its own set
+    // — editing it leaves the named fields alone, and it can grow.
+    const poolPicks = page.locator('[data-testid^="ph-vary-palette-"][data-testid$="-pick"]');
     await expect(page.getByTestId('ph-vary-palette-colours')).toHaveCount(0);
     await page.getByTestId('ph-vary-palette').check();
-    await expect(page.getByTestId('ph-vary-swirl-background')).toHaveValue('#123456');
-    await page.getByTestId('ph-vary-swirl-color').fill('#abcdef');
-    await page.getByTestId('ph-vary-swirl-color').press('Enter');
-    await expect(page.getByTestId('ph-swirl-color')).toHaveValue('#abcdef');
+    await expect(poolPicks).toHaveCount(2);
+    await expect(page.getByTestId('ph-vary-palette-0')).toHaveValue('#e76f51');
+    await expect(page.getByTestId('ph-vary-palette-1')).toHaveValue('#123456');
+    await expect(page.getByTestId('ph-vary-palette-colours')).toContainText('swirl colour and its background colour');
+    await page.getByTestId('ph-vary-palette-0').fill('#abcdef');
+    await page.getByTestId('ph-vary-palette-0').press('Enter');
+    await expect(page.getByTestId('ph-swirl-color')).toHaveValue('#e76f51');
+    await page.getByTestId('ph-vary-palette-add').click();
+    await expect(poolPicks).toHaveCount(3);
+    // Random shows no fields; back to shuffled, the pool is as it was left.
     await page.getByTestId('ph-vary-palette-value').selectOption('random');
     await expect(page.getByTestId('ph-vary-palette-colours')).toHaveCount(0);
-
-    // The mosaic keeps its up-to-four editor, and shuffled shows all four.
-    await page.getByTestId('ph-gen-mosaic').click();
-    await expect(page.getByTestId('ph-palette-add')).toBeVisible();
-    await expect(page.locator('[data-testid^="ph-palette-"][data-testid$="-pick"]')).toHaveCount(4);
     await page.getByTestId('ph-vary-palette-value').selectOption('shuffle');
-    await expect(page.locator('[data-testid^="ph-vary-palette-"][data-testid$="-pick"]')).toHaveCount(4);
-    await expect(page.getByTestId('ph-vary-palette-0')).toHaveValue('#e76f51');
+    await expect(poolPicks).toHaveCount(3);
+    await expect(page.getByTestId('ph-vary-palette-0')).toHaveValue('#abcdef');
+
+    // The mosaic keeps its up-to-four editor (full, so nothing to add), and
+    // the pool is the user's: switching generators does not reset it.
+    await page.getByTestId('ph-gen-mosaic').click();
+    await expect(page.locator('[data-testid^="ph-palette-"][data-testid$="-pick"]')).toHaveCount(4);
+    await expect(page.getByTestId('ph-palette-add')).toHaveCount(0);
+    await expect(poolPicks).toHaveCount(3);
+    await expect(page.getByTestId('ph-vary-palette-colours')).toContainText('4 colours from this pool');
+    // The last pool colour cannot be removed; the eighth is the last that
+    // can be added, and then the add button is gone rather than greyed.
+    await page.getByTestId('ph-vary-palette-remove-2').click();
+    await page.getByTestId('ph-vary-palette-remove-1').click();
+    await expect(poolPicks).toHaveCount(1);
+    await expect(page.getByTestId('ph-vary-palette-remove-0')).toBeDisabled();
+    for (let i = 1; i < 8; i++) await page.getByTestId('ph-vary-palette-add').click();
+    await expect(poolPicks).toHaveCount(8);
+    await expect(page.getByTestId('ph-vary-palette-add')).toHaveCount(0);
     // The mosaic deltas only show for the mosaic.
     await expect(page.getByTestId('ph-vary-block-size')).toBeVisible();
     await expect(page.getByTestId('ph-vary-cut-ratio-value')).toBeDisabled();
     await page.getByTestId('ph-gen-swirl').click();
     await expect(page.getByTestId('ph-vary-block-size')).toHaveCount(0);
+
+    expect(await app.dumpAll()).toEqual(before);
+  });
+
+  test('deals a mosaic batch from a shuffle pool bigger than the palette', async ({ app }) => {
+    const { page } = app;
+    const before = await app.dumpAll();
+    await app.goto('/tools/placeholders/');
+    await toImageMode(page);
+    await page.getByTestId('ph-gen-mosaic').click();
+    await page.getByTestId('ph-batch').fill('8');
+    await page.getByTestId('ph-vary-palette').check();
+    await page.getByTestId('ph-vary-palette-value').selectOption('shuffle');
+    // The pool starts as the mosaic's four; a fifth, distinctive colour
+    // joins it — one no default palette or background uses.
+    await expect(page.locator('[data-testid^="ph-vary-palette-"][data-testid$="-pick"]')).toHaveCount(4);
+    await page.getByTestId('ph-vary-palette-add').click();
+    await page.getByTestId('ph-vary-palette-4').fill('#ff00ff');
+    await page.getByTestId('ph-vary-palette-4').press('Enter');
+    await expect(page.getByTestId('ph-vary-palette-4')).toHaveValue('#ff00ff');
+
+    const archive = await downloadBytes(page, () => page.getByTestId('ph-download-batch').click());
+    const entries = zipEntries(new Uint8Array(archive.bytes));
+    expect(entries).toHaveLength(8);
+    const pool = ['#e76f51', '#f4a261', '#2a9d8f', '#264653', '#ff00ff'];
+    let magenta = 0;
+    for (const e of entries) {
+      const text = new TextDecoder().decode(e.data);
+      const fills = [...text.matchAll(/fill="(#[0-9a-f]{6})"/g)].map((m) => m[1]!);
+      expect(fills.length).toBeGreaterThan(0);
+      // Only pool colours and the background are painted, and no image
+      // holds more than the mosaic's four.
+      const painted = new Set(fills.filter((f) => f !== '#cfd8e3'));
+      for (const f of painted) expect(pool).toContain(f);
+      expect(painted.size).toBeLessThanOrEqual(4);
+      if (painted.has('#ff00ff')) magenta++;
+    }
+    // Eight deals of four from five: the fifth colour shows up somewhere
+    // (seeded, so this is the same answer every run), and not everywhere.
+    expect(magenta).toBeGreaterThan(0);
+    expect(magenta).toBeLessThan(8);
 
     expect(await app.dumpAll()).toEqual(before);
   });

@@ -14,7 +14,7 @@ _Describes the code as of v0.5.0 (schema v16) — verify against source when in 
 | [napkin/model.ts](../../../src/lib/napkin/model.ts) | Fields, `reconcileFields`, `checkValue`. Pure, so it tests without loading 37 MB of maths library. |
 | [napkin/transfer.ts](../../../src/lib/napkin/transfer.ts) | Import and export, with the validation an untrusted document needs. |
 | [napkin/substitute.ts](../../../src/lib/napkin/substitute.ts) | The middle row of the picture: `substituteJson`, `usableValues`, `substitutedLatex`. |
-| [napkin/exportImage.ts](../../../src/lib/napkin/exportImage.ts) | The SVG builder: `layoutRow`, `buildCalculationSvg`, `comparisonRows`, `fontFaceRules`, `formatNumberLatex`, `imageFilename`, `EXPORT_THEMES`. |
+| [napkin/exportImage.ts](../../../src/lib/napkin/exportImage.ts) | The SVG builder: `layoutRow`, `buildCalculationSvg` / `composeCalculationSvg`, `buildComparisonSvg` / `composeComparisonSvg`, `comparisonRows`, `comparisonLayout`, `fontFaceRules`, `formatNumberLatex`, `imageFilename`, `EXPORT_THEMES`. |
 | [raster/svgToPng.ts](../../../src/lib/raster/svgToPng.ts) | `svgToPngBlob` — a self-contained SVG string through a blob URL, an `<img>` and a canvas. Shared, not napkin-specific. |
 | [codegen/expression.ts](../../../src/lib/codegen/expression.ts) | MathJSON → an expression, per language, with precedence. |
 | [codegen/functions.ts](../../../src/lib/codegen/functions.ts) | The whole file: docstring, typed parameters, guard clauses, helpers. |
@@ -225,11 +225,11 @@ flowchart TD
   A["formulaLatex, exactly as typed"] --> R
   B["substitutedLatex in substitute.ts, once per calculation"] --> R
   C["formatNumberLatex of each result, comparisons re-evaluated with evaluateFormula"] --> R
-  R["comparisonRows: the formula once, then a values row and a result per calculation, each a caption and a LaTeX string"] --> S
+  R["comparisonRows (stacked) or comparisonLayout (header plus a column per calculation): captions and LaTeX strings"] --> S
   S["renderFormulaSet in formulaMarkup.ts: convertLatexToMarkup per row, one stylesheet, each face embedded once"] --> M
   M["layoutRow: laid out in an off-screen shadow root, geometry read back"] --> G
-  G["drawRow: text, rect and nested svg primitives"] --> V
-  V["buildCalculationSvg returns a self-contained SVG string"] --> D["downloadImageSvg writes the .svg"]
+  G["composeCalculationSvg or composeComparisonSvg: pure, place each row and draw it with drawRow (text, rect and nested svg)"] --> V
+  V["buildCalculationSvg or buildComparisonSvg returns a self-contained SVG string"] --> D["downloadImageSvg writes the .svg"]
   V --> P["svgToPngBlob in raster/svgToPng.ts"]
   P --> E["encodeCanvas, then downloadBlob or copyPng"]
 ```
@@ -271,6 +271,26 @@ One picture can carry several calculations of the same formula — the current o
 3. one result row per calculation — captioned `Result — <title>` as soon as there is more than one (the current one falls back to `Current` when untitled), and by the plain **Result** caption when there is only one.
 
 `buildCalculationSvg` and `CalculationRow` did not change: the renderer still receives a list of `{ label, latex }`. With one calculation `comparisonRows` returns exactly the three rows the 0.5.0 dialog built — the current title is ignored until there is something to tell it apart from, so removing the last comparison restores the single picture even though the title box keeps its text — and a unit test holds it to that, so a picture with no comparison added is byte-for-byte the picture it was. The Playwright case removes the comparison and asserts the SVG is identical to the one previewed before it was added.
+
+### Side by side (0.6.0 feedback round 2)
+
+Stacking the rows put option 2's values four rows away from option 2's result. With something to compare, the picture is now laid out in **columns**:
+
+```mermaid
+flowchart TD
+  T["Title (optional), across the full width"] --> F
+  F["Header rows: the formula, once, across the full width"] --> C1
+  F --> C2
+  C1["Column 0: caption, substituted formula, Result — title, result"]
+  C2["Column 1: caption, substituted formula, Result — title, result"]
+  C1 -. "COLUMN_GUTTER" .- C2
+```
+
+`comparisonLayout` in [exportImage.ts](../../../src/lib/napkin/exportImage.ts) is `comparisonRows`' sibling: same input, same captions (both go through one private `calculationRows`), but it returns `{ header, columns }` — the formula row in `header`, and per calculation a column of its substituted row and its result row, in input order. A calculation that produced neither row has no column, so a refused substitution leaves no empty gap. `rebuildImage` picks the builder by `imageCompare.length`: at least one comparison and it calls `buildComparisonSvg(comparisonLayout(input), options)`, otherwise `buildCalculationSvg(comparisonRows(input), options)` exactly as before.
+
+The builder was split so the column arithmetic could be unit-tested without a browser. `measureRows` does the typesetting — one `renderFormulaSet` call for every row, header and columns together, so each face is embedded once, then `document.fonts.ready` and `layoutRow` per row — and hands `MeasuredRow[]` (`{ label, layout }`) to a **pure composer**: `composeCalculationSvg` for the stack, `composeComparisonSvg` for the columns. Both share `drawStack` (a caption line and a row at a time, `GAP` between rows) and `wrapSvg` (the `<svg>` root, the `@font-face` rules, the background unless transparent). The single-calculation output is unchanged: `composeCalculationSvg` emits the same parts in the same order at the same coordinates, and a Vitest case works one small picture out by hand and asserts the SVG string exactly.
+
+`composeComparisonSvg` places the title, then the header rows at `x = padding` across the full width, then the columns: each column is as wide as its widest row, they all start on the same line `GAP` under the header, and each one begins `COLUMN_GUTTER` (40 px) after the previous column's right edge. Width is `padding * 2` plus the widest of the title, the header rows and the columns-plus-gutters (never under the 120 px floor); height is `padding * 2` plus the title, the header stack, the gap and the **tallest** column. Theme, transparency and padding are the same `ComposeOptions` the stacked composer takes.
 
 ### There is no `<foreignObject>` in the output, and there must never be one
 
@@ -345,8 +365,8 @@ Each of these cost time, each would cost it again, and each fails quietly rather
 ### What the tests cover
 
 - [substitute.test.ts](../../../src/lib/napkin/substitute.test.ts) — the tree walk in Vitest against plain JSON, then `substitutedLatex` against the **real** engine for the cases that decide whether the feature is honest: the square root that must stay a square root, the subtraction that must stay `5-(-7)`, `\mathrm{rate}` next to `\mathrm{rated}`, and each refusal.
-- [exportImage.test.ts](../../../src/lib/napkin/exportImage.test.ts) — the arithmetic and naming around the builder. `formatNumberLatex` groups thousands with `\,` rather than a comma, because the row above it is rendered by the Compute Engine, which writes `\,`; four digits stay unbroken, since `1,000` reads worse than `1000` in a formula. `imageFilename` cannot emit a separator or a traversal. `captionText` turns blank and whitespace into no caption, which is what the dialog's caption toggle relies on. `comparisonRows` with one untitled calculation returns exactly the three 0.5.0 rows, draws the formula once and then a values row and a named result per calculation, keeps the row caption for an untitled current calculation, and drops the rows a calculation could not produce.
-- [napkin-math.spec.ts](../../../tests/local/napkin-math.spec.ts) — `layoutRow` and `buildCalculationSvg` measure real text, so they live in Playwright: no `<foreignObject>`, no non-`data:` `url(`, no `var(--`, a fraction drawing more than one `<rect>`, the middle row carrying `12500` and `4750` while the bottom row carries `7750`, a PNG whose IHDR is exactly 3× the preview at 3× and which is too large to be blank, every dialog control carrying an accessible name, and **zero writes** across the whole flow. The comparison case saves `Option 1`, changes the inputs, adds it to the picture titled `Option 2`, and reads back one `FORMULA`, both captions, both sets of numbers and both `RESULT — …` lines in order; removing it gives back the identical single SVG, and nothing was written after the save.
+- [exportImage.test.ts](../../../src/lib/napkin/exportImage.test.ts) — the arithmetic and naming around the builder. `formatNumberLatex` groups thousands with `\,` rather than a comma, because the row above it is rendered by the Compute Engine, which writes `\,`; four digits stay unbroken, since `1,000` reads worse than `1000` in a formula. `imageFilename` cannot emit a separator or a traversal. `captionText` turns blank and whitespace into no caption, which is what the dialog's caption toggle relies on. `comparisonRows` with one untitled calculation returns exactly the three 0.5.0 rows, draws the formula once and then a values row and a named result per calculation, keeps the row caption for an untitled current calculation, and drops the rows a calculation could not produce. `comparisonLayout` gives the same captions as columns in input order and drops an empty column. The two composers run on synthetic geometry: `composeCalculationSvg` reproduces a hand-worked 0.5.0 SVG byte for byte; `composeComparisonSvg` comes out wider than either calculation alone, carries both captions on one line with the second to the right of the first, follows input order, is as tall as the header plus the tallest column, and keeps theme, transparency and padding.
+- [napkin-math.spec.ts](../../../tests/local/napkin-math.spec.ts) — `layoutRow` and `buildCalculationSvg` measure real text, so they live in Playwright: no `<foreignObject>`, no non-`data:` `url(`, no `var(--`, a fraction drawing more than one `<rect>`, the middle row carrying `12500` and `4750` while the bottom row carries `7750`, a PNG whose IHDR is exactly 3× the preview at 3× and which is too large to be blank, every dialog control carrying an accessible name, and **zero writes** across the whole flow. The comparison case saves `Option 1`, changes the inputs, adds it to the picture titled `Option 2`, and reads back one `FORMULA`, both captions, both sets of numbers and both `RESULT — …` lines; it parses the captions' `x`/`y` out of the SVG to check the two columns share a line with the second to the right, and reads the dialog's `W x H px` line to check the picture grew wider than the single one; removing the comparison gives back the identical single SVG, and nothing was written after the save.
 
 ## Offline
 

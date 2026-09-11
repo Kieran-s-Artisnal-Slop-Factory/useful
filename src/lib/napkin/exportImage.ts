@@ -186,31 +186,65 @@ export const UNTITLED_CURRENT = 'Current';
  * comparison is removed. Pure, so that promise is held by a unit test.
  */
 export function comparisonRows(input: ComparisonRowsInput): CalculationRow[] {
-  const { formula, substitutedLabel, resultLabel, calculations } = input;
+  const { formula, calculations } = input;
   const rows: CalculationRow[] = [];
   if (formula) rows.push({ label: formula.label, latex: formula.latex });
-
-  const several = calculations.length > 1;
-  const titleOf = (calc: ComparedCalculation, index: number): string =>
-    calc.title.trim() || (index === 0 ? UNTITLED_CURRENT : '');
-
-  for (const [index, calc] of calculations.entries()) {
-    if (calc.substituted === null) continue;
-    const own = several ? calc.title.trim() : '';
-    rows.push({
-      label: index === 0 && !own ? substitutedLabel : own,
-      latex: calc.substituted,
-    });
-  }
-
-  for (const [index, calc] of calculations.entries()) {
-    if (calc.result === null) continue;
-    const label = several
-      ? [resultLabel.trim(), titleOf(calc, index)].filter(Boolean).join(' — ')
-      : resultLabel;
-    rows.push({ label, latex: calc.result });
-  }
+  const parts = calculations.map((calc, index) => calculationRows(input, calc, index));
+  for (const part of parts) if (part.substituted) rows.push(part.substituted);
+  for (const part of parts) if (part.result) rows.push(part.result);
   return rows;
+}
+
+/** One calculation's two rows, captioned the way `comparisonRows` captions them. */
+function calculationRows(
+  input: ComparisonRowsInput,
+  calc: ComparedCalculation,
+  index: number
+): { substituted: CalculationRow | null; result: CalculationRow | null } {
+  const { substitutedLabel, resultLabel, calculations } = input;
+  const several = calculations.length > 1;
+  const own = several ? calc.title.trim() : '';
+  const title = calc.title.trim() || (index === 0 ? UNTITLED_CURRENT : '');
+  return {
+    substituted:
+      calc.substituted === null
+        ? null
+        : { label: index === 0 && !own ? substitutedLabel : own, latex: calc.substituted },
+    result:
+      calc.result === null
+        ? null
+        : {
+            label: several ? [resultLabel.trim(), title].filter(Boolean).join(' — ') : resultLabel,
+            latex: calc.result,
+          },
+  };
+}
+
+/**
+ * The same picture arranged side by side (0.6.0 feedback round 2).
+ *
+ * `header` is what spans the full width — the formula, once — and `columns`
+ * holds one column per calculation, in input order, each reading top to
+ * bottom: its caption and substituted formula, then `Result — <title>` and
+ * the result. The captions are exactly the ones `comparisonRows` gives the
+ * stacked picture; only the arrangement differs. A calculation that produced
+ * neither row has no column, so nothing is drawn as an empty gap.
+ */
+export interface ComparisonLayout {
+  header: CalculationRow[];
+  columns: CalculationRow[][];
+}
+
+export function comparisonLayout(input: ComparisonRowsInput): ComparisonLayout {
+  const header: CalculationRow[] = [];
+  if (input.formula) header.push({ label: input.formula.label, latex: input.formula.latex });
+  const columns = input.calculations
+    .map((calc, index) => {
+      const part = calculationRows(input, calc, index);
+      return [part.substituted, part.result].filter((row): row is CalculationRow => row !== null);
+    })
+    .filter((column) => column.length > 0);
+  return { header, columns };
 }
 
 /** Only the `@font-face` rules — the layout CSS is for measuring, not output. */
@@ -363,22 +397,190 @@ function drawRow(layout: RowLayout, dx: number, dy: number, color: string): stri
   return parts.join('');
 }
 
+/** A row after measuring: its caption as drawn, and its geometry. */
+export interface MeasuredRow {
+  label: string;
+  layout: RowLayout;
+}
+
+/** What the pure composers need beyond the rows: the resolved options and the faces. */
+export interface ComposeOptions {
+  title: string;
+  palette: ExportTheme;
+  padding: number;
+  transparent: boolean;
+  /** The `@font-face` rules to carry inside the file. */
+  fontCss: string;
+}
+
+export interface ComposedSvg {
+  svg: string;
+  width: number;
+  height: number;
+  runs: number;
+}
+
+/** Gap between two columns of a side-by-side picture. */
+const COLUMN_GUTTER = 40;
+
+/** The height a stack of rows takes, captions and the gaps between rows included. */
+function stackHeight(rows: readonly MeasuredRow[]): number {
+  return (
+    rows.reduce((sum, row) => sum + row.layout.height + (row.label ? LABEL_HEIGHT + LABEL_GAP : 0), 0) +
+    GAP * Math.max(0, rows.length - 1)
+  );
+}
+
+function drawTitle(title: string, padding: number, y: number, palette: ExportTheme): string {
+  return (
+    `<text x="${padding}" y="${y + 16}" font-family="ui-sans-serif, system-ui, sans-serif" ` +
+    `font-size="15" font-weight="600" fill="${palette.text}">${escapeXml(title)}</text>`
+  );
+}
+
 /**
- * Build the picture. Returns null when nothing could be typeset — an empty
- * formula, or MathLive failing to load.
+ * Draw a stack of rows with its top-left corner at (x, y). Returns the parts,
+ * the runs painted and the y just under the last row.
  */
-export async function buildCalculationSvg(
-  rows: readonly CalculationRow[],
-  options: BuildOptions = {}
-): Promise<BuiltCalculationSvg | null> {
-  const usable = rows.filter((row) => row.latex.trim().length > 0);
-  if (usable.length === 0) return null;
+function drawStack(
+  rows: readonly MeasuredRow[],
+  x: number,
+  top: number,
+  palette: ExportTheme
+): { parts: string[]; runs: number; bottom: number } {
+  const parts: string[] = [];
+  let runs = 0;
+  let y = top;
+  for (const [index, row] of rows.entries()) {
+    if (row.label) {
+      parts.push(
+        `<text x="${x}" y="${y + 11}" font-family="ui-sans-serif, system-ui, sans-serif" ` +
+          `font-size="11" letter-spacing="0.06em" fill="${palette.muted}">` +
+          `${escapeXml(row.label)}</text>`
+      );
+      y += LABEL_HEIGHT + LABEL_GAP;
+    }
+    parts.push(drawRow(row.layout, x, y, palette.text));
+    runs += row.layout.runs.length;
+    y += row.layout.height + (index < rows.length - 1 ? GAP : 0);
+  }
+  return { parts, runs, bottom: y };
+}
 
-  const { title = '', theme = 'light', padding = 24, transparent = false } = options;
-  const palette = EXPORT_THEMES[theme];
+function wrapSvg(parts: string[], width: number, height: number, options: ComposeOptions): string {
+  const background = options.transparent
+    ? ''
+    : `<rect width="${width}" height="${height}" fill="${options.palette.background}"/>`;
+  return (
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" ` +
+    `viewBox="0 0 ${width} ${height}">` +
+    `<style>${options.fontCss}</style>` +
+    background +
+    parts.join('') +
+    `</svg>`
+  );
+}
 
+/**
+ * Compose the stacked picture from measured rows. Pure — the measuring is
+ * `layoutRow`'s job — so the arithmetic is held by Vitest with synthetic
+ * geometry, and the output for one calculation is the 0.5.0 output exactly.
+ */
+export function composeCalculationSvg(rows: readonly MeasuredRow[], options: ComposeOptions): ComposedSvg {
+  const { padding, palette } = options;
+  const titleText = options.title.trim();
+  // A title can be wider than the maths; the box has to hold both.
+  const titleWidth = titleText ? titleText.length * 8.2 : 0;
+  const contentWidth = Math.max(120, titleWidth, ...rows.map((row) => row.layout.width));
+
+  const width = Math.ceil(contentWidth + padding * 2);
+  const height = Math.ceil(padding * 2 + (titleText ? TITLE_HEIGHT + GAP : 0) + stackHeight(rows));
+
+  const parts: string[] = [];
+  let y = padding;
+  if (titleText) {
+    parts.push(drawTitle(titleText, padding, y, palette));
+    y += TITLE_HEIGHT + GAP;
+  }
+  const stack = drawStack(rows, padding, y, palette);
+  parts.push(...stack.parts);
+
+  return { svg: wrapSvg(parts, width, height, options), width, height, runs: stack.runs };
+}
+
+/**
+ * Compose the side-by-side picture: the title, then the header rows across
+ * the full width, then the columns left to right — each as wide as its
+ * widest row, all starting on the same line under the header, separated by
+ * `COLUMN_GUTTER`. The picture is as wide as the widest of the title, the
+ * header and the columns together, and as tall as the header plus the
+ * tallest column.
+ */
+export function composeComparisonSvg(
+  layout: { header: readonly MeasuredRow[]; columns: readonly MeasuredRow[][] },
+  options: ComposeOptions
+): ComposedSvg {
+  const { padding, palette } = options;
+  const { header, columns } = layout;
+  const titleText = options.title.trim();
+  const titleWidth = titleText ? titleText.length * 8.2 : 0;
+
+  const columnWidths = columns.map((column) => Math.max(0, ...column.map((row) => row.layout.width)));
+  const columnsWidth =
+    columnWidths.reduce((sum, w) => sum + w, 0) + COLUMN_GUTTER * Math.max(0, columns.length - 1);
+  const contentWidth = Math.max(
+    120,
+    titleWidth,
+    ...header.map((row) => row.layout.width),
+    columnsWidth
+  );
+
+  const headerHeight = stackHeight(header);
+  const columnsHeight = Math.max(0, ...columns.map((column) => stackHeight(column)));
+  const width = Math.ceil(contentWidth + padding * 2);
+  const height = Math.ceil(
+    padding * 2 +
+      (titleText ? TITLE_HEIGHT + GAP : 0) +
+      headerHeight +
+      (header.length > 0 && columns.length > 0 ? GAP : 0) +
+      columnsHeight
+  );
+
+  const parts: string[] = [];
+  let runs = 0;
+  let y = padding;
+  if (titleText) {
+    parts.push(drawTitle(titleText, padding, y, palette));
+    y += TITLE_HEIGHT + GAP;
+  }
+  if (header.length > 0) {
+    const stack = drawStack(header, padding, y, palette);
+    parts.push(...stack.parts);
+    runs += stack.runs;
+    y = stack.bottom + (columns.length > 0 ? GAP : 0);
+  }
+  let x = padding;
+  for (const [index, column] of columns.entries()) {
+    const stack = drawStack(column, x, y, palette);
+    parts.push(...stack.parts);
+    runs += stack.runs;
+    x += columnWidths[index]! + COLUMN_GUTTER;
+  }
+
+  return { svg: wrapSvg(parts, width, height, options), width, height, runs };
+}
+
+/**
+ * Typeset and measure a set of rows. One `renderFormulaSet` call for the lot,
+ * so each face is embedded once however many rows share it. Null when
+ * nothing could be typeset — an empty formula, or MathLive failing to load.
+ */
+async function measureRows(
+  rows: readonly CalculationRow[]
+): Promise<{ measured: MeasuredRow[]; fontCss: string; fontBytes: number } | null> {
+  if (rows.length === 0) return null;
   const rendered = await renderFormulaSet(
-    usable.map((row) => row.latex),
+    rows.map((row) => row.latex),
     { embedFonts: true }
   );
   if (!rendered) return null;
@@ -387,67 +589,56 @@ export async function buildCalculationSvg(
   // against a fallback serif and the picture comes out clipped.
   if (typeof document !== 'undefined' && document.fonts?.ready) await document.fonts.ready;
 
-  const layouts = rendered.markups.map((markup) => layoutRow(markup, rendered.css));
-
-  const titleText = title.trim();
-  // A title can be wider than the maths; the box has to hold both.
-  const titleWidth = titleText ? titleText.length * 8.2 : 0;
-  const contentWidth = Math.max(120, titleWidth, ...layouts.map((row) => row.width));
-  const labelled = usable.map((row, index) => ({
+  const measured = rows.map((row, index) => ({
     label: captionText(row.label),
-    layout: layouts[index]!,
+    layout: layoutRow(rendered.markups[index]!, rendered.css),
   }));
+  return { measured, fontCss: fontFaceRules(rendered.css), fontBytes: rendered.fontBytes };
+}
 
-  const width = Math.ceil(contentWidth + padding * 2);
-  const height = Math.ceil(
-    padding * 2 +
-      (titleText ? TITLE_HEIGHT + GAP : 0) +
-      labelled.reduce(
-        (sum, row) => sum + row.layout.height + (row.label ? LABEL_HEIGHT + LABEL_GAP : 0),
-        0
-      ) +
-      GAP * (labelled.length - 1)
+function composeOptions(options: BuildOptions, fontCss: string): ComposeOptions {
+  const { title = '', theme = 'light', padding = 24, transparent = false } = options;
+  return { title, palette: EXPORT_THEMES[theme], padding, transparent, fontCss };
+}
+
+const hasLatex = (row: CalculationRow): boolean => row.latex.trim().length > 0;
+
+/**
+ * Build the picture. Returns null when nothing could be typeset — an empty
+ * formula, or MathLive failing to load.
+ */
+export async function buildCalculationSvg(
+  rows: readonly CalculationRow[],
+  options: BuildOptions = {}
+): Promise<BuiltCalculationSvg | null> {
+  const usable = rows.filter(hasLatex);
+  const measured = await measureRows(usable);
+  if (!measured) return null;
+  const composed = composeCalculationSvg(measured.measured, composeOptions(options, measured.fontCss));
+  return { ...composed, fontBytes: measured.fontBytes };
+}
+
+/**
+ * Build the side-by-side picture (0.6.0 feedback round 2) from a
+ * `comparisonLayout`. Measures every row in one pass — the header first,
+ * then column by column — and hands the geometry to `composeComparisonSvg`.
+ */
+export async function buildComparisonSvg(
+  layout: ComparisonLayout,
+  options: BuildOptions = {}
+): Promise<BuiltCalculationSvg | null> {
+  const header = layout.header.filter(hasLatex);
+  const columns = layout.columns.map((column) => column.filter(hasLatex)).filter((c) => c.length > 0);
+  const measured = await measureRows([...header, ...columns.flat()]);
+  if (!measured) return null;
+
+  let cursor = 0;
+  const take = (count: number): MeasuredRow[] => measured.measured.slice(cursor, (cursor += count));
+  const composed = composeComparisonSvg(
+    { header: take(header.length), columns: columns.map((column) => take(column.length)) },
+    composeOptions(options, measured.fontCss)
   );
-
-  const parts: string[] = [];
-  let y = padding;
-
-  if (titleText) {
-    parts.push(
-      `<text x="${padding}" y="${y + 16}" font-family="ui-sans-serif, system-ui, sans-serif" ` +
-        `font-size="15" font-weight="600" fill="${palette.text}">${escapeXml(titleText)}</text>`
-    );
-    y += TITLE_HEIGHT + GAP;
-  }
-
-  let runCount = 0;
-  for (const [index, row] of labelled.entries()) {
-    if (row.label) {
-      parts.push(
-        `<text x="${padding}" y="${y + 11}" font-family="ui-sans-serif, system-ui, sans-serif" ` +
-          `font-size="11" letter-spacing="0.06em" fill="${palette.muted}">` +
-          `${escapeXml(row.label)}</text>`
-      );
-      y += LABEL_HEIGHT + LABEL_GAP;
-    }
-    parts.push(drawRow(row.layout, padding, y, palette.text));
-    runCount += row.layout.runs.length;
-    y += row.layout.height + (index < labelled.length - 1 ? GAP : 0);
-  }
-
-  const background = transparent
-    ? ''
-    : `<rect width="${width}" height="${height}" fill="${palette.background}"/>`;
-
-  const svg =
-    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" ` +
-    `viewBox="0 0 ${width} ${height}">` +
-    `<style>${fontFaceRules(rendered.css)}</style>` +
-    background +
-    parts.join('') +
-    `</svg>`;
-
-  return { svg, width, height, fontBytes: rendered.fontBytes, runs: runCount };
+  return { ...composed, fontBytes: measured.fontBytes };
 }
 
 /**

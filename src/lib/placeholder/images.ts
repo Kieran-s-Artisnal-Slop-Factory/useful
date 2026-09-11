@@ -627,10 +627,15 @@ export interface BatchVariation {
   blockSizeDelta: number | null;
   /** Mosaic: item `i` adds `i × delta` to the cut-out share, clamped to 0–1. */
   cutRatioDelta: number | null;
-  /** Mosaic and swirl: `shuffle` reorders the palette per item (the same
-   * colours, so a batch stays one family); `random` draws new ones, as many
-   * as the base palette has. */
+  /** Mosaic and swirl: `shuffle` deals each item its colours from a pool
+   * (`shufflePool`, or the base palette when that is empty — the same
+   * colours in a new order, so a batch stays one family); `random` draws new
+   * ones, as many as the base palette has. */
   palette: 'off' | 'shuffle' | 'random';
+  /** The pool `shuffle` deals from (feedback round 2). Empty means the
+   * generator's own palette; a bigger pool lets each image take a different
+   * subset. Blanks are dropped; the page caps it at `MAX_SHUFFLE_POOL`. */
+  shufflePool: string[];
 }
 
 export const DEFAULT_BATCH_VARIATION: BatchVariation = {
@@ -652,7 +657,12 @@ export const DEFAULT_BATCH_VARIATION: BatchVariation = {
   blockSizeDelta: null,
   cutRatioDelta: null,
   palette: 'off',
+  shufflePool: [],
 };
+
+/** The most colours the page lets into the shuffle pool. The library takes
+ * any length; this is a UI cap so the row of fields stays a row. */
+export const MAX_SHUFFLE_POOL = 8;
 
 /** Bounds the deltas clamp or wrap to — the same ones the page's sliders use. */
 export const VARIATION_BOUNDS = {
@@ -707,6 +717,21 @@ export function randomSeedText(rng: () => number): string {
  * middling saturation and lightness. */
 export function randomColor(rng: () => number): string {
   return rgbToHex(hslToRgb([rng() * 360, 0.35 + rng() * 0.5, 0.3 + rng() * 0.45]) as [number, number, number]);
+}
+
+/**
+ * `k` colours dealt from `pool`: a Fisher–Yates shuffle of the pool (the
+ * shared `shuffled`, so one rng call per swap) and the first `k` of it. A
+ * pool larger than `k` yields a different subset per call; a pool smaller
+ * than `k` CYCLES — the shuffled pool repeats until `k` is reached, so a
+ * two-colour pool dealt to a four-colour mosaic gives `[a, b, a, b]` in
+ * some order. An empty pool yields an empty list; the caller falls back.
+ * Pure: the same rng state and inputs give the same answer.
+ */
+export function shufflePalette(pool: readonly string[], k: number, rng: () => number): string[] {
+  if (pool.length === 0 || k <= 0) return [];
+  const dealt = shuffled(rng, pool);
+  return Array.from({ length: k }, (_, i) => dealt[i % dealt.length]!);
 }
 
 /** Past `max`, back to zero plus the remainder — the TODO's wrap rule. */
@@ -802,7 +827,18 @@ export function varyOptions(
     out.cutRatio = round3(clampUnit(base.cutRatio + i * variation.cutRatioDelta, ...VARIATION_BOUNDS.cutRatio));
   }
 
-  if (variation.palette === 'shuffle') out.palette = shuffled(rng, base.palette);
+  if (variation.palette === 'shuffle') {
+    // The generator's own colours are the pool unless a bigger one was
+    // given; each item takes as many as the generator uses — two for the
+    // swirl, the (cleaned, capped) palette's count for the mosaic.
+    const own = paletteOf(base);
+    const given = (variation.shufflePool ?? []).map((c) => c.trim()).filter((c) => c.length > 0);
+    const pool = given.length > 0 ? given : own;
+    // A one-colour pool leaves the swirl one colour and its background, as
+    // the panel does, rather than cycling to the same colour twice.
+    const k = base.generator === 'swirl' ? Math.min(2, pool.length) : own.length;
+    out.palette = shufflePalette(pool, k, rng);
+  }
   if (variation.palette === 'random') out.palette = base.palette.map(() => randomColor(rng));
 
   return out;

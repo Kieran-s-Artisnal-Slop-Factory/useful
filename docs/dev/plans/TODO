@@ -97,6 +97,14 @@ Additional things to keep in mind:
     - [x] When another calculation is added, the current one can be given an optional title; stored ones use their saved titles; titles appear above their respective values
     - [x] The formula is drawn once; each calculation gets its own "With your values" row and that heading can be changed per calculation
 
+## Feedback round 2 (2026-09-11)
+
+- [x] Placeholder images
+  - [x] Shuffled palette: colours can be added to (and removed from) the shuffled pool for mosaic and swirl, next to the rule
+  - [x] Mosaic: the `Add a colour` button disappears when it can do nothing (four colours already)
+- [x] Napkin math
+  - [x] Export image: comparisons stack side by side in columns under the one formula, each column with its caption, values and result
+
 ## For human
 
 This section is for me to keep track of what I need to manually review, feel free to add to this

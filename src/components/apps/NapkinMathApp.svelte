@@ -365,8 +365,10 @@
     imageBusy = true;
     imageError = null;
     try {
-      const [{ buildCalculationSvg, comparisonRows, formatNumberLatex }, { substitutedLatex }] =
-        await Promise.all([
+      const [
+        { buildCalculationSvg, buildComparisonSvg, comparisonLayout, comparisonRows, formatNumberLatex },
+        { substitutedLatex },
+      ] = await Promise.all([
           import('../../lib/napkin/exportImage'),
           import('../../lib/napkin/substitute'),
         ]);
@@ -413,12 +415,13 @@
         calculations.push({ title: entry.caption, substituted, result: evaluated });
       }
 
-      const rows = comparisonRows({
+      const input = {
         formula: imageRows.formula.show ? { label: rowLabel('formula'), latex: formulaLatex } : null,
         substitutedLabel: rowLabel('substituted'),
         resultLabel: rowLabel('result'),
         calculations,
-      });
+      };
+      const rows = comparisonRows(input);
       const note = notes.length > 0 ? notes.join(' ') : null;
 
       if (rows.length === 0) {
@@ -428,11 +431,18 @@
         return;
       }
 
-      const built = await buildCalculationSvg(rows, {
+      const buildOptions = {
         title: showImageTitle ? name.trim() : '',
         theme: imageTheme,
         transparent: imageTransparent,
-      });
+      };
+      // With something to compare, the calculations stand side by side in
+      // columns under the one formula (0.6.0 feedback round 2). With nothing
+      // added, the stacked builder draws exactly the picture it always has.
+      const built =
+        imageCompare.length > 0
+          ? await buildComparisonSvg(comparisonLayout(input), buildOptions)
+          : await buildCalculationSvg(rows, buildOptions);
       if (token !== imageToken || destroyed) return;
       if (!built) {
         imageError = 'The formula could not be typeset.';

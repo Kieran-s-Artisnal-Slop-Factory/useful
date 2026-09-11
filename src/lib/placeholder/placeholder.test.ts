@@ -17,6 +17,7 @@ import {
   paletteOf,
   RANDOM_SIZE_RANGE,
   randomSizes,
+  shufflePalette,
   varyOptions,
   type BatchVariation,
   type ImageOptions,
@@ -467,6 +468,45 @@ describe('batches', () => {
   });
 });
 
+describe('shufflePalette', () => {
+  const pool = ['a', 'b', 'c', 'd', 'e', 'f'];
+
+  it('deals k distinct colours from a bigger pool, differently per call, the same per seed', () => {
+    const rng = mulberry32(11);
+    const deals = Array.from({ length: 10 }, () => shufflePalette(pool, 3, rng));
+    for (const d of deals) {
+      expect(d).toHaveLength(3);
+      expect(new Set(d).size).toBe(3);
+      for (const c of d) expect(pool).toContain(c);
+    }
+    expect(new Set(deals.map((d) => [...d].sort().join())).size).toBeGreaterThan(1);
+    const again = mulberry32(11);
+    expect(Array.from({ length: 10 }, () => shufflePalette(pool, 3, again))).toEqual(deals);
+    expect(pool).toEqual(['a', 'b', 'c', 'd', 'e', 'f']);
+  });
+
+  it('is a permutation when k is the pool size, and cycles when the pool is smaller', () => {
+    expect([...shufflePalette(pool, 6, mulberry32(2))].sort()).toEqual(pool);
+    const cycled = shufflePalette(['x', 'y'], 5, mulberry32(2));
+    expect(cycled).toHaveLength(5);
+    expect(cycled.slice(2, 4)).toEqual(cycled.slice(0, 2));
+    expect(cycled[4]).toBe(cycled[0]);
+    expect(new Set(cycled)).toEqual(new Set(['x', 'y']));
+    expect(shufflePalette(['only'], 3, mulberry32(2))).toEqual(['only', 'only', 'only']);
+  });
+
+  it('gives nothing for an empty pool or a zero count, and pulls nothing from the rng then', () => {
+    let calls = 0;
+    const counting = () => {
+      calls++;
+      return 0.5;
+    };
+    expect(shufflePalette([], 4, counting)).toEqual([]);
+    expect(shufflePalette(pool, 0, counting)).toEqual([]);
+    expect(calls).toBe(0);
+  });
+});
+
 describe('batch variation', () => {
   const base: ImageOptions = {
     ...DEFAULT_IMAGE_OPTIONS,
@@ -648,6 +688,65 @@ describe('batch variation', () => {
     // The base is left alone, and off leaves the palette as it was.
     expect(shuffledBase.palette).toEqual(palette);
     expect(vary({ palette: 'off' }, 1).palette).toEqual(base.palette);
+  });
+
+  it('deals the shuffled colours from a bigger pool when one is given', () => {
+    const pool = ['#111111', '#222222', '#333333', '#444444', '#555555', '#666666'];
+    const mosaic = { ...base, generator: 'mosaic' as const, palette: ['#aaaaaa', '#bbbbbb', '#cccccc', '#dddddd'] };
+    const deal = (seed: number, over: Partial<BatchVariation> = {}) => {
+      const rng = mulberry32(seed);
+      return Array.from({ length: 8 }, (_, i) =>
+        varyOptions(mosaic, i, 8, { ...DEFAULT_BATCH_VARIATION, palette: 'shuffle', shufflePool: pool, ...over }, rng)
+          .palette
+      );
+    };
+    const palettes = deal(9);
+    // As many colours as the mosaic has, every one from the pool, none of
+    // them from the base — and not the same four every time.
+    for (const p of palettes) {
+      expect(p).toHaveLength(4);
+      expect(new Set(p).size).toBe(4);
+      for (const c of p) expect(pool).toContain(c);
+    }
+    expect(new Set(palettes.map((p) => [...p].sort().join())).size).toBeGreaterThan(1);
+    // Deterministic per seed.
+    expect(deal(9)).toEqual(palettes);
+    expect(deal(10)).not.toEqual(palettes);
+    // Blanks in the pool are dropped; an all-blank pool is the base palette.
+    for (const p of deal(9, { shufflePool: [' ', '', ...pool] })) for (const c of p) expect(pool).toContain(c);
+    for (const p of deal(9, { shufflePool: ['', '  '] })) expect([...p].sort()).toEqual([...mosaic.palette].sort());
+    // A pool smaller than the mosaic's count cycles: two colours, four slots.
+    for (const p of deal(3, { shufflePool: ['#111111', '#222222'] })) {
+      expect(p).toHaveLength(4);
+      expect(p[2]).toBe(p[0]);
+      expect(p[3]).toBe(p[1]);
+      expect(new Set(p)).toEqual(new Set(['#111111', '#222222']));
+    }
+    // The swirl takes two from the pool — or one, when the pool has one, so
+    // its second tone stays the background rather than the same colour.
+    const swirl = { ...mosaic, generator: 'swirl' as const };
+    const rng = mulberry32(4);
+    const pairs = Array.from({ length: 6 }, (_, i) =>
+      varyOptions(swirl, i, 6, { ...DEFAULT_BATCH_VARIATION, palette: 'shuffle', shufflePool: pool }, rng).palette
+    );
+    for (const p of pairs) {
+      expect(p).toHaveLength(2);
+      expect(p[0]).not.toBe(p[1]);
+      for (const c of p) expect(pool).toContain(c);
+    }
+    expect(new Set(pairs.map((p) => p.join())).size).toBeGreaterThan(1);
+    expect(
+      varyOptions(swirl, 0, 1, { ...DEFAULT_BATCH_VARIATION, palette: 'shuffle', shufflePool: ['#123456'] }, mulberry32(1))
+        .palette
+    ).toEqual(['#123456']);
+    // And the drawing uses what was dealt: a batch of mosaics paints only
+    // pool colours (plus the background).
+    const batch = buildBatch(mosaic, 4, { ...DEFAULT_BATCH_VARIATION, palette: 'shuffle', shufflePool: pool });
+    for (const item of batch) {
+      const fills = [...item.svg.matchAll(/fill="(#[0-9a-f]{6})"/g)].map((m) => m[1]!);
+      expect(fills.length).toBeGreaterThan(0);
+      for (const fill of fills) expect([...pool, mosaic.background]).toContain(fill);
+    }
   });
 
   it('draws a new palette per item when asked, with as many colours', () => {

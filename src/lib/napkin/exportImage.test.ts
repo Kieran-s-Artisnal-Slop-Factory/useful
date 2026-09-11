@@ -3,16 +3,23 @@ import {
   EXPORT_THEMES,
   UNTITLED_CURRENT,
   captionText,
+  comparisonLayout,
   comparisonRows,
+  composeCalculationSvg,
+  composeComparisonSvg,
   fontFaceRules,
   formatNumberLatex,
   imageFilename,
+  type ComposeOptions,
+  type MeasuredRow,
+  type RowLayout,
 } from './exportImage';
 
 /* `buildCalculationSvg` and `layoutRow` measure real text in a real shadow
    root, so they live in the Playwright suite, which decodes the PNG they
    produce and checks the picture is neither blank nor the wrong size. What is
-   testable here is the arithmetic and naming around them. */
+   testable here is the arithmetic and naming around them, and the two pure
+   composers, fed synthetic geometry in place of what `layoutRow` measures. */
 
 describe('formatNumberLatex', () => {
   it('shows exactly what the page shows when no rounding is asked for', () => {
@@ -182,6 +189,173 @@ describe('comparisonRows', () => {
       calculations: [{ ...current, title: 'Option 2' }],
     });
     expect(rows).toEqual(single());
+  });
+});
+
+describe('comparisonLayout', () => {
+  const formula = { label: 'Formula', latex: '\\mathrm{revenue}-\\mathrm{cost}' };
+  const current = { title: '', substituted: '12500-4750', result: '= 7750' };
+  const other = { title: 'Option 1', substituted: '9000-4750', result: '= 4250' };
+
+  it('puts the formula in the header and gives each calculation a column, in input order', () => {
+    const layout = comparisonLayout({
+      formula,
+      substitutedLabel: 'With your values',
+      resultLabel: 'Result',
+      calculations: [{ ...current, title: 'Option 2' }, other],
+    });
+    expect(layout.header).toEqual([formula]);
+    expect(layout.columns).toEqual([
+      [
+        { label: 'Option 2', latex: '12500-4750' },
+        { label: 'Result — Option 2', latex: '= 7750' },
+      ],
+      [
+        { label: 'Option 1', latex: '9000-4750' },
+        { label: 'Result — Option 1', latex: '= 4250' },
+      ],
+    ]);
+  });
+
+  it('captions the columns exactly as the stacked rows are captioned', () => {
+    // Same input, two arrangements: the caption text must not depend on which.
+    const input = { formula, substitutedLabel: 'With your values', resultLabel: 'Result', calculations: [current, other] };
+    const stacked = comparisonRows(input).map((r) => r.label);
+    const layout = comparisonLayout(input);
+    expect([...layout.header, ...layout.columns.flat()].map((r) => r.label).sort()).toEqual([...stacked].sort());
+    expect(layout.columns[0]![0]!.label).toBe('With your values');
+    expect(layout.columns[0]![1]!.label).toBe(`Result — ${UNTITLED_CURRENT}`);
+  });
+
+  it('drops a column with nothing in it, and the header when the formula is off', () => {
+    const layout = comparisonLayout({
+      formula: null,
+      substitutedLabel: 'With your values',
+      resultLabel: 'Result',
+      calculations: [current, { ...other, substituted: null, result: null }],
+    });
+    expect(layout.header).toEqual([]);
+    expect(layout.columns).toHaveLength(1);
+  });
+});
+
+/* Synthetic geometry: one run per row, drawn at the row's origin, in place of
+   what `layoutRow` reads back from the browser. */
+const fakeLayout = (width: number, height: number, text: string): RowLayout => ({
+  width,
+  height,
+  runs: [{ text, x: 0, baseline: height - 4, family: 'KaTeX_Main', size: 18, italic: false, weight: '400', color: null }],
+  rules: [],
+  embedded: [],
+});
+const measured = (label: string, width: number, height: number, text: string): MeasuredRow => ({
+  label: captionText(label),
+  layout: fakeLayout(width, height, text),
+});
+const OPTIONS: ComposeOptions = {
+  title: 'T',
+  palette: EXPORT_THEMES.light,
+  padding: 24,
+  transparent: false,
+  fontCss: '@font-face{x}',
+};
+
+describe('composeCalculationSvg', () => {
+  it('draws the stacked picture exactly as 0.5.0 drew it', () => {
+    // Worked by hand from the 0.5.0 builder: 24 px padding, a 24 px title
+    // with a 16 px gap, then per row an 18 px caption line and the row, with
+    // 16 px between rows. Width is the 120 px floor plus padding. This is the
+    // byte-level promise that the column work left the single picture alone.
+    const rows = [measured('Formula', 100, 20, 'a'), measured('Result', 60, 20, 'b')];
+    const out = composeCalculationSvg(rows, OPTIONS);
+    expect(out.width).toBe(168);
+    expect(out.height).toBe(180);
+    expect(out.runs).toBe(2);
+    expect(out.svg).toBe(
+      '<svg xmlns="http://www.w3.org/2000/svg" width="168" height="180" viewBox="0 0 168 180">' +
+        '<style>@font-face{x}</style>' +
+        '<rect width="168" height="180" fill="#ffffff"/>' +
+        '<text x="24" y="40" font-family="ui-sans-serif, system-ui, sans-serif" font-size="15" font-weight="600" fill="#111111">T</text>' +
+        '<text x="24" y="75" font-family="ui-sans-serif, system-ui, sans-serif" font-size="11" letter-spacing="0.06em" fill="#6b7280">FORMULA</text>' +
+        '<text x="24" y="98" font-family="KaTeX_Main" font-size="18" font-style="normal" font-weight="400" fill="#111111" xml:space="preserve">a</text>' +
+        '<text x="24" y="129" font-family="ui-sans-serif, system-ui, sans-serif" font-size="11" letter-spacing="0.06em" fill="#6b7280">RESULT</text>' +
+        '<text x="24" y="152" font-family="KaTeX_Main" font-size="18" font-style="normal" font-weight="400" fill="#111111" xml:space="preserve">b</text>' +
+        '</svg>'
+    );
+  });
+
+  it('leaves the paper out when transparent, and skips a blank caption line', () => {
+    const out = composeCalculationSvg([measured('', 100, 20, 'a')], { ...OPTIONS, title: '', transparent: true });
+    expect(out.svg).not.toContain('<rect');
+    expect(out.svg).not.toContain('letter-spacing');
+    expect(out.height).toBe(24 * 2 + 20);
+  });
+});
+
+describe('composeComparisonSvg', () => {
+  const header = [measured('Formula', 100, 20, 'f')];
+  const first = [measured('Option 2', 90, 20, 'a'), measured('Result — Option 2', 50, 20, 'x')];
+  const second = [measured('Option 1', 80, 20, 'b'), measured('Result — Option 1', 50, 20, 'y')];
+  const captionAt = (svg: string, caption: string): { x: number; y: number } => {
+    const match = new RegExp(`<text x="([\\d.]+)" y="([\\d.]+)"[^>]*>${caption}</text>`).exec(svg);
+    if (!match) throw new Error(`${caption} is not in the picture`);
+    return { x: Number(match[1]), y: Number(match[2]) };
+  };
+
+  it('is wider than either calculation on its own, and carries both captions', () => {
+    const both = composeComparisonSvg({ header, columns: [first, second] }, OPTIONS);
+    const alone1 = composeCalculationSvg([...header, ...first], OPTIONS);
+    const alone2 = composeCalculationSvg([...header, ...second], OPTIONS);
+    expect(both.width).toBeGreaterThan(alone1.width);
+    expect(both.width).toBeGreaterThan(alone2.width);
+    // Two columns of 90 and 80 with the gutter between, plus padding.
+    expect(both.width).toBe(Math.ceil(90 + 40 + 80 + 24 * 2));
+    expect(both.svg).toContain('>OPTION 2<');
+    expect(both.svg).toContain('>OPTION 1<');
+    expect(both.runs).toBe(5);
+  });
+
+  it('lays the columns out left to right in input order, aligned at the top', () => {
+    const svg = composeComparisonSvg({ header, columns: [first, second] }, OPTIONS).svg;
+    const a = captionAt(svg, 'OPTION 2');
+    const b = captionAt(svg, 'OPTION 1');
+    expect(a.x).toBe(24);
+    expect(b.x).toBe(24 + 90 + 40);
+    expect(a.y).toBe(b.y);
+    expect(captionAt(svg, 'RESULT — OPTION 2').y).toBe(captionAt(svg, 'RESULT — OPTION 1').y);
+    // The formula sits above both, once, across the full width.
+    expect(svg.match(/>FORMULA</g)).toHaveLength(1);
+    expect(captionAt(svg, 'FORMULA').y).toBeLessThan(a.y);
+    expect(svg.indexOf('>OPTION 2<')).toBeLessThan(svg.indexOf('>OPTION 1<'));
+
+    const swapped = composeComparisonSvg({ header, columns: [second, first] }, OPTIONS).svg;
+    expect(captionAt(swapped, 'OPTION 1').x).toBe(24);
+    expect(captionAt(swapped, 'OPTION 2').x).toBe(24 + 80 + 40);
+  });
+
+  it('is as tall as the header plus the tallest column', () => {
+    const tall = [measured('Option 1', 80, 60, 'b'), measured('Result — Option 1', 50, 20, 'y')];
+    const out = composeComparisonSvg({ header, columns: [first, tall] }, OPTIONS);
+    // padding, title + gap, header row (caption + row), gap, tallest column.
+    expect(out.height).toBe(24 * 2 + (24 + 16) + (18 + 20) + 16 + (18 + 60 + 16 + 18 + 20));
+  });
+
+  it('keeps the theme, transparency and padding options', () => {
+    const out = composeComparisonSvg(
+      { header, columns: [first, second] },
+      { ...OPTIONS, palette: EXPORT_THEMES.dark, transparent: true, padding: 10 }
+    );
+    expect(out.svg).not.toContain('<rect');
+    expect(out.svg).toContain(`fill="${EXPORT_THEMES.dark.text}"`);
+    expect(out.svg).toContain(`fill="${EXPORT_THEMES.dark.muted}"`);
+    expect(out.width).toBe(Math.ceil(90 + 40 + 80 + 10 * 2));
+    expect(captionAt(out.svg, 'OPTION 2').x).toBe(10);
+  });
+
+  it('with no header, the columns start at the top', () => {
+    const out = composeComparisonSvg({ header: [], columns: [first, second] }, { ...OPTIONS, title: '' });
+    expect(captionAt(out.svg, 'OPTION 2').y).toBe(24 + 11);
+    expect(out.height).toBe(24 * 2 + (18 + 20 + 16 + 18 + 20));
   });
 });
 

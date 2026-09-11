@@ -648,6 +648,25 @@ test.describe('napkin math — the image export', () => {
       .join('');
   }
 
+  /** The width the dialog reports under the preview, from its "W x H px" line. */
+  async function previewWidth(page: P): Promise<number> {
+    const text = await page.getByTestId('napkin-image-size').textContent();
+    const match = /(\d+)\s*x\s*(\d+)\s*px/.exec(text ?? '');
+    if (!match) throw new Error(`no size under the preview: ${text}`);
+    return Number(match[1]);
+  }
+
+  /**
+   * Where a caption is drawn. Captions are single `<text>` runs whose x and y
+   * come first in the tag, so the position can be read straight off the
+   * source without parsing the SVG.
+   */
+  function captionAt(svg: string, caption: string): { x: number; y: number } {
+    const match = new RegExp(`<text x="([\\d.]+)" y="([\\d.]+)"[^>]*>${caption}</text>`).exec(svg);
+    if (!match) throw new Error(`${caption} is not in the picture`);
+    return { x: Number(match[1]), y: Number(match[2]) };
+  }
+
   /** Width and height straight out of a PNG's IHDR chunk. */
   function pngSize(bytes: Buffer): { width: number; height: number } {
     return { width: bytes.readUInt32BE(16), height: bytes.readUInt32BE(20) };
@@ -904,6 +923,7 @@ test.describe('napkin math — the image export', () => {
     await expect(page.getByTestId('napkin-image-compare-select')).toBeVisible();
     await expect(page.getByTestId('napkin-image-compare-select').locator('option')).toHaveText(['Option 1']);
     const single = await previewSvg(page);
+    const singleWidth = await previewWidth(page);
 
     await page.getByTestId('napkin-image-compare-add').click();
     await expect(page.getByTestId('napkin-image-compare-0')).toBeVisible();
@@ -919,14 +939,26 @@ test.describe('napkin math — the image export', () => {
       .toBe(true);
 
     const compared = await previewSvg(page);
-    // One formula, a captioned values row for each, and a named result for each.
+    // One formula across the top, then a column per calculation: its caption
+    // and values, then its named result (0.6.0 feedback round 2).
     expect(compared.match(/>FORMULA</g)!.length).toBe(1);
     expect(compared).toContain('>OPTION 1<');
     expect(compared).not.toContain('WITH YOUR VALUES');
     expect(compared).toContain('>RESULT — OPTION 2<');
     expect(compared).toContain('>RESULT — OPTION 1<');
-    expect(compared.indexOf('>OPTION 2<')).toBeLessThan(compared.indexOf('>OPTION 1<'));
-    expect(compared.indexOf('>OPTION 1<')).toBeLessThan(compared.indexOf('>RESULT — OPTION 2<'));
+    // The current calculation is the left column, so it is drawn first, and
+    // its result is drawn before the next column starts.
+    expect(compared.indexOf('>OPTION 2<')).toBeLessThan(compared.indexOf('>RESULT — OPTION 2<'));
+    expect(compared.indexOf('>RESULT — OPTION 2<')).toBeLessThan(compared.indexOf('>OPTION 1<'));
+    // Side by side: the two captions share a line, the second sits to the
+    // right of the first, and the picture grew wider to hold both.
+    const left = captionAt(compared, 'OPTION 2');
+    const right = captionAt(compared, 'OPTION 1');
+    expect(left.y).toBe(right.y);
+    expect(right.x).toBeGreaterThan(left.x);
+    expect(captionAt(compared, 'FORMULA').y).toBeLessThan(left.y);
+    expect(captionAt(compared, 'RESULT — OPTION 2').y).toBe(captionAt(compared, 'RESULT — OPTION 1').y);
+    expect(await previewWidth(page)).toBeGreaterThan(singleWidth);
     const glyphs = await previewGlyphs(page);
     expect(glyphs).toContain('9000');
     expect(glyphs).toContain('12500');
