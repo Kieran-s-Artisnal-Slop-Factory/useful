@@ -191,7 +191,7 @@ const NAV_OPTS = { ignoreVary: true, ignoreSearch: true };
 // crawl will pull, so a large bundle can't hammer the host. The 0.2.0 build
 // emits ~310 files under _astro/ (tools/audit-precache.mjs counts them).
 const WARM_DELAY_MS = 120;
-const WARM_MAX_ASSETS = 600;
+const WARM_MAX_ASSETS = 700;
 
 // What the crawl will NOT follow: the SQL engines' WebAssembly and data files
 // (Postgres alone is 16 MB) are referenced by `_astro/...` strings inside

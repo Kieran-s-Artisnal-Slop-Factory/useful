@@ -2,7 +2,7 @@
 
 Understand, validate and generate JSON and YAML at `/tools/config-playground/` (category **Playgrounds**). Two modes behind one switch. **Parse** takes a real document in a CodeMirror editor: it is parsed on every keystroke, the YAML 1.1 traps are called out as positioned warnings, its schema is extracted into a Field/Type table, and the document is checked back against whatever schema is in hand. **Create** builds the same table by hand and generates seeded sample documents from it. Either way the schema can be saved to a library and turned into a parser or a generator in Python, JavaScript, Go, Rust or a dependency-free web component. The inference, the validator and the generator are hand-rolled over one fourteen-kind type system; on the parsing path JSON is `JSON.parse` and YAML is eemeli's `yaml`, the one library involved.
 
-_Describes the code as of v0.5.0 (schema v16) — verify against source when in doubt._
+_Describes the code as of v0.6.0 (schema v17) — verify against source when in doubt._
 
 ## File map
 

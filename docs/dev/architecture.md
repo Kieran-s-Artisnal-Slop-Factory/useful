@@ -2,7 +2,7 @@
 
 `useful` is a static Astro 7 site whose every page mounts one Svelte 5 island. There is no server: IndexedDB in the visitor's browser is the only copy of the data, a hand-written service worker makes the built site work offline, and the heavy optional pieces (an ML model, two SQL engines, a city dataset) load lazily on demand. This page is the maintainer's mental model — the stack, the runtime picture, the directory map, the cross-cutting systems and where each is documented, the invariants that must not break, and the recipe for adding a tool.
 
-_Describes the code as of v0.5.0 (schema v16) — verify against source when in doubt._
+_Describes the code as of v0.6.0 (schema v17) — verify against source when in doubt._
 
 ## The stack
 

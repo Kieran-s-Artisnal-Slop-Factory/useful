@@ -2,7 +2,7 @@
 
 Tools for working on text itself, under **Calculators** in the sidebar (or Ctrl/Cmd+K and type their name). **Diff** compares two texts and shows exactly what changed; **Similarity** scores one word against as many others as you like and shows how each score was reached; **Text analysis** counts a text, scores how hard it is to read, lists what it repeats, and changes its case. Nothing you paste into any of them is saved — close the tab and it is gone.
 
-_Describes the code as of v0.5.0 (schema v16) — verify against source when in doubt._
+_Describes the code as of v0.6.0 (schema v17) — verify against source when in doubt._
 
 ## Diff
 

@@ -2,7 +2,7 @@
 
 Four calculator tools — number-base conversion with bit-width operations and a step-by-step visualizer for the binary ones, photography equivalence and light stops, file-transfer time, and daily calorie planning — each a Svelte island over a pure-function module in `src/lib/calc/`. None of them writes to IndexedDB while computing; the two deliberate writes in the group are the photography tool remembering the sensor format in `preferences.photo_last_format` and the calorie tool remembering the unit system in `preferences.calorie_units`.
 
-_Describes the code as of v0.5.0 (schema v16) — verify against source when in doubt._
+_Describes the code as of v0.6.0 (schema v17) — verify against source when in doubt._
 
 ## File map
 

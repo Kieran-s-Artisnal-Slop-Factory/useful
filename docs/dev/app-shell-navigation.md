@@ -2,7 +2,7 @@
 
 The shell is everything that is not a tool: the Astro layout every page mounts, the fixed topbar and sidebar, the `ctrl+k` palette, the tool registry that all three render from, and the small shared pieces (icons, cards, explainers, markdown rendering, pointer drag-and-drop) tools reach for. Pages are static Astro wrappers around one Svelte 5 island; navigation between them is client-side through Astro's `ClientRouter`, and the shell islands survive those swaps.
 
-_Describes the code as of v0.5.0 (schema v16) — verify against source when in doubt._
+_Describes the code as of v0.6.0 (schema v17) — verify against source when in doubt._
 
 ## File map
 

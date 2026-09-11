@@ -2,7 +2,7 @@
 
 Three file-in/file-out tools built on one decode → canvas → encode core in `src/lib/img/`, one shared download/copy pipeline in `src/lib/exportFile.ts`, and a single sanctioned database write (the remembered JPG quality). Pixels never touch IndexedDB: everything is session-only, and every output is either PNG or JPG.
 
-_Describes the code as of v0.5.0 (schema v16) — verify against source when in doubt._
+_Describes the code as of v0.6.0 (schema v17) — verify against source when in doubt._
 
 ## File map
 

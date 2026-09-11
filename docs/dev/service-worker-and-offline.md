@@ -2,7 +2,7 @@
 
 One hand-written service worker ([sw.js](../../public/sw.js)) makes the static build work with no network: it precaches the app shell at install, crawls the fingerprinted `_astro/` asset graph in the background, and serves navigations network-first and everything else stale-while-revalidate. Heavy optional freight (the background remover's model, the SQL engines, the maths fonts) is never precached; [offline.ts](../../src/lib/offline.ts) lists those as explicit "bundles" that a user downloads on purpose from the post-install dialog or Settings → Offline.
 
-_Describes the code as of v0.5.0 (schema v16) — verify against source when in doubt._
+_Describes the code as of v0.6.0 (schema v17) — verify against source when in doubt._
 
 ## Three tiers
 
@@ -64,7 +64,7 @@ Starts from `SHELL`, walks a queue. For each URL: on a cache hit, use it; on a m
 
 Both are then filtered by `ASSET_FILE` (`/^[^/]+\.[A-Za-z0-9]+$/` on the part after the prefix): a build asset is one path segment with an extension. Minified code is full of strings that look like relative paths and are not files in this build — Excalidraw alone contributes hundreds (`./fonts/Xiaolai/…woff2`, `./locales/de-DE.json`, `./lib/pool`) — and before the filter each was a 404 plus a 120 ms pacing delay, which is how the first crawl came to run for minutes. `audit-precache.mjs` mirrors the rule.
 
-Only `ASSET_PREFIX` paths are ever enqueued, so `models/` and `ort/` are unreachable by the crawl by construction, and `CRAWL_SKIP` (`/\.(wasm|data)$/`) keeps it off the SQL engines' binaries. `WARM_MAX_ASSETS = 600` caps a run; the 0.3.0 build emits 417 files under `_astro/` (37.3 MB), of which the crawl reaches 492 URLs in all (39 pages, 401 scripts, 8 stylesheets, 4 Excalidraw UI faces, the 37 FIGlet fonts, the icons and manifest — 22.0 MB; the largest are compute-engine 2.4 MB, DiceBear 1.9 MB, Excalidraw's two chunks 1.7 + 1.1 MB, the city dataset 1.4 MB and the notebook editor 1.3 MB) plus three loose string literals that 404 harmlessly. (0.2.0: 309 files, 336 URLs, 16.5 MB.)
+Only `ASSET_PREFIX` paths are ever enqueued, so `models/` and `ort/` are unreachable by the crawl by construction, and `CRAWL_SKIP` (`/\.(wasm|data)$/`) keeps it off the SQL engines' binaries. `WARM_MAX_ASSETS = 700` caps a run (raised from 600 in 0.6.0, whose build emits 523 files under `_astro/` and whose crawl reaches 603 URLs, 27.4 MB); the 0.3.0 build emits 417 files under `_astro/` (37.3 MB), of which the crawl reaches 492 URLs in all (39 pages, 401 scripts, 8 stylesheets, 4 Excalidraw UI faces, the 37 FIGlet fonts, the icons and manifest — 22.0 MB; the largest are compute-engine 2.4 MB, DiceBear 1.9 MB, Excalidraw's two chunks 1.7 + 1.1 MB, the city dataset 1.4 MB and the notebook editor 1.3 MB) plus three loose string literals that 404 harmlessly. (0.2.0: 309 files, 336 URLs, 16.5 MB.)
 
 The skip rule is a 0.2.0 change. Before it, the wasm and `.data` files of both SQL engines were reached too — they are referenced by `_astro/...` strings inside their worker chunks, which the engines chunk references — so every install quietly pulled 16.8 MB of Postgres and SQLite in the background, and unticking "Postgres engine" in Settings → Offline stopped nothing. Now those four files (`pglite-*.wasm` 9.6 MB, `pglite-*.data` 6.0 MB, `sqlite3-*.wasm` 824 KB, `initdb-*.wasm` 386 KB) are reached only by their engine bundle, which boots the engine, and by the fetch handler when the playground is actually used. "The app itself" is the code; the engines are the engines.
 
@@ -203,7 +203,7 @@ There are no unit tests for `sw.js` itself; it is only exercised through the pro
 ## Known limits and decisions
 
 - **No update notification.** A new `sw.js` installs and activates immediately (`skipWaiting` + `clients.claim`), but the page already open keeps its JS until the next navigation or reload; navigations are network-first so the next load is fresh. Fingerprinted names mean the old page never receives a mismatched chunk from the revalidated cache.
-- **The crawl is best-effort.** Paced at 120 ms, capped at 600 files, cut short whenever the browser terminates the worker; it converges over normal use, and the panel's `app` bundle is the guaranteed path.
+- **The crawl is best-effort.** Paced at 120 ms, capped at 700 files, cut short whenever the browser terminates the worker; it converges over normal use, and the panel's `app` bundle is the guaranteed path.
 - **`ready()` is `null` for the app and engine bundles.** Hashed URLs make "is it cached?" unanswerable from the app; the honest UI shows nothing rather than a guess.
 - **Declared sizes are copy, not truth.** See the table above; PGlite in particular downloads more than 12 MB.
 - **A version bump re-fetches the SQL engines** because they live in the app cache. That is accepted: they are fingerprinted, and moving them into a survive-bumps bucket would need a second `ML_PREFIXES`-style rule keyed on names that change every build.

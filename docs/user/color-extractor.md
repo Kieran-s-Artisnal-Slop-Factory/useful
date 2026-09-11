@@ -2,7 +2,7 @@
 
 Hand it a picture and it tells you which colours are actually in it: a strip of swatches sized by how much of the image each covers, a table of every value in hex, rgb, hsl and oklch, and a CSS theme built from them. It sits under **Images** in the sidebar, beside the other [image tools](images.md). Nothing is uploaded and no picture is stored.
 
-_Describes the code as of v0.5.0 (schema v16) — verify against source when in doubt._
+_Describes the code as of v0.6.0 (schema v17) — verify against source when in doubt._
 
 ## Gotchas
 

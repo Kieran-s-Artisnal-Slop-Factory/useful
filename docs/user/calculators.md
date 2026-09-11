@@ -2,7 +2,7 @@
 
 Four small calculators under **Calculators** in the sidebar (or search for them with Ctrl/Cmd+K): **Programming** converts numbers between binary, octal, decimal and hex, shows bit operations, and walks two numbers through an operation one bit at a time; **Photography** turns one camera's settings into their equivalents on other sensor sizes and compares two sets of settings in stops; **File transfer** estimates how long a file takes to move at a given network speed; **Daily calories** works out what you burn and what to eat to gain, lose or hold your weight. Each page has "by hand" drop-downs that explain the maths. Nothing you type is saved, with two exceptions: the Photography page remembers which sensor format you picked, and the Daily calories page remembers whether you chose metric or imperial.
 
-_Describes the code as of v0.5.0 (schema v16) — verify against source when in doubt._
+_Describes the code as of v0.6.0 (schema v17) — verify against source when in doubt._
 
 ## Programming (number conversion)
 

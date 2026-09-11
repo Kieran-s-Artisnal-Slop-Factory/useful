@@ -2,7 +2,7 @@
 
 A layer-based vector editor at `/tools/svg-editor/`. A document is a name, a canvas size, an optional background, and an ordered array of flat JSON layers stored in the `svg_documents` store; a pure builder turns that array into a standalone SVG string that is used verbatim for the live preview, the SVG export, and the PNG/JPG rasterization. Editing runs through an undo/redo snapshot stack; the last committed snapshot is autosaved with a debounce.
 
-_Describes the code as of v0.5.0 (schema v16) — verify against source when in doubt._
+_Describes the code as of v0.6.0 (schema v17) — verify against source when in doubt._
 
 ## File map
 

@@ -2,7 +2,7 @@
 
 Two suites. `npm test` is a Playwright suite that builds the production site, serves `dist/` on a local port, drives the real UI in Chromium and audits every IndexedDB write through a typed oracle exposed by a test-only hook (`window.__useful`); a reporter fails the run unless the oracle was shown to catch injected faults. `npm run test:unit` is Vitest over the pure modules under `src/lib/` — 2,087 cases as of 0.4.0's second phase, several of which check this app's own cryptography against OpenSSL's. There is no server, so the two things worth guarding are a backup that does not round-trip and a write that changes more than it claimed to — both suites exist to catch those.
 
-_Describes the code as of v0.5.0 (schema v16) — verify against source when in doubt._
+_Describes the code as of v0.6.0 (schema v17) — verify against source when in doubt._
 
 ## Suites at a glance
 

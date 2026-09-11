@@ -2,7 +2,7 @@
 
 A scratchpad for a web page: **HTML**, **CSS** and **JavaScript** (or TypeScript) in three tabs, with the result rendering beside them as you type. Find it under **Playgrounds** in the sidebar, or search for it with Ctrl/Cmd+K. Nothing is saved until you name a session and press Save, and everything runs in your browser — nothing you type is sent anywhere.
 
-_Describes the code as of v0.5.0 (schema v16) — verify against source when in doubt._
+_Describes the code as of v0.6.0 (schema v17) — verify against source when in doubt._
 
 ## Using it
 

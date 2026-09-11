@@ -2,7 +2,7 @@
 
 **ASCII art** (under Generators, or Ctrl/Cmd+K) turns a picture into characters, or your words into a big text banner. Everything happens on your device, and nothing is saved.
 
-_Describes the code as of v0.5.0 (schema v16) — verify against source when in doubt._
+_Describes the code as of v0.6.0 (schema v17) — verify against source when in doubt._
 
 ## Words as a banner
 

@@ -220,8 +220,8 @@ nobody answers.
 | **B** | **Checkpoint** — full suite green | | | **PASSED** 2026-09-10 |
 | 6 | Placeholders › batch variation | — | — | **DONE.** `varyOptions` + `DEFAULT_BATCH_VARIATION` in images.ts, item 0 varied too; rules seeded from `seed:batch`; random icons resolved by the page; the default batch is byte-for-byte unchanged |
 | 7 | Placeholders › mosaic + swirl generators | — | — | **DONE.** `mosaicLayer` / `swirlLayer` in images.ts, `palette` 1–4 colours via `paletteOf`; cut-outs are the background (Q5, no transparent toggle); batch rule `palette: off / shuffle / random`; thumbnails rebuilt |
-| 8 | Hardening + release | — | — | Docs sweep, payload, offline, cut 0.6.0 |
-| **C** | **Checkpoint** — full suite green, release | | | |
+| 8 | Hardening + release | — | — | **DONE.** Docs sweep, crawl cap raised to 700, cut 0.6.0 |
+| **C** | **Checkpoint** — full suite green, release | | | **PASSED** 2026-09-11 |
 
 Phases 1–3 are independent of each other and small: run them as **three
 subagents in parallel** (separate files: one component each, one spec each;
@@ -264,7 +264,7 @@ Adds: migration v17 round-trip in the data spec, the pomodoro and clip-path
 specs, a11y sweep over two new routes, offline spec over two new SHELL
 entries, `tools/audit-precache.mjs`.
 
-### Checkpoint C — after Phases 6–8 — the release gate
+### Checkpoint C — after Phases 6–8 — the release gate — PASSED 2026-09-11 (549 Playwright, 2541 unit, after the two feedback rounds; offline + payload + a11y re-run after the crawl-cap change)
 
 Everything above plus the placeholders spec's batch and generator tests. Then
 the release steps in Phase 8.
@@ -602,7 +602,7 @@ next to the reference images and say whether they land".
 
 ---
 
-## Phase 8 — Hardening and release
+## Phase 8 — Hardening and release — DONE
 
 1. Docs sweep: every page touched above; mermaid and link validation run
    mechanically; the dev docs README index lists `clip-path.md` and the

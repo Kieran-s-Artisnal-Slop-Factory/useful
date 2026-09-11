@@ -1,29 +1,51 @@
-# 0.6.0 (unreleased)
+# 0.6.0 — September 11th, 2026
+
+> **Database migration:** v17 runs automatically on first launch. It adds one store (`pomodoro`) and does not modify existing data. Migrations are per browser/device because data is stored locally.
+
+> **One new persistent preference:** `calorie_risk_acknowledged_at`, written once when the calorie warning is accepted.
 
 ## Features
 
-* Napkin Math's image export lets you turn each row's caption off on its own and reword it — "With your values" can become "At current market rate" for one picture. Each row in the dialog now has a caption checkbox and a text box beside its row toggle, and a **Reset captions** button restores the three defaults. A blank caption draws no caption line at all. Like the theme and PNG size this is an export option, not template data: nothing is saved.
-* Napkin Math's image export can draw more than one calculation in the same picture — option 1 next to option 2 of a rental, say. A **Compare with** section in the dialog lists the saved calculations of any template with this exact formula; **Add** puts one in the picture with its saved name as its caption (editable per entry, and the entry says which values it uses), and a **Title for this calculation** box captions the current one. The formula is drawn once, then one values row per calculation, then one result per calculation captioned `Result — <title>`. Comparisons are re-substituted and re-evaluated from their saved values, live only for the session, and write nothing; with none added the picture is exactly what it was.
-* **Daily Calories** now asks you to read a warning before the form unlocks: the tool is not medical advice, a doctor should be consulted before acting on any figure, and the equations are population estimates. Pressing **I have read and understand the risks** stores `calorie_risk_acknowledged_at` in preferences so the page asks once per browser. **Not now** or Escape closes the dialog without saving anything and leaves the form locked behind a **Read the warning** button. Page load itself still writes nothing.
-* **Photography** gained a **Compare two photos** card: pick two photos and it reads their EXIF (f-number, shutter, ISO, focal length, camera) to show each one's EV100 and how many stops — and how many times — more light one received than the other, one dial at a time with the equation and the substituted numbers. A photo without exposure tags says which tags are missing. The EXIF parser loads only once a photo is chosen, the files stay in the browser, and nothing is saved.
-* Added **Pomodoro** under Time: focus rounds and breaks on a cycle (25 / 5 / 15 minutes, four rounds, all editable), with Start, Pause, Resume, Skip and Reset, a progress ring, round dots and today's completed count. The notification engine drives it like a timer — a banner such as "Focus round 2 of 4 done — break time" with the same sound, vibration and notification options — and waits for you between phases unless **Start the next phase automatically** is on. It is one singleton row (schema **v17**, `pomodoro`) that rides backups like everything else; nothing is written while a phase runs, so reloads never drift it.
-* Added **Clip path** under Generators: a CSS `clip-path` builder with 25 polygon presets (every shape from the cssportal generator plus design.dev's chevron and pointed message) whose points you drag on a live preview — double-click an edge to add a point, right-click a handle to remove one — and circle, ellipse, blinds and wave modes driven by sliders. Blinds and waves come out as a percent `polygon()` (one outline can trace several strips by doubling back along a zero-width seam), so every line fits an element of any size; waves also offer a `path()` spelling with a note that it is pixel-bound. Drop your own image on the preview to see it clipped. Nothing is saved.
-* **Clip path**'s preview is now a 4 : 3 box instead of a tall one that filled the column and stretched every shape, and an **Aspect ratio** menu beside it (1 : 1, 4 : 3, 3 : 2, 16 : 9, 9 : 16, 3 : 4, 2 : 3, 21 : 9) shows the same cut on the box you actually mean to clip — the CSS line never changes with it. The sample is a solid orange by default rather than a gradient; a **Fill** switch offers Solid (with a colour field), Gradient (two colours and an angle) or Image (the existing picker and drop target). Still nothing is saved.
-* **Placeholders** batches can now differ per image. A **Vary across the batch** panel under the batch count offers one rule per checkbox: a size per image (a table that follows the batch count, first row first image), a random background, and per generator a random ink, a random seed, a gradient angle offset (wrapping at 360°), random stops that never match each other, a linear/radial kind cycle, grain and blur deltas, a line-count delta (wrapping past 400), an opacity delta, an icon size delta (wrapping past 95%), a random Lucide icon per image, and a random drawn scene from the groups or individual scenes you allow. Rules are seeded like everything else, so the same seed gives the same batch again, and a batch with nothing ticked is exactly what it was before.
-* **Placeholders** gained two image generators. **Mosaic** lays square tiles in a palette of one to four colours you choose, with a share of them cut out to the background in seeded patches; block size and cut-out ratio are sliders. **Swirl** draws a smooth two-tone logarithmic spiral in the first two palette colours, with the number of turns and the arm width to set. Both are seeded like the rest, and the batch panel can shuffle the palette per image or draw a fresh one.
-* **Placeholders** batch panel, after feedback: the sizes table gained a **Randomize sizes** tick that fills every row with seeded sizes (long side 200–2000), either keeping the aspect ratio of the size above or changing it too, plus an include tick per row with **all** / **none** — an image left out keeps the base size, and the numbers stay editable. The mosaic gained **block size** and **cut-out** deltas per image, clamped to the sliders. The swirl's two colours are now named **Swirl colour** and **Background colour** with nothing to add or remove, and when the palette rule is set to shuffled the colours being reordered appear right under it, bound to the same state as the generator panel.
-* **Placeholders**' shuffled palette now deals from a **pool** of its own (feedback round 2). With the rule set to shuffled, the fields under it are no longer the generator's two or four colours but a list you can add to (up to eight) and remove from; it starts as the generator's colours and then stays as you leave it across generator switches. The mosaic takes as many colours from the pool per image as its palette holds, the swirl takes its swirl colour and background colour — so a pool bigger than one image can hold gives every image a different pick, not just a different order. Seeded like everything else; a pool left as it started is exactly the old shuffle. The mosaic's **Add a colour** button also disappears at four colours instead of sitting there disabled.
-* Napkin Math's image export now draws comparisons **side by side**: the title and the formula once across the top, then one column per calculation — its caption and values, then `Result — <title>` and the answer — laid out left to right in the order they were added, aligned at the top, with the picture as wide as the columns need. With no comparison added the picture is byte-for-byte what it was, and a unit test holds the single-calculation SVG to that.
+* Added **Pomodoro** under Time
+  * Focus rounds and breaks on a cycle: 25 / 5 / 15 minutes and four rounds by default, all editable.
+  * Start, Pause, Resume, Skip and Reset, a progress ring, round dots, and today's completed count.
+  * The notification engine drives it like a timer, with the same sound, vibration and notification options.
+  * Waits between phases unless **Start the next phase automatically** is on. One singleton row that rides backups.
+* Added **Clip path** under Generators
+  * 25 polygon presets (every cssportal shape plus design.dev's chevron and pointed message) with draggable points; double-click an edge to add one, right-click a handle to remove it.
+  * Circle, ellipse, blinds and wave modes on sliders. Blinds and waves come out as percent `polygon()`, so the line fits any element; waves also offer a pixel-bound `path()`.
+  * The preview is a 4 : 3 box with an aspect-ratio menu, filled with a solid colour (orange by default), a two-colour gradient with an angle, or an image you drop on it.
+* **Napkin Math** image export
+  * Each row's caption can be turned off on its own or reworded for one picture, with a **Reset captions** button.
+  * **Compare with** draws saved calculations of the same formula side by side: the formula once, then one column per calculation with its caption, values and `Result — <title>`. The current calculation can be titled too.
+  * Comparisons are re-substituted and re-evaluated from their saved values, live only for the session. With none added the picture is byte-for-byte what it was.
+* **Daily Calories** asks you to read a warning before the form unlocks
+  * Not medical advice, consult a doctor before acting on any figure, and the equations are population estimates.
+  * **I have read and understand the risks** is remembered per browser; **Not now** leaves the form locked behind a **Read the warning** button.
+* **Photography** gained a **Compare two photos** card
+  * Reads f-number, shutter, ISO, focal length and camera from each photo's EXIF and shows its EV100.
+  * Shows how many stops, and how many times, more light one photo received, one dial at a time with the equation and substituted numbers.
+  * A photo without exposure tags says which tags are missing. The parser loads only once a photo is chosen; nothing is saved.
+* **Placeholders** batches can vary per image
+  * A **Vary across the batch** panel with one rule per checkbox: a size per image (typed, or seeded random sizes keeping or changing the ratio, with an include tick per row), background, ink, seed, gradient angle offset, stops and kind cycle, grain and blur deltas, line-count delta, opacity delta, icon size delta and random icon, allowed drawn scenes, and mosaic block-size and cut-out deltas.
+  * Every rule is seeded, so the same seed gives the same batch; a batch with nothing ticked is exactly what it was before.
+* **Placeholders** gained **Mosaic** and **Swirl** generators
+  * Mosaic lays square tiles in one to four colours with a share cut out to the background in seeded patches; block size and cut-out ratio are sliders. The add-colour button disappears at four.
+  * Swirl draws a two-tone logarithmic spiral from a **Swirl colour** and a **Background colour**, with turns and arm width to set.
+  * The batch panel's palette rule can shuffle from a pool of up to eight colours, edited right under the rule, or draw fresh colours per image.
 
 ## Bug Fixes
+
+* Napkin Math's evaluator now checks the imaginary part directly when deciding whether an answer is real, because Compute Engine 0.128 no longer sets `isReal` on plain numeric literals; without this every result read as "not a real number".
 
 ## Other
 
 * Widened the page to 81rem so side-by-side calculator layouts have room.
 * Updated dependencies: Compute Engine 0.128.6, mermaid 12.0.0, React 19.3.0, sqlite-wasm 3.53.4, lucide-static 1.44.0, and Vitest 5.0.0. Vitest 5 resolves cleanly with the existing `@emnapi/core` override, which unblocked the update that 0.5.0 could not make.
 * Held back two majors: `@dicebear/core` 10 has no matching `@dicebear/collection` release yet, and TypeScript 7 is outside the peer range of `@astrojs/svelte`. Both stay on their current majors until upstream catches up.
-* Napkin Math's evaluator now checks the imaginary part directly when deciding whether an answer is real, because Compute Engine 0.128 no longer sets `isReal` on plain numeric literals.
 * CI moved to `actions/checkout@v7`, `setup-node@v7`, `configure-pages@v6`, `upload-pages-artifact@v5` and Node 24 (the LTS line).
+* The service worker's background crawl cap rose from 600 to 700 files: the 0.6.0 build reaches 603, and `tools/audit-precache.mjs` reported the cap cutting the run short.
+* Two generated JPEG fixtures with known exposure EXIF (`tools/build-exposure-fixtures.mjs`) back the photo comparison tests, because the existing photo fixture carries no exposure tags.
 
 # 0.5.0 — September 9th, 2026
 
