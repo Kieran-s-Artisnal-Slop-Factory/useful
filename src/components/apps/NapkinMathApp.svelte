@@ -37,6 +37,7 @@
   } from '../../lib/db/repo';
   import type { NapkinCalculation, NapkinField, NapkinTemplate, Preferences } from '../../lib/db/types';
   import { boxJson, evaluateFormula, parseFormula } from '../../lib/napkin/engine';
+  import type { ComparedCalculation } from '../../lib/napkin/exportImage';
   import {
     checkValues,
     describeConstraint,
@@ -204,6 +205,87 @@
       imageRows[key].caption = DEFAULT_CAPTIONS[key];
     }
   }
+  /**
+   * Comparisons (0.6.0 feedback round 1): other calculations drawn in the
+   * same picture, so option 1 and option 2 of a rental sit side by side.
+   *
+   * A template stores no values — only a saved calculation does — so the
+   * candidates are saved calculations, from this template or from any other
+   * whose formula is the same string. Like every other option in this dialog
+   * the list is per-session: nothing here is written, and nothing is read
+   * beyond the calculation rows that already exist.
+   */
+  interface CompareCandidate {
+    id: string;
+    /** The saved calculation's own name. */
+    name: string;
+    templateName: string;
+    /** Saved against the template that is open, rather than a twin of it. */
+    ownTemplate: boolean;
+    values: Record<string, number>;
+  }
+  interface CompareEntry {
+    id: string;
+    caption: string;
+    candidate: CompareCandidate;
+  }
+  let compareCandidates = $state<CompareCandidate[]>([]);
+  let compareChoice = $state('');
+  let imageCompare = $state<CompareEntry[]>([]);
+  /** Caption above the current calculation's rows; blank keeps the row caption. */
+  let imageCurrentTitle = $state('');
+  /** Candidates not yet in the picture — adding one twice says nothing new. */
+  const compareOptions = $derived(
+    compareCandidates.filter((c) => !imageCompare.some((e) => e.id === c.id))
+  );
+  const candidateLabel = (c: CompareCandidate): string =>
+    c.ownTemplate ? c.name : `${c.templateName} › ${c.name}`;
+  /** `revenue = 12500, cost = 4750` — what the picture will substitute. */
+  const describeValues = (values: Record<string, number>): string =>
+    Object.entries(values)
+      .map(([key, value]) => `${key} = ${value}`)
+      .join(', ') || 'no values';
+
+  /**
+   * Find every saved calculation whose template has this exact formula.
+   * Reads only; a stale entry (its calculation deleted since, or the formula
+   * edited out from under it) is dropped rather than drawn with the wrong
+   * numbers.
+   */
+  async function loadCompareCandidates() {
+    const wanted = formulaLatex.trim();
+    const twins = new Map<string, NapkinTemplate>();
+    for (const t of templates) {
+      if (t.formula_latex.trim() === wanted) twins.set(t.id, t);
+    }
+    const rows = wanted ? await all<NapkinCalculation>('napkin_calculations') : [];
+    if (destroyed) return;
+    compareCandidates = rows
+      .filter((c: NapkinCalculation) => twins.has(c.template_id))
+      .map((c: NapkinCalculation) => ({
+        id: c.id,
+        name: c.name,
+        templateName: twins.get(c.template_id)!.name,
+        ownTemplate: c.template_id === currentId,
+        values: { ...c.values },
+      }))
+      .sort((a, b) => Number(b.ownTemplate) - Number(a.ownTemplate) || candidateLabel(a).localeCompare(candidateLabel(b)));
+    const known = new Set(compareCandidates.map((c) => c.id));
+    imageCompare = imageCompare.filter((e) => known.has(e.id));
+    if (!known.has(compareChoice)) compareChoice = compareOptions[0]?.id ?? '';
+  }
+
+  function addComparison() {
+    const candidate = compareOptions.find((c) => c.id === compareChoice);
+    if (!candidate) return;
+    imageCompare.push({ id: candidate.id, caption: candidate.name, candidate });
+    compareChoice = compareOptions[0]?.id ?? '';
+  }
+
+  function removeComparison(index: number) {
+    imageCompare.splice(index, 1);
+    if (!compareChoice) compareChoice = compareOptions[0]?.id ?? '';
+  }
   let imageTheme = $state<'light' | 'dark'>('light');
   let imageTransparent = $state(false);
   let imageDecimals = $state('auto');
@@ -283,30 +365,61 @@
     imageBusy = true;
     imageError = null;
     try {
-      const [{ buildCalculationSvg, formatNumberLatex }, { substitutedLatex }] = await Promise.all([
-        import('../../lib/napkin/exportImage'),
-        import('../../lib/napkin/substitute'),
-      ]);
+      const [{ buildCalculationSvg, comparisonRows, formatNumberLatex }, { substitutedLatex }] =
+        await Promise.all([
+          import('../../lib/napkin/exportImage'),
+          import('../../lib/napkin/substitute'),
+        ]);
       if (token !== imageToken || destroyed) return;
 
-      const rows: { label: string; latex: string }[] = [];
-      let note: string | null = null;
+      const notes: string[] = [];
+      const formatted = (value: number) => `= ${formatNumberLatex(value, decimalsValue())}`;
 
-      if (imageRows.formula.show) rows.push({ label: rowLabel('formula'), latex: formulaLatex });
-
-      if (imageRows.substituted.show) {
-        const subbed = await substitutedLatex(formulaLatex, readInputs());
-        if (token !== imageToken || destroyed) return;
-        if (subbed.ok) {
-          rows.push({ label: rowLabel('substituted'), latex: subbed.latex });
-        } else {
-          note = subbed.reason;
+      // The current calculation first, exactly as the single picture has it.
+      const calculations: ComparedCalculation[] = [];
+      {
+        let substituted: string | null = null;
+        if (imageRows.substituted.show) {
+          const subbed = await substitutedLatex(formulaLatex, readInputs());
+          if (token !== imageToken || destroyed) return;
+          if (subbed.ok) substituted = subbed.latex;
+          else notes.push(subbed.reason);
         }
+        calculations.push({
+          title: imageCurrentTitle,
+          substituted,
+          result: imageRows.result.show && result !== null ? formatted(result) : null,
+        });
       }
 
-      if (imageRows.result.show && result !== null) {
-        rows.push({ label: rowLabel('result'), latex: `= ${formatNumberLatex(result, decimalsValue())}` });
+      // Then each comparison, substituted and evaluated from its saved values.
+      // The saved `result` is not reused: the formula may have moved on since.
+      for (const entry of imageCompare) {
+        const values = entry.candidate.values;
+        let substituted: string | null = null;
+        let evaluated: string | null = null;
+        if (imageRows.substituted.show) {
+          const subbed = await substitutedLatex(formulaLatex, values);
+          if (token !== imageToken || destroyed) return;
+          if (subbed.ok) substituted = subbed.latex;
+          else notes.push(`${entry.candidate.name}: ${subbed.reason}`);
+        }
+        if (imageRows.result.show && formulaJson) {
+          const answer = await evaluateFormula(await boxJson(formulaJson), values);
+          if (token !== imageToken || destroyed) return;
+          if (answer.value !== null) evaluated = formatted(answer.value);
+          else if (answer.error) notes.push(`${entry.candidate.name}: ${answer.error}`);
+        }
+        calculations.push({ title: entry.caption, substituted, result: evaluated });
       }
+
+      const rows = comparisonRows({
+        formula: imageRows.formula.show ? { label: rowLabel('formula'), latex: formulaLatex } : null,
+        substitutedLabel: rowLabel('substituted'),
+        resultLabel: rowLabel('result'),
+        calculations,
+      });
+      const note = notes.length > 0 ? notes.join(' ') : null;
 
       if (rows.length === 0) {
         releaseImageUrl();
@@ -341,9 +454,10 @@
     }
   }
 
-  function openImageDialog() {
+  async function openImageDialog() {
     imageOpen = true;
     void rebuildImage();
+    await loadCompareCandidates();
   }
 
   function closeImageDialog() {
@@ -374,6 +488,8 @@
     void imageTheme;
     void imageTransparent;
     void imageDecimals;
+    void imageCurrentTitle;
+    for (const entry of imageCompare) void entry.caption;
     if (imageOpen) void rebuildImage();
   });
 
@@ -1362,6 +1478,78 @@
         </button>
       </fieldset>
 
+      <!-- Other saved calculations of the same formula, drawn alongside. -->
+      <fieldset data-testid="napkin-image-compare">
+        <legend class="eyebrow">Compare with</legend>
+        {#if compareCandidates.length === 0}
+          <p class="muted small" data-testid="napkin-image-compare-none">
+            No stored calculation uses this formula.
+          </p>
+        {:else}
+          <div class="image-row">
+            <select
+              class="image-compare-select"
+              aria-label="Saved calculation to compare with"
+              data-testid="napkin-image-compare-select"
+              disabled={compareOptions.length === 0}
+              bind:value={compareChoice}
+            >
+              {#each compareOptions as candidate (candidate.id)}
+                <option value={candidate.id}>{candidateLabel(candidate)}</option>
+              {/each}
+            </select>
+            <button
+              type="button"
+              class="btn btn-sm"
+              data-testid="napkin-image-compare-add"
+              disabled={!compareOptions.some((c) => c.id === compareChoice)}
+              onclick={addComparison}
+            >
+              Add
+            </button>
+          </div>
+        {/if}
+        {#if imageCompare.length > 0}
+          <div class="image-row">
+            <label class="inline small" for="napkin-image-current-title">Title for this calculation</label>
+            <input
+              id="napkin-image-current-title"
+              type="text"
+              class="image-caption"
+              placeholder="Current"
+              data-testid="napkin-image-current-title"
+              bind:value={imageCurrentTitle}
+            />
+          </div>
+          <ul class="image-compare-list">
+            {#each imageCompare as entry, i (entry.id)}
+              <li data-testid={`napkin-image-compare-${i}`}>
+                <div class="image-row">
+                  <input
+                    type="text"
+                    class="image-caption"
+                    aria-label={`Caption for ${entry.candidate.name}`}
+                    placeholder="No caption"
+                    data-testid={`napkin-image-compare-caption-${i}`}
+                    bind:value={imageCompare[i]!.caption}
+                  />
+                  <button
+                    type="button"
+                    class="icon-btn"
+                    aria-label={`Remove ${entry.candidate.name} from the picture`}
+                    data-testid={`napkin-image-compare-remove-${i}`}
+                    onclick={() => removeComparison(i)}>×</button
+                  >
+                </div>
+                <span class="muted small">
+                  {#if !entry.candidate.ownTemplate}{entry.candidate.templateName} › {/if}{entry.candidate.name}: {describeValues(entry.candidate.values)}
+                </span>
+              </li>
+            {/each}
+          </ul>
+        {/if}
+      </fieldset>
+
       <div>
         <label for="napkin-image-theme">Theme</label>
         <select id="napkin-image-theme" data-testid="napkin-image-theme" bind:value={imageTheme}>
@@ -1762,6 +1950,29 @@
   .image-captions-reset {
     align-self: flex-start;
     margin-top: var(--space-1);
+  }
+
+  .image-compare-select {
+    flex: 1 1 8rem;
+    min-width: 6rem;
+    width: auto;
+  }
+
+  .image-compare-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+  }
+
+  .image-compare-list li {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding-top: var(--space-1);
+    border-top: 1px dashed var(--border-color);
   }
 
   /* A checkerboard, so a transparent export does not read as a white one. */

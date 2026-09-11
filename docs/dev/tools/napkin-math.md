@@ -14,7 +14,7 @@ _Describes the code as of v0.5.0 (schema v16) — verify against source when in 
 | [napkin/model.ts](../../../src/lib/napkin/model.ts) | Fields, `reconcileFields`, `checkValue`. Pure, so it tests without loading 37 MB of maths library. |
 | [napkin/transfer.ts](../../../src/lib/napkin/transfer.ts) | Import and export, with the validation an untrusted document needs. |
 | [napkin/substitute.ts](../../../src/lib/napkin/substitute.ts) | The middle row of the picture: `substituteJson`, `usableValues`, `substitutedLatex`. |
-| [napkin/exportImage.ts](../../../src/lib/napkin/exportImage.ts) | The SVG builder: `layoutRow`, `buildCalculationSvg`, `fontFaceRules`, `formatNumberLatex`, `imageFilename`, `EXPORT_THEMES`. |
+| [napkin/exportImage.ts](../../../src/lib/napkin/exportImage.ts) | The SVG builder: `layoutRow`, `buildCalculationSvg`, `comparisonRows`, `fontFaceRules`, `formatNumberLatex`, `imageFilename`, `EXPORT_THEMES`. |
 | [raster/svgToPng.ts](../../../src/lib/raster/svgToPng.ts) | `svgToPngBlob` — a self-contained SVG string through a blob URL, an `<img>` and a canvas. Shared, not napkin-specific. |
 | [codegen/expression.ts](../../../src/lib/codegen/expression.ts) | MathJSON → an expression, per language, with precedence. |
 | [codegen/functions.ts](../../../src/lib/codegen/functions.ts) | The whole file: docstring, typed parameters, guard clauses, helpers. |
@@ -223,9 +223,9 @@ The formula is shown as plain LaTeX text. `generateWebComponent` takes an option
 ```mermaid
 flowchart TD
   A["formulaLatex, exactly as typed"] --> R
-  B["substitutedLatex in substitute.ts"] --> R
-  C["formatNumberLatex of the result"] --> R
-  R["three rows: a caption and a LaTeX string"] --> S
+  B["substitutedLatex in substitute.ts, once per calculation"] --> R
+  C["formatNumberLatex of each result, comparisons re-evaluated with evaluateFormula"] --> R
+  R["comparisonRows: the formula once, then a values row and a result per calculation, each a caption and a LaTeX string"] --> S
   S["renderFormulaSet in formulaMarkup.ts: convertLatexToMarkup per row, one stylesheet, each face embedded once"] --> M
   M["layoutRow: laid out in an off-screen shadow root, geometry read back"] --> G
   G["drawRow: text, rect and nested svg primitives"] --> V
@@ -244,7 +244,7 @@ The preview is an `<img>` of a blob URL rather than inlined markup. That is the 
 
 A native `<dialog>`, opened with `showModal()` from an effect rather than from the click handler, because `showModal()` is what brings the backdrop, the focus trap and Escape. Its state is local to the export and never touches the template: the three rows (`imageRows`, see below), `showImageTitle`, `imageTheme`, `imageTransparent`, `imageDecimals`, `imageScale`. The result row is offered only when there is a result to put in it, and **Export image** is not rendered at all until the formula parses — it sits outside the `fields.length === 0` branch on purpose, so a formula with no free variables (`2+2`) still offers a picture even though it has nothing to fill in.
 
-`rebuildImage` runs on open and on any option change — but only while the dialog is open — and carries an `imageToken` for the same reason the parse and evaluate paths do: a slow render must not overwrite a newer one. Closing revokes the blob URL and drops the SVG. Nothing here reads or writes a row: the export renders the calculation on screen and adds no data model of its own.
+`rebuildImage` runs on open and on any option change — but only while the dialog is open — and carries an `imageToken` for the same reason the parse and evaluate paths do: a slow render must not overwrite a newer one. Closing revokes the blob URL and drops the SVG. Nothing here writes a row: the export renders the calculation on screen and adds no data model of its own. Its one read is the saved-calculation list the comparisons below are picked from.
 
 Three actions come off the built SVG: `downloadImageSvg` (`downloadText`, `image/svg+xml`), `downloadImagePng` and `copyImagePng`, the last two sharing one `rasterize()` that puts any refusal from `svgToPngBlob` into the dialog's error line rather than throwing it.
 
@@ -255,6 +255,22 @@ Each row's caption can be turned off on its own and reworded. The per-row state 
 `rebuildImage` hands the renderer `rowLabel(key)` — the trimmed caption when it is on, `''` when it is off — and never a different row shape, so `CalculationRow` did not change. `captionText` in [exportImage.ts](../../../src/lib/napkin/exportImage.ts) is the one place that decides what a caption is: trimmed, upper-cased, and the empty string for blank or whitespace, which `buildCalculationSvg` reads as "no caption line at all" (no `<text>`, and no `LABEL_HEIGHT + LABEL_GAP` added to the picture). It is a pure function precisely so the blank case is covered by Vitest rather than only by the Playwright pass that measures real glyphs.
 
 Captions are **per-session** (plan Q1), like the theme, transparency, decimals and scale: they are not written to the template, and closing the dialog does not reset them. Saving them on the template would mean a new optional `export_captions` field, a mirror row in `schema.ts` and a `patch()` on save — cheap to add later, and not asked for yet.
+
+### Comparisons (0.6.0 feedback round 1)
+
+One picture can carry several calculations of the same formula — the current one and any saved ones — so option 1 and option 2 sit under a single formula and can be read against each other.
+
+**Where the other calculations come from.** A `NapkinTemplate` stores no values and a `NapkinField` has no default, so a template on its own has nothing to substitute; the only stored values are `NapkinCalculation` rows. `loadCompareCandidates()` in [NapkinMathApp.svelte](../../../src/components/apps/NapkinMathApp.svelte) runs when the dialog opens: it takes every template whose `formula_latex` is the **same string** as the current formula (the open template included), reads `all('napkin_calculations')`, and keeps the rows saved against one of them. A calculation from the open template is listed by its own name, one from a twin template as `Template › Calculation`. The list is rebuilt on every open, and an entry whose calculation has since gone — deleted, or the formula edited out from under it — is dropped rather than drawn with numbers that no longer belong to this formula. No such calculation, and the **Compare with** fieldset says "No stored calculation uses this formula."
+
+**The state** is three per-session variables beside the captions: `imageCompare` (the entries, each `{ id, caption, candidate }`, caption defaulting to the saved name), `compareChoice` (the `<select>`, which lists only candidates not yet added, so one cannot be drawn twice) and `imageCurrentTitle`, the caption for the current calculation, offered only once there is something to compare against. Testids: `napkin-image-compare-select`, `napkin-image-compare-add`, `napkin-image-current-title`, and per entry `napkin-image-compare-<i>` with `napkin-image-compare-caption-<i>` and `napkin-image-compare-remove-<i>`. Each entry also prints the values it will draw (`revenue = 12500, cost = 4750`), because a caption alone does not say which numbers a reader is looking at. Nothing is written: adding a comparison reads rows that already exist and stores the result in component state.
+
+**Rendering.** `rebuildImage` builds one `ComparedCalculation` per calculation — `{ title, substituted, result }`, the last two already LaTeX or `null` — the current one first from `readInputs()` and `result`, then each comparison by running `substitutedLatex` and `evaluateFormula(boxJson(formulaJson), values)` against its saved values. The saved `result` column is deliberately not reused: the formula may have been edited since it was written. A calculation whose substitution or evaluation refuses loses that row and adds its reason to the note under the preview. The list goes to `comparisonRows` in [exportImage.ts](../../../src/lib/napkin/exportImage.ts), which is pure and decides the order and the captions:
+
+1. the formula row once, if it is on,
+2. one substituted row per calculation — the current one captioned by its title when it has one and by the dialog's **With your values** caption otherwise, each comparison by its own caption,
+3. one result row per calculation — captioned `Result — <title>` as soon as there is more than one (the current one falls back to `Current` when untitled), and by the plain **Result** caption when there is only one.
+
+`buildCalculationSvg` and `CalculationRow` did not change: the renderer still receives a list of `{ label, latex }`. With one calculation `comparisonRows` returns exactly the three rows the 0.5.0 dialog built — the current title is ignored until there is something to tell it apart from, so removing the last comparison restores the single picture even though the title box keeps its text — and a unit test holds it to that, so a picture with no comparison added is byte-for-byte the picture it was. The Playwright case removes the comparison and asserts the SVG is identical to the one previewed before it was added.
 
 ### There is no `<foreignObject>` in the output, and there must never be one
 
@@ -329,8 +345,8 @@ Each of these cost time, each would cost it again, and each fails quietly rather
 ### What the tests cover
 
 - [substitute.test.ts](../../../src/lib/napkin/substitute.test.ts) — the tree walk in Vitest against plain JSON, then `substitutedLatex` against the **real** engine for the cases that decide whether the feature is honest: the square root that must stay a square root, the subtraction that must stay `5-(-7)`, `\mathrm{rate}` next to `\mathrm{rated}`, and each refusal.
-- [exportImage.test.ts](../../../src/lib/napkin/exportImage.test.ts) — the arithmetic and naming around the builder. `formatNumberLatex` groups thousands with `\,` rather than a comma, because the row above it is rendered by the Compute Engine, which writes `\,`; four digits stay unbroken, since `1,000` reads worse than `1000` in a formula. `imageFilename` cannot emit a separator or a traversal. `captionText` turns blank and whitespace into no caption, which is what the dialog's caption toggle relies on.
-- [napkin-math.spec.ts](../../../tests/local/napkin-math.spec.ts) — `layoutRow` and `buildCalculationSvg` measure real text, so they live in Playwright: no `<foreignObject>`, no non-`data:` `url(`, no `var(--`, a fraction drawing more than one `<rect>`, the middle row carrying `12500` and `4750` while the bottom row carries `7750`, a PNG whose IHDR is exactly 3× the preview at 3× and which is too large to be blank, every dialog control carrying an accessible name, and **zero writes** across the whole flow.
+- [exportImage.test.ts](../../../src/lib/napkin/exportImage.test.ts) — the arithmetic and naming around the builder. `formatNumberLatex` groups thousands with `\,` rather than a comma, because the row above it is rendered by the Compute Engine, which writes `\,`; four digits stay unbroken, since `1,000` reads worse than `1000` in a formula. `imageFilename` cannot emit a separator or a traversal. `captionText` turns blank and whitespace into no caption, which is what the dialog's caption toggle relies on. `comparisonRows` with one untitled calculation returns exactly the three 0.5.0 rows, draws the formula once and then a values row and a named result per calculation, keeps the row caption for an untitled current calculation, and drops the rows a calculation could not produce.
+- [napkin-math.spec.ts](../../../tests/local/napkin-math.spec.ts) — `layoutRow` and `buildCalculationSvg` measure real text, so they live in Playwright: no `<foreignObject>`, no non-`data:` `url(`, no `var(--`, a fraction drawing more than one `<rect>`, the middle row carrying `12500` and `4750` while the bottom row carries `7750`, a PNG whose IHDR is exactly 3× the preview at 3× and which is too large to be blank, every dialog control carrying an accessible name, and **zero writes** across the whole flow. The comparison case saves `Option 1`, changes the inputs, adds it to the picture titled `Option 2`, and reads back one `FORMULA`, both captions, both sets of numbers and both `RESULT — …` lines in order; removing it gives back the identical single SVG, and nothing was written after the save.
 
 ## Offline
 

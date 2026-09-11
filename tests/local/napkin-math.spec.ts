@@ -879,6 +879,73 @@ test.describe('napkin math — the image export', () => {
     expect(await app.dumpAll()).toEqual(before);
   });
 
+  test('a saved calculation can be drawn alongside the current one, and taken out again', async ({ app }) => {
+    const { page } = app;
+    await app.goto('/tools/napkin-math/');
+    await expect(page.getByTestId('napkin-no-fields')).toBeVisible({ timeout: 30_000 });
+    await page.getByTestId('napkin-name').fill('Monthly margin');
+    await setFormula(page, '\\mathrm{revenue}-\\mathrm{cost}');
+    await expect(page.getByTestId('napkin-input-revenue')).toBeVisible({ timeout: 30_000 });
+
+    // Values A, saved as "Option 1" — the one write this test makes.
+    await page.getByTestId('napkin-input-revenue').fill('12500');
+    await page.getByTestId('napkin-input-cost').fill('4750');
+    await expect(page.getByTestId('napkin-result')).toHaveText('7750');
+    await page.getByTestId('napkin-calc-name').fill('Option 1');
+    await page.getByTestId('napkin-save-calc').click();
+    await expect(page.getByTestId('napkin-calc')).toHaveCount(1);
+    const before = await app.dumpAll();
+
+    // Values B on the page, then the picture.
+    await page.getByTestId('napkin-input-revenue').fill('9000');
+    await expect(page.getByTestId('napkin-result')).toHaveText('4250');
+    await page.getByTestId('napkin-export-image').click();
+    await expect(page.getByTestId('napkin-image-preview')).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByTestId('napkin-image-compare-select')).toBeVisible();
+    await expect(page.getByTestId('napkin-image-compare-select').locator('option')).toHaveText(['Option 1']);
+    const single = await previewSvg(page);
+
+    await page.getByTestId('napkin-image-compare-add').click();
+    await expect(page.getByTestId('napkin-image-compare-0')).toBeVisible();
+    await expect(page.getByTestId('napkin-image-compare-caption-0')).toHaveValue('Option 1');
+    // The entry says which numbers it will draw.
+    await expect(page.getByTestId('napkin-image-compare-0')).toContainText('revenue = 12500');
+    // Added once: it leaves the menu, so it cannot be drawn twice.
+    await expect(page.getByTestId('napkin-image-compare-add')).toBeDisabled();
+
+    await page.getByTestId('napkin-image-current-title').fill('Option 2');
+    await expect
+      .poll(async () => (await previewSvg(page)).includes('>OPTION 2<'), { timeout: 20_000 })
+      .toBe(true);
+
+    const compared = await previewSvg(page);
+    // One formula, a captioned values row for each, and a named result for each.
+    expect(compared.match(/>FORMULA</g)!.length).toBe(1);
+    expect(compared).toContain('>OPTION 1<');
+    expect(compared).not.toContain('WITH YOUR VALUES');
+    expect(compared).toContain('>RESULT — OPTION 2<');
+    expect(compared).toContain('>RESULT — OPTION 1<');
+    expect(compared.indexOf('>OPTION 2<')).toBeLessThan(compared.indexOf('>OPTION 1<'));
+    expect(compared.indexOf('>OPTION 1<')).toBeLessThan(compared.indexOf('>RESULT — OPTION 2<'));
+    const glyphs = await previewGlyphs(page);
+    expect(glyphs).toContain('9000');
+    expect(glyphs).toContain('12500');
+    expect(glyphs).toContain('4250');
+    expect(glyphs).toContain('7750');
+
+    // Removing it puts the single picture back, title and all.
+    await page.getByTestId('napkin-image-compare-remove-0').click();
+    await expect(page.getByTestId('napkin-image-compare-0')).toHaveCount(0);
+    await expect(page.getByTestId('napkin-image-current-title')).toHaveCount(0);
+    await expect
+      .poll(async () => (await previewSvg(page)).includes('OPTION'), { timeout: 20_000 })
+      .toBe(false);
+    expect(await previewSvg(page)).toBe(single);
+
+    // A comparison is an export option: nothing was written since the save.
+    expect(await app.dumpAll()).toEqual(before);
+  });
+
   test('the dark theme changes the ink, not the layout', async ({ app }) => {
     const { page } = app;
     await app.goto('/tools/napkin-math/');

@@ -129,4 +129,64 @@ test.describe('clip path', () => {
 
     expect(await app.dumpAll()).toEqual(before);
   });
+
+  test('aspect ratio reshapes the stage, fill switches solid / gradient — zero writes', async ({ app }) => {
+    const { page } = app;
+    const before = await open(app);
+    const stage = page.getByTestId('cp-stage');
+    const preview = page.getByTestId('cp-preview');
+    const ratio = async () => {
+      const box = (await stage.boundingBox())!;
+      return box.width / box.height;
+    };
+
+    // Default: a 4/3 box painted solid orange, no gradient, and the handles
+    // sit on the box (a corner point of the hexagon lands on the stage edge).
+    await expect(page.getByTestId('cp-aspect')).toHaveValue('4/3');
+    expect(await ratio()).toBeCloseTo(4 / 3, 1);
+    expect(await preview.evaluate((el) => getComputedStyle(el).backgroundImage)).toBe('none');
+    expect(await preview.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe('rgb(232, 161, 58)');
+    await expect(page.getByTestId('cp-fill-solid')).toHaveAttribute('aria-pressed', 'true');
+
+    // 16/9 changes the box, not the declaration — percent geometry is ratio-free.
+    const css = (await page.getByTestId('cp-css').textContent()) ?? '';
+    await page.getByTestId('cp-aspect').selectOption('16/9');
+    await expect.poll(ratio).toBeGreaterThan(1.76);
+    expect(await ratio()).toBeLessThan(1.8);
+    expect((await page.getByTestId('cp-css').textContent()) ?? '').toBe(css);
+    expect(await computedClip(page)).toBe(css.slice('clip-path: '.length, -1));
+    // The overlay/handles map through the stage box: point 2 of the hexagon
+    // (100% 25%) sits on the stage's right edge at every ratio.
+    const stageBox = (await stage.boundingBox())!;
+    const handle = (await page.getByTestId('cp-handle-1').boundingBox())!;
+    expect(Math.abs(handle.x + handle.width / 2 - (stageBox.x + stageBox.width))).toBeLessThan(1.5);
+    expect(Math.abs(handle.y + handle.height / 2 - (stageBox.y + stageBox.height * 0.25))).toBeLessThan(1.5);
+
+    // A portrait ratio is width-bound too (the max height shrinks the width).
+    await page.getByTestId('cp-aspect').selectOption('9/16');
+    await expect.poll(ratio).toBeLessThan(0.58);
+
+    // Solid colour is editable through the ColorField.
+    await page.getByTestId('cp-fill-color').fill('#123456');
+    await expect.poll(() => preview.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe('rgb(18, 52, 86)');
+
+    // Gradient: two colours and an angle drive the computed background-image.
+    await page.getByTestId('cp-fill-gradient').click();
+    await expect(page.getByTestId('cp-gradient-angle')).toHaveValue('135');
+    const gradient135 = await preview.evaluate((el) => getComputedStyle(el).backgroundImage);
+    expect(gradient135).toContain('linear-gradient(135deg');
+    expect(gradient135).toContain('rgb(232, 161, 58)');
+    await setRange(page, 'cp-gradient-angle', 90);
+    await expect(page.locator('label[for="cp-gradient-angle"]')).toHaveText('Angle: 90°');
+    await expect.poll(() => preview.evaluate((el) => getComputedStyle(el).backgroundImage)).toContain('linear-gradient(90deg');
+    await page.getByTestId('cp-gradient-to').fill('#ffffff');
+    await expect.poll(() => preview.evaluate((el) => getComputedStyle(el).backgroundImage)).toContain('rgb(255, 255, 255)');
+
+    // Image mode without an image falls back to the solid colour and shows the picker.
+    await page.getByTestId('cp-fill-image').click();
+    await expect(page.getByTestId('cp-image')).toBeVisible();
+    expect(await preview.evaluate((el) => getComputedStyle(el).backgroundImage)).toBe('none');
+
+    expect(await app.dumpAll()).toEqual(before);
+  });
 });

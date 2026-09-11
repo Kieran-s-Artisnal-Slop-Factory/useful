@@ -391,6 +391,109 @@ test.describe('placeholders — getting them out', () => {
     expect(await app.dumpAll()).toEqual(before);
   });
 
+  test('randomizes the sizes table, keeping the ratio when asked', async ({ app }) => {
+    const { page } = app;
+    const before = await app.dumpAll();
+    await app.goto('/tools/placeholders/');
+    await toImageMode(page);
+    await page.getByTestId('ph-batch').fill('3');
+    await page.getByTestId('ph-vary-sizes').check();
+    // The ratio choice only exists once randomizing is on.
+    await expect(page.getByTestId('ph-vary-sizes-ratio')).toHaveCount(0);
+    await page.getByTestId('ph-vary-sizes-random').check();
+    await expect(page.getByTestId('ph-vary-sizes-ratio')).toHaveValue('keep');
+
+    const rows = async () => {
+      const out: { width: number; height: number }[] = [];
+      for (const i of [0, 1, 2]) {
+        out.push({
+          width: Number(await page.getByTestId(`ph-vary-size-${i}-w`).inputValue()),
+          height: Number(await page.getByTestId(`ph-vary-size-${i}-h`).inputValue()),
+        });
+      }
+      return out;
+    };
+    // Three different sizes, none of them the base, all 16:9 within the
+    // rounding of a whole pixel.
+    await expect.poll(async () => new Set((await rows()).map((r) => r.width)).size).toBe(3);
+    for (const row of await rows()) {
+      expect(row.width).not.toBe(1200);
+      expect(row.width).toBeGreaterThanOrEqual(200);
+      expect(row.width).toBeLessThanOrEqual(2000);
+      expect(Math.abs(row.width / row.height - 16 / 9)).toBeLessThan(0.02);
+    }
+    // Letting the ratio change rolls both sides: not every row is 16:9 now.
+    await page.getByTestId('ph-vary-sizes-ratio').selectOption('change');
+    await expect
+      .poll(async () => (await rows()).some((r) => Math.abs(r.width / r.height - 16 / 9) >= 0.02))
+      .toBe(true);
+
+    // The numbers are still editable, and "none" leaves every row out —
+    // an image left out keeps the base size.
+    await page.getByTestId('ph-vary-size-0-w').fill('333');
+    await expect(page.getByTestId('ph-vary-size-0-w')).toHaveValue('333');
+    await page.getByTestId('ph-vary-sizes-none').click();
+    for (const i of [0, 1, 2]) await expect(page.getByTestId(`ph-vary-size-${i}-on`)).not.toBeChecked();
+    await page.getByTestId('ph-vary-sizes-all').click();
+    for (const i of [0, 1, 2]) await expect(page.getByTestId(`ph-vary-size-${i}-on`)).toBeChecked();
+    await page.getByTestId('ph-vary-size-1-on').uncheck();
+
+    const archive = await downloadBytes(page, () => page.getByTestId('ph-download-batch').click());
+    const names = zipEntries(new Uint8Array(archive.bytes)).map((e) => e.name);
+    expect(names[0]).toMatch(/^solid-333x\d+-1\.svg$/);
+    expect(names[1]).toBe('solid-1200x675-2.svg');
+    expect(names[2]).not.toBe('solid-1200x675-3.svg');
+
+    expect(await app.dumpAll()).toEqual(before);
+  });
+
+  test('names the swirl colours, and shows the shuffled set beside the rule', async ({ app }) => {
+    const { page } = app;
+    const before = await app.dumpAll();
+    await app.goto('/tools/placeholders/');
+    await toImageMode(page);
+    const svg = () =>
+      page.getByTestId('ph-preview').evaluate((n) => decodeURIComponent((n as HTMLImageElement).src));
+
+    await page.getByTestId('ph-gen-swirl').click();
+    // Two named fields, no numbered palette and nothing to add or remove.
+    await expect(page.getByTestId('ph-swirl-color')).toHaveValue('#e76f51');
+    await expect(page.getByTestId('ph-swirl-background')).toHaveValue('#f4a261');
+    await expect(page.getByTestId('ph-palette-add')).toHaveCount(0);
+    await expect(page.locator('[data-testid^="ph-palette-"]')).toHaveCount(0);
+    const two = await svg();
+    await page.getByTestId('ph-swirl-background').fill('#123456');
+    await page.getByTestId('ph-swirl-background').press('Enter');
+    await expect.poll(async () => await svg()).not.toBe(two);
+    await expect.poll(async () => await svg()).toContain('#123456');
+
+    // Nothing under the rule until it is on; shuffled shows the pair, bound
+    // to the same colours as the panel above; random shows no fields.
+    await expect(page.getByTestId('ph-vary-palette-colours')).toHaveCount(0);
+    await page.getByTestId('ph-vary-palette').check();
+    await expect(page.getByTestId('ph-vary-swirl-background')).toHaveValue('#123456');
+    await page.getByTestId('ph-vary-swirl-color').fill('#abcdef');
+    await page.getByTestId('ph-vary-swirl-color').press('Enter');
+    await expect(page.getByTestId('ph-swirl-color')).toHaveValue('#abcdef');
+    await page.getByTestId('ph-vary-palette-value').selectOption('random');
+    await expect(page.getByTestId('ph-vary-palette-colours')).toHaveCount(0);
+
+    // The mosaic keeps its up-to-four editor, and shuffled shows all four.
+    await page.getByTestId('ph-gen-mosaic').click();
+    await expect(page.getByTestId('ph-palette-add')).toBeVisible();
+    await expect(page.locator('[data-testid^="ph-palette-"][data-testid$="-pick"]')).toHaveCount(4);
+    await page.getByTestId('ph-vary-palette-value').selectOption('shuffle');
+    await expect(page.locator('[data-testid^="ph-vary-palette-"][data-testid$="-pick"]')).toHaveCount(4);
+    await expect(page.getByTestId('ph-vary-palette-0')).toHaveValue('#e76f51');
+    // The mosaic deltas only show for the mosaic.
+    await expect(page.getByTestId('ph-vary-block-size')).toBeVisible();
+    await expect(page.getByTestId('ph-vary-cut-ratio-value')).toBeDisabled();
+    await page.getByTestId('ph-gen-swirl').click();
+    await expect(page.getByTestId('ph-vary-block-size')).toHaveCount(0);
+
+    expect(await app.dumpAll()).toEqual(before);
+  });
+
   test('says the photo links leave the app', async ({ app }) => {
     const { page } = app;
     await app.goto('/tools/placeholders/');

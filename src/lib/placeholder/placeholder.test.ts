@@ -15,6 +15,8 @@ import {
   DEFAULT_IMAGE_OPTIONS,
   DEFAULT_PALETTE,
   paletteOf,
+  RANDOM_SIZE_RANGE,
+  randomSizes,
   varyOptions,
   type BatchVariation,
   type ImageOptions,
@@ -659,6 +661,78 @@ describe('batch variation', () => {
     const batch = buildBatch({ ...base, generator: 'mosaic' }, 2, { ...DEFAULT_BATCH_VARIATION, palette: 'random' });
     expect(batch[1]!.svg).toBe(buildImage(batch[1]!.options));
     expect(batch[1]!.svg).not.toContain(base.palette[0]!);
+  });
+
+  it('steps the mosaic block size and cut ratio, clamped to the sliders', () => {
+    // Base 8%: 8, 13, 18, 23, 25 (the slider stops at 25).
+    expect(items({ blockSizeDelta: 5 }, 5).map((o) => o.blockSize)).toEqual([8, 13, 18, 23, 25]);
+    expect(items({ blockSizeDelta: -4 }, 3).map((o) => o.blockSize)).toEqual([8, 4, 2]);
+    // Base 0.25: 0.25, 0.55, 0.85, 1 — and nothing past "cut everything".
+    expect(items({ cutRatioDelta: 0.3 }, 4).map((o) => o.cutRatio)).toEqual([0.25, 0.55, 0.85, 1]);
+    expect(items({ cutRatioDelta: -0.2 }, 3).map((o) => o.cutRatio)).toEqual([0.25, 0.05, 0]);
+    // Neither rule touches the other field, or pulls from the rng.
+    expect(vary({ blockSizeDelta: 5 }, 2).cutRatio).toBe(base.cutRatio);
+    expect(vary({ cutRatioDelta: 0.3 }, 2).blockSize).toBe(base.blockSize);
+    let calls = 0;
+    varyOptions(base, 3, 4, { ...DEFAULT_BATCH_VARIATION, blockSizeDelta: 1, cutRatioDelta: 0.1 }, () => (calls++, 0.5));
+    expect(calls).toBe(0);
+    const batch = buildBatch({ ...base, generator: 'mosaic', cutRatio: 0 }, 2, { ...DEFAULT_BATCH_VARIATION, cutRatioDelta: 1 });
+    // Item 1 is cut to 1: no blocks at all, only the backdrop.
+    expect(findAll(parseSvg(batch[1]!.svg), 'rect')).toHaveLength(1);
+    expect(findAll(parseSvg(batch[0]!.svg), 'rect').length).toBeGreaterThan(1);
+  });
+});
+
+describe('random sizes', () => {
+  const [lo, hi] = RANDOM_SIZE_RANGE;
+  const sizes = (base: { width: number; height: number }, n: number, keepRatio: boolean, seed = 9) =>
+    randomSizes(base, n, keepRatio, mulberry32(seed));
+
+  it('is deterministic per rng and gives one size per item', () => {
+    expect(sizes({ width: 1200, height: 675 }, 5, true)).toEqual(sizes({ width: 1200, height: 675 }, 5, true));
+    expect(sizes({ width: 1200, height: 675 }, 5, true)).not.toEqual(sizes({ width: 1200, height: 675 }, 5, true, 10));
+    expect(sizes({ width: 1200, height: 675 }, 7, false)).toHaveLength(7);
+    expect(sizes({ width: 1200, height: 675 }, 0, false)).toHaveLength(1);
+    expect(sizes({ width: 1200, height: 675 }, 999, false)).toHaveLength(50);
+    // Three rows come out as three different sizes, not one size thrice.
+    expect(new Set(sizes({ width: 1200, height: 675 }, 3, true).map((s) => s.width)).size).toBe(3);
+  });
+
+  it('keeps the base ratio within rounding, long side in range', () => {
+    for (const base of [
+      { width: 1200, height: 675 },
+      { width: 675, height: 1200 },
+      { width: 500, height: 500 },
+    ]) {
+      const ratio = base.width / base.height;
+      for (const s of sizes(base, 40, true)) {
+        const long = Math.max(s.width, s.height);
+        expect(long).toBeGreaterThanOrEqual(lo);
+        expect(long).toBeLessThanOrEqual(hi);
+        expect(Math.min(s.width, s.height)).toBeGreaterThanOrEqual(MIN_SIDE);
+        // Rounding the short side moves the ratio by under one part in 100
+        // at the smallest long side, and less above it.
+        expect(Math.abs(s.width / s.height - ratio)).toBeLessThan(0.02);
+        // Portrait stays portrait and landscape stays landscape.
+        expect(s.width >= s.height).toBe(base.width >= base.height);
+      }
+    }
+  });
+
+  it('rolls both sides on their own when the ratio may change', () => {
+    const out = sizes({ width: 1200, height: 675 }, 40, false);
+    for (const s of out) {
+      for (const side of [s.width, s.height]) {
+        expect(side).toBeGreaterThanOrEqual(lo);
+        expect(side).toBeLessThanOrEqual(hi);
+      }
+    }
+    expect(new Set(out.map((s) => Math.round((s.width / s.height) * 100))).size).toBeGreaterThan(1);
+    // A silly base is clamped like any size rather than dividing by zero.
+    for (const s of sizes({ width: 0, height: Number.NaN }, 3, true)) {
+      expect(s.width).toBeGreaterThanOrEqual(MIN_SIDE);
+      expect(s.height).toBeGreaterThanOrEqual(MIN_SIDE);
+    }
   });
 });
 

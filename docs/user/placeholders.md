@@ -31,9 +31,9 @@ Eleven generators, all of them drawn from your settings. Each one in the picker 
 | An icon | Any of about two thousand Lucide icons, on any background, at any size. |
 | A drawn scene | Fifteen hand-drawn pictures — five each of nature, sport and city. |
 | Mosaic | Square tiles in up to four colours of your choosing, with pieces cut out to show the background. Set the block size and how much is cut. |
-| Swirl | A smooth two-tone spiral in the first two palette colours. Set how many turns it makes and how wide the arm is. |
+| Swirl | A smooth two-tone spiral: a swirl colour on a background colour. Set how many turns it makes and how wide the arm is. |
 
-**Mosaic and swirl** share a **palette** of one to four colours — type any CSS colour or use the picker, add or remove entries with the buttons beside them. The swirl uses the first two; give it one colour and the background is the other. Both follow the **seed**: for the mosaic that decides which tiles are cut and how each tile sits, for the swirl where it starts and which way it winds.
+The **mosaic** has a **palette** of one to four colours — type any CSS colour or use the picker, add or remove entries with the buttons beside them. The **swirl** has exactly two, named for what they do: **Swirl colour** is the arm and **Background colour** is the ground it turns on. Both generators follow the **seed**: for the mosaic that decides which tiles are cut and how each tile sits, for the swirl where it starts and which way it winds.
 
 Set the **size** directly, or use a ratio button (16:9, 4:3, 3:2, 1:1, 9:16) or a size preset. With **Keep the aspect ratio** ticked, typing one side moves the other and leaves what you typed alone.
 
@@ -47,7 +47,7 @@ Set the **size** directly, or use a ratio button (16:9, 4:3, 3:2, 1:1, 9:16) or 
 
 By itself a batch only changes the seed, which for a plain colour or a gradient means three copies of the same picture. **Vary across the batch**, under the batch count, adds one difference per rule you tick; everything you leave unticked stays exactly as set above.
 
-- **Sizes** — a table with one row per image; the first row is the first image. It grows and shrinks with the batch count.
+- **Sizes** — a table with one row per image; the first row is the first image. It grows and shrinks with the batch count. Each row has an include tick (**all** / **none** flip them together); an image left out keeps the size set above. **Randomize sizes** fills the table for you — seeded, so the same seed fills it the same way — with the long side anywhere from 200 to 2000 pixels, either **keeping the aspect ratio** of the size above or **changing it too**. The numbers it writes are still yours to edit.
 - **Background** — a random colour per image. Available for every generator.
 - **Ink** — a random colour per image, where the generator paints with it (caption, noise, flow field, icon).
 - **Seed** — twelve random characters per image, for the generators that draw from it.
@@ -57,7 +57,8 @@ By itself a batch only changes the seed, which for a plain colour or a gradient 
 - **Layered geometry / cut planes** — an **opacity delta** per image, kept between 5% and 100%.
 - **Icon** — a **size delta** per image (past 95% it wraps round, and never under 10%) and **a random icon** per image once the icon set has loaded.
 - **Drawn scene** — a random scene per image from the ones you allow: tick a whole group (any nature, any sport, any city) or individual scenes.
-- **Mosaic / swirl** — the **palette** either **shuffled** (the same colours in a new order per image) or **random** (new colours per image, as many as you set).
+- **Mosaic** — a **block size delta** (percent per image, kept within 2–25) and a **cut-out delta** (per image, kept within 0–1).
+- **Mosaic / swirl** — the **palette** either **shuffled** (the same colours in a new order per image) or **random** (new colours per image, as many as you set). With **shuffled** chosen, the colours being reordered appear right under the rule so you can see what is being shuffled; they are the same colours as in the generator panel, and editing them in either place is the same edit.
 
 A delta is multiplied by the image's position, so image 1 is always what the preview shows, image 2 is one step away, image 3 two steps. Everything is still seeded: the same seed and the same rules give the same batch again.
 

@@ -80,6 +80,23 @@ Additional things to keep in mind:
           - [x] Drawn Scene
             - [x] Randomizer should allow you to pick which scenes you want to allow to be included in the randomization by category (e.g. any nature, any city) or individual scenec (e.g. Skyline, Running track, Tennis court only)
 
+## Feedback round 1 (2026-09-11, after Phases 0-7)
+
+- [x] Clip path
+  - [x] Make the preview 4/3 by default; the current box is too long and distorts how the clip path looks
+  - [x] Allow the aspect ratio to be changed so the clip path can be seen in each
+  - [x] Default the preview to a solid colour (orange) instead of the gradient, and make that colour configurable
+  - [x] Make the preview gradient configurable
+- [x] Placeholder images
+  - [x] Varying sizes: a checkbox to randomize the sizes, with a further choice of keeping the aspect ratio or changing it too, and select all / none
+  - [x] Mosaic: batch deltas for block size and cut-out ratio
+  - [x] Swirl: the two colours are "Swirl colour" and "Background colour", with no add / remove
+  - [x] Swirl and Mosaic: the palette variance colours are edited next to the "shuffled" field, not in the generator panel far above
+- [x] Napkin math
+  - [x] Export can include more than one calculation (current vs a stored one, e.g. option 1 vs option 2 in a rental comparison)
+    - [x] When another calculation is added, the current one can be given an optional title; stored ones use their saved titles; titles appear above their respective values
+    - [x] The formula is drawn once; each calculation gets its own "With your values" row and that heading can be changed per calculation
+
 ## For human
 
 This section is for me to keep track of what I need to manually review, feel free to add to this

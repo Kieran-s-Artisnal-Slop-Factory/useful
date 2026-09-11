@@ -55,7 +55,7 @@ A shared template carries the **formula only**. The numbers you have run through
 
 ## The calculation as a picture
 
-**Export image**, under Save in the **Calculations** card, draws the calculation as a picture: the formula, the same formula with your numbers written into it, and the answer. It is for a document or a message, where a link to this page is no use to anyone.
+**Export image**, under Save in the **Calculations** card, draws the calculation as a picture: the formula, the same formula with your numbers written into it, and the answer. It is for a document or a message, where a link to this page is no use to anyone. It can also put a saved calculation next to the current one — option 1 against option 2 — under the one formula (see **Compare with** below).
 
 Four things to know before you send one:
 
@@ -70,6 +70,7 @@ What the dialog offers:
 
 - **Rows** — tick **Formula**, **With your values**, **Result** and **Title** (the template's name, so an untitled one has nothing to show) in any combination. The preview redraws each time you change one.
 - **Captions** — each row has a small caption above it, and each is yours to change. Untick **caption** beside a row to draw that row without one, or type a new one in the box beside it: "With your values" can become "At current market rate" for this picture. An empty box means no caption. **Reset captions** puts the three originals back. Captions are an export setting, not part of the template: they are not saved with it, and the next visit starts with the defaults.
+- **Compare with** — draw a saved calculation alongside the one on the page. The menu lists every calculation you have saved against this formula (from this template, or from another template with exactly the same formula, shown as *Template › Calculation*); pick one and press **Add**. The picture then has the formula once, a values row for each calculation, and a result for each, captioned `Result — <name>` so the two answers cannot be confused. A saved calculation is captioned with its saved name, which you can change in the box beside it, and each entry lists the values it draws. **Title for this calculation** captions the one on the page — "Option 2", say — and its result; leave it empty and the row keeps its ordinary caption. The **×** beside an entry takes it out again. Save a calculation first if you want to compare against it: only saved calculations have values to draw, and a template alone does not. Comparisons are not saved; if the menu says "No stored calculation uses this formula", nothing has been saved against it yet.
 - **Theme** — light or dark. The colours are written into the file rather than taken from your theme here, so it looks the same on someone else's screen as it does on yours.
 - **Transparent background** — leaves the paper out, so the picture sits on whatever colour you paste it onto. Choose the theme to match: dark text on a dark slide disappears.
 - **Decimals in the result** — the number as this page shows it, or rounded to 0–4 places. This changes the picture only. Your calculation and the number on the page are untouched.

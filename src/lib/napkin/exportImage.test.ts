@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { EXPORT_THEMES, captionText, fontFaceRules, formatNumberLatex, imageFilename } from './exportImage';
+import {
+  EXPORT_THEMES,
+  UNTITLED_CURRENT,
+  captionText,
+  comparisonRows,
+  fontFaceRules,
+  formatNumberLatex,
+  imageFilename,
+} from './exportImage';
 
 /* `buildCalculationSvg` and `layoutRow` measure real text in a real shadow
    root, so they live in the Playwright suite, which decodes the PNG they
@@ -73,6 +81,107 @@ describe('captionText', () => {
   it('keeps a custom caption intact apart from the case', () => {
     expect(captionText('At current market rate')).toBe('AT CURRENT MARKET RATE');
     expect(captionText('Q3 (est.)')).toBe('Q3 (EST.)');
+  });
+});
+
+describe('comparisonRows', () => {
+  const formula = { label: 'Formula', latex: '\\mathrm{revenue}-\\mathrm{cost}' };
+  const current = { title: '', substituted: '12500-4750', result: '= 7750' };
+  const other = { title: 'Option 1', substituted: '9000-4750', result: '= 4250' };
+  const single = () =>
+    comparisonRows({ formula, substitutedLabel: 'With your values', resultLabel: 'Result', calculations: [current] });
+
+  it('with one calculation and no title builds exactly the three rows the dialog always built', () => {
+    // The renderer did not change for comparisons. This is the input it gets
+    // when none is added, and it is byte-for-byte the 0.5.0 input, so the
+    // single-calculation picture is the same picture.
+    expect(single()).toEqual([
+      { label: 'Formula', latex: '\\mathrm{revenue}-\\mathrm{cost}' },
+      { label: 'With your values', latex: '12500-4750' },
+      { label: 'Result', latex: '= 7750' },
+    ]);
+  });
+
+  it('passes switched-off captions through as blank, unchanged', () => {
+    expect(
+      comparisonRows({ formula: { label: '', latex: 'x' }, substitutedLabel: '', resultLabel: '', calculations: [current] })
+    ).toEqual([
+      { label: '', latex: 'x' },
+      { label: '', latex: '12500-4750' },
+      { label: '', latex: '= 7750' },
+    ]);
+  });
+
+  it('leaves out the rows that are switched off or could not be built', () => {
+    expect(
+      comparisonRows({ formula: null, substitutedLabel: 'With your values', resultLabel: 'Result', calculations: [{ ...current, substituted: null }] })
+    ).toEqual([{ label: 'Result', latex: '= 7750' }]);
+    expect(
+      comparisonRows({ formula: null, substitutedLabel: 'With your values', resultLabel: 'Result', calculations: [{ ...current, result: null }] })
+    ).toEqual([{ label: 'With your values', latex: '12500-4750' }]);
+  });
+
+  it('draws the formula once, then every substituted row, then every result', () => {
+    const rows = comparisonRows({
+      formula,
+      substitutedLabel: 'With your values',
+      resultLabel: 'Result',
+      calculations: [{ ...current, title: 'Option 2' }, other],
+    });
+    expect(rows).toEqual([
+      { label: 'Formula', latex: '\\mathrm{revenue}-\\mathrm{cost}' },
+      { label: 'Option 2', latex: '12500-4750' },
+      { label: 'Option 1', latex: '9000-4750' },
+      { label: 'Result — Option 2', latex: '= 7750' },
+      { label: 'Result — Option 1', latex: '= 4250' },
+    ]);
+  });
+
+  it('keeps the row caption for an untitled current calculation, and names its result', () => {
+    const rows = comparisonRows({
+      formula: null,
+      substitutedLabel: 'With your values',
+      resultLabel: 'Result',
+      calculations: [current, other],
+    });
+    expect(rows.map((r) => r.label)).toEqual([
+      'With your values',
+      'Option 1',
+      `Result — ${UNTITLED_CURRENT}`,
+      'Result — Option 1',
+    ]);
+  });
+
+  it('with the result caption off, a compared result is captioned by its title alone', () => {
+    const rows = comparisonRows({
+      formula: null,
+      substitutedLabel: '',
+      resultLabel: '',
+      calculations: [{ ...current, title: 'Option 2' }, other],
+    });
+    expect(rows.map((r) => r.label)).toEqual(['Option 2', 'Option 1', 'Option 2', 'Option 1']);
+  });
+
+  it('a comparison whose caption was emptied draws its rows uncaptioned', () => {
+    const rows = comparisonRows({
+      formula: null,
+      substitutedLabel: 'With your values',
+      resultLabel: 'Result',
+      calculations: [current, { ...other, title: '  ' }],
+    });
+    expect(rows.map((r) => r.label)).toEqual(['With your values', '', `Result — ${UNTITLED_CURRENT}`, 'Result']);
+  });
+
+  it('a lone calculation ignores its title, so removing the last comparison restores the single picture', () => {
+    // The title box keeps its text between adds; what it must not do is
+    // change a picture that has nothing to compare.
+    const rows = comparisonRows({
+      formula,
+      substitutedLabel: 'With your values',
+      resultLabel: 'Result',
+      calculations: [{ ...current, title: 'Option 2' }],
+    });
+    expect(rows).toEqual(single());
   });
 });
 

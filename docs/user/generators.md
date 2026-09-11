@@ -46,7 +46,7 @@ Builds a CSS `clip-path:` line and shows it applied to a sample so you can see t
 - **Blinds.** A number of equal strips with a gap between them, stacked top to bottom or side by side — the picture shows through the strips only.
 - **Wave.** One edge of the box becomes a wave: how many waves, how tall (peak to trough), a phase to slide it along, the waveform (sine, triangle, square, sawtooth) and which edge (top or bottom).
 
-The preview shows a gradient by default; choose an image with the file picker or drop one on the preview to see your own picture clipped. **Copy CSS** puts the `clip-path: …;` line on the clipboard. Every value is a percentage, so the same line fits an element of any size.
+The preview is a 4 : 3 box by default; the **Aspect ratio** menu next to it swaps in 1 : 1, 3 : 2, 16 : 9, 9 : 16, 3 : 4, 2 : 3 or 21 : 9 so you can see how the cut looks on the element you have in mind — the CSS line does not change, only the picture. **Fill** picks what gets clipped: **Solid** (orange by default, with a colour field), **Gradient** (two colours and an angle) or **Image** — choose one with the file picker or drop it on the preview to see your own picture clipped. **Copy CSS** puts the `clip-path: …;` line on the clipboard. Every value is a percentage, so the same line fits an element of any size.
 
 ## Gotchas
 

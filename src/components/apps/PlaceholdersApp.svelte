@@ -29,6 +29,7 @@
     batchName,
     buildBatch,
     buildImage,
+    randomSizes,
     type BatchVariation,
     type GeneratorId,
     type ImageOptions,
@@ -80,6 +81,22 @@
     if (image.palette.length <= 1) return;
     image.palette = image.palette.filter((_, index) => index !== i);
   }
+
+  /**
+   * The swirl's two colours, named rather than numbered (feedback round 1).
+   * Kept apart from the mosaic's up-to-four palette so switching generators
+   * never loses colours three and four; `options` below hands the swirl these
+   * two as its palette, which is what `swirlLayer` always read — the default
+   * pair is the default palette's first two, so an existing seed draws the
+   * same swirl it did.
+   */
+  let swirl = $state({ color: DEFAULT_PALETTE[0]!, background: DEFAULT_PALETTE[1]! });
+
+  /** What is actually drawn: the page's settings with the palette the chosen
+   * generator edits. Everything that builds an image reads this, not `image`. */
+  let options = $derived<ImageOptions>(
+    image.generator === 'swirl' ? { ...image, palette: [swirl.color, swirl.background] } : image
+  );
   let lockRatio = $state(true);
   let batchCount = $state(3);
   let exportFormat = $state<TargetFormat | 'svg'>('svg');
@@ -88,7 +105,7 @@
   let iconNames = $state<string[]>([]);
   let iconError = $state<string | null>(null);
 
-  let svg = $derived(buildImage(image));
+  let svg = $derived(buildImage(options));
   let previewUri = $derived(svgDataUri(svg));
 
   /**
@@ -143,6 +160,8 @@
    */
   let vary = $state({
     sizes: false,
+    sizesRandom: false,
+    sizesRatio: 'keep' as 'keep' | 'change',
     background: false,
     ink: false,
     angleOffset: false,
@@ -163,11 +182,16 @@
     sizeDeltaValue: 0.15,
     randomIcon: false,
     scenes: false,
+    blockSizeDelta: false,
+    blockSizeDeltaValue: 2,
+    cutRatioDelta: false,
+    cutRatioDeltaValue: 0.1,
     palette: false,
     paletteValue: 'shuffle' as 'shuffle' | 'random',
   });
-  /** One row per batch item; `sizeRows[0]` is the first image. */
-  let sizeRows = $state<{ width: number; height: number }[]>([]);
+  /** One row per batch item; `sizeRows[0]` is the first image. A row with
+   * `on` off keeps the base size whatever its cells say. */
+  let sizeRows = $state<{ width: number; height: number; on: boolean }[]>([]);
   let allowedScenes = $state<SceneId[]>(SCENES.map((s) => s.id));
 
   const clampCount = (n: number): number => (Number.isFinite(n) ? Math.min(50, Math.max(1, Math.trunc(n))) : 1);
@@ -179,9 +203,35 @@
     const n = clampCount(batchCount);
     untrack(() => {
       if (sizeRows.length === n) return;
-      sizeRows = Array.from({ length: n }, (_, i) => sizeRows[i] ?? { width: image.width, height: image.height });
+      sizeRows = Array.from(
+        { length: n },
+        (_, i) => sizeRows[i] ?? { width: image.width, height: image.height, on: true }
+      );
     });
   });
+
+  /**
+   * "Randomize sizes": the table is filled from `randomSizes` with an rng
+   * off the batch seed, and refilled whenever what it was rolled from moves —
+   * the seed, the count, the base size the ratio is kept from, or the ratio
+   * choice itself. The numbers land in the table and stay editable; the
+   * batch only ever reads the table, so randomizing IS filling it. Include
+   * ticks are kept across a refill.
+   */
+  $effect(() => {
+    if (!vary.sizesRandom) return;
+    const n = clampCount(batchCount);
+    const keepRatio = vary.sizesRatio === 'keep';
+    const rng = mulberry32(seedFrom(`${image.seed}:sizes`));
+    const rolled = randomSizes({ width: image.width, height: image.height }, n, keepRatio, rng);
+    untrack(() => {
+      sizeRows = rolled.map((size, i) => ({ ...size, on: sizeRows[i]?.on ?? true }));
+    });
+  });
+
+  function setAllSizes(on: boolean) {
+    sizeRows = sizeRows.map((row) => ({ ...row, on }));
+  }
 
   const groupIds = (group: Scene['group']): SceneId[] => SCENES.filter((s) => s.group === group).map((s) => s.id);
   const groupOn = (group: Scene['group']): boolean => groupIds(group).every((id) => allowedScenes.includes(id));
@@ -197,7 +247,11 @@
 
   function batchVariation(randomIcon: string[] | null): BatchVariation {
     return {
-      sizes: vary.sizes ? sizeRows.map((row) => ({ width: row.width, height: row.height })) : null,
+      sizes: vary.sizes
+        ? sizeRows.map((row) =>
+            row.on ? { width: row.width, height: row.height } : { width: image.width, height: image.height }
+          )
+        : null,
       background: vary.background,
       ink: vary.ink,
       angleOffset: vary.angleOffset ? vary.angleOffsetValue : null,
@@ -212,6 +266,8 @@
       sizeDelta: vary.sizeDelta ? vary.sizeDeltaValue : null,
       randomIcon,
       scenes: vary.scenes ? [...allowedScenes] : null,
+      blockSizeDelta: vary.blockSizeDelta ? vary.blockSizeDeltaValue : null,
+      cutRatioDelta: vary.cutRatioDelta ? vary.cutRatioDeltaValue : null,
       palette: vary.palette ? vary.paletteValue : 'off',
     };
   }
@@ -298,7 +354,7 @@
    */
   async function downloadBatch() {
     const n = clampCount(batchCount);
-    const items = buildBatch(image, n, batchVariation(await batchIcons(n)));
+    const items = buildBatch(options, n, batchVariation(await batchIcons(n)));
     try {
       const entries = [];
       for (const [index, item] of items.entries()) {
@@ -617,12 +673,25 @@
           </div>
         {/if}
 
-        {#if USES_PALETTE.includes(image.generator)}
+        {#if image.generator === 'swirl'}
+          <!-- Two named colours rather than a numbered palette: a swirl has
+               an arm and a ground, and "Colour 1 / Colour 2" made people
+               guess which was which. -->
+          <div class="row">
+            <div class="palette-entry">
+              <label for="ph-swirl-color">Swirl colour</label>
+              <ColorField id="ph-swirl-color" testid="ph-swirl-color" bind:value={swirl.color} />
+            </div>
+            <div class="palette-entry">
+              <label for="ph-swirl-background">Background colour</label>
+              <ColorField id="ph-swirl-background" testid="ph-swirl-background" bind:value={swirl.background} />
+            </div>
+          </div>
+        {/if}
+
+        {#if image.generator === 'mosaic'}
           <div class="stack">
-            <p class="muted small">
-              Palette — up to four colours.
-              {image.generator === 'swirl' ? ' The swirl uses the first two; with one colour the background is the other.' : ''}
-            </p>
+            <p class="muted small">Palette — up to four colours.</p>
             <div class="row">
               {#each image.palette as _, i (i)}
                 <div class="palette-entry">
@@ -819,13 +888,54 @@
               Sizes — one per image
             </label>
             {#if vary.sizes}
+              <div class="rule">
+                <label class="check">
+                  <input type="checkbox" data-testid="ph-vary-sizes-random" bind:checked={vary.sizesRandom} />
+                  Randomize sizes
+                </label>
+                {#if vary.sizesRandom}
+                  <select
+                    aria-label="Randomized sizes and the aspect ratio"
+                    data-testid="ph-vary-sizes-ratio"
+                    bind:value={vary.sizesRatio}
+                  >
+                    <option value="keep">Keep the aspect ratio</option>
+                    <option value="change">Change it too</option>
+                  </select>
+                  <span class="muted small">seeded, long side 200–2000; the numbers stay editable</span>
+                {/if}
+              </div>
+              <div class="rule">
+                <span class="muted small">Include</span>
+                <button class="link" type="button" data-testid="ph-vary-sizes-all" onclick={() => setAllSizes(true)}>
+                  all
+                </button>
+                <span class="muted small">/</span>
+                <button class="link" type="button" data-testid="ph-vary-sizes-none" onclick={() => setAllSizes(false)}>
+                  none
+                </button>
+                <span class="muted small">— an image left out keeps the size set above</span>
+              </div>
               <table class="sizes" data-testid="ph-vary-sizes-value">
                 <thead>
-                  <tr><th scope="col">Image</th><th scope="col">Width</th><th scope="col">Height</th></tr>
+                  <tr>
+                    <th scope="col"><span class="visually-hidden">Include</span></th>
+                    <th scope="col">Image</th>
+                    <th scope="col">Width</th>
+                    <th scope="col">Height</th>
+                  </tr>
                 </thead>
                 <tbody>
                   {#each sizeRows as row, i (i)}
                     <tr>
+                      <td>
+                        <input
+                          type="checkbox"
+                          aria-label={`Include image ${i + 1}`}
+                          data-testid={`ph-vary-size-${i}-on`}
+                          bind:checked={row.on}
+                        />
+                      </td>
                       <th scope="row">{i + 1}</th>
                       <td>
                         <input
@@ -835,6 +945,7 @@
                           max={MAX_SIDE}
                           aria-label={`Image ${i + 1} width`}
                           data-testid={`ph-vary-size-${i}-w`}
+                          disabled={!row.on}
                           bind:value={row.width}
                         />
                       </td>
@@ -846,6 +957,7 @@
                           max={MAX_SIDE}
                           aria-label={`Image ${i + 1} height`}
                           data-testid={`ph-vary-size-${i}-h`}
+                          disabled={!row.on}
                           bind:value={row.height}
                         />
                       </td>
@@ -1049,6 +1161,41 @@
               {/if}
             {/if}
 
+            {#if image.generator === 'mosaic'}
+              <div class="rule">
+                <label class="check">
+                  <input type="checkbox" data-testid="ph-vary-block-size" bind:checked={vary.blockSizeDelta} />
+                  Block size delta
+                </label>
+                <label class="muted small" for="ph-vary-block-size-value">percent per image, kept within 2–25</label>
+                <input
+                  id="ph-vary-block-size-value"
+                  class="num"
+                  type="number"
+                  step="1"
+                  data-testid="ph-vary-block-size-value"
+                  disabled={!vary.blockSizeDelta}
+                  bind:value={vary.blockSizeDeltaValue}
+                />
+              </div>
+              <div class="rule">
+                <label class="check">
+                  <input type="checkbox" data-testid="ph-vary-cut-ratio" bind:checked={vary.cutRatioDelta} />
+                  Cut-out delta
+                </label>
+                <label class="muted small" for="ph-vary-cut-ratio-value">of the blocks per image, kept within 0–1</label>
+                <input
+                  id="ph-vary-cut-ratio-value"
+                  class="num"
+                  type="number"
+                  step="0.05"
+                  data-testid="ph-vary-cut-ratio-value"
+                  disabled={!vary.cutRatioDelta}
+                  bind:value={vary.cutRatioDeltaValue}
+                />
+              </div>
+            {/if}
+
             {#if USES_PALETTE.includes(image.generator)}
               <div class="rule">
                 <label class="check">
@@ -1065,6 +1212,34 @@
                   <option value="random">random — new colours per image, as many as above</option>
                 </select>
               </div>
+              {#if vary.palette && vary.paletteValue === 'shuffle'}
+                <!-- The colours being reordered, right where the rule is:
+                     the same state as the generator panel, so an edit in
+                     either place is the same edit. -->
+                <div class="row" data-testid="ph-vary-palette-colours">
+                  {#if image.generator === 'swirl'}
+                    <div class="palette-entry">
+                      <label for="ph-vary-swirl-color">Swirl colour</label>
+                      <ColorField id="ph-vary-swirl-color" testid="ph-vary-swirl-color" bind:value={swirl.color} />
+                    </div>
+                    <div class="palette-entry">
+                      <label for="ph-vary-swirl-background">Background colour</label>
+                      <ColorField
+                        id="ph-vary-swirl-background"
+                        testid="ph-vary-swirl-background"
+                        bind:value={swirl.background}
+                      />
+                    </div>
+                  {:else}
+                    {#each image.palette as _, i (i)}
+                      <div class="palette-entry">
+                        <label for={`ph-vary-palette-${i}`}>Colour {i + 1}</label>
+                        <ColorField id={`ph-vary-palette-${i}`} testid={`ph-vary-palette-${i}`} bind:value={image.palette[i]} />
+                      </div>
+                    {/each}
+                  {/if}
+                </div>
+              {/if}
             {/if}
           </div>
         </fieldset>
@@ -1181,6 +1356,26 @@
   .palette-entry .row {
     flex-wrap: nowrap;
     align-items: stretch;
+  }
+
+  .link {
+    border: 0;
+    background: none;
+    padding: 0;
+    color: var(--color-primary);
+    text-decoration: underline;
+    cursor: pointer;
+    font: inherit;
+    font-size: var(--font-size-sm);
+  }
+
+  .visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
   }
 
   .sizes {

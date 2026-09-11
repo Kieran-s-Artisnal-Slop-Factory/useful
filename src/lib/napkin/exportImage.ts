@@ -141,6 +141,78 @@ export function captionText(label: string | null | undefined): string {
   return (label ?? '').trim().toUpperCase();
 }
 
+/**
+ * One calculation's share of a comparison picture (0.6.0 feedback round 1).
+ *
+ * Both strings are already LaTeX: the caller has run `substitutedLatex` and
+ * `formatNumberLatex`, and hands `null` for a row it is not drawing — because
+ * the row is switched off, or because that calculation could not be
+ * substituted or evaluated.
+ */
+export interface ComparedCalculation {
+  /** Caption for this calculation. Blank on the first entry means "use the row caption". */
+  title: string;
+  substituted: string | null;
+  result: string | null;
+}
+
+export interface ComparisonRowsInput {
+  /** The formula row, or null when it is switched off. */
+  formula: { label: string; latex: string } | null;
+  /** The "With your values" caption as the dialog holds it — blank when off. */
+  substitutedLabel: string;
+  /** The "Result" caption as the dialog holds it — blank when off. */
+  resultLabel: string;
+  /** The current calculation first, then every comparison in the order added. */
+  calculations: readonly ComparedCalculation[];
+}
+
+/** What the first calculation is called in a result caption when it was given no title. */
+export const UNTITLED_CURRENT = 'Current';
+
+/**
+ * The rows of a picture that compares one or more calculations.
+ *
+ * The formula is drawn once. Then one substituted row per calculation, the
+ * current one first — captioned with its title when it has one and with the
+ * dialog's own caption otherwise — and then one result per calculation,
+ * captioned `Result — <title>` as soon as there is more than one, because two
+ * bare `= …` rows say nothing about which is which.
+ *
+ * Titles exist to tell calculations apart, so a lone calculation ignores its
+ * title: with one calculation this returns exactly the three rows the 0.5.0
+ * dialog built, whatever the dialog holds, and a picture with no comparison
+ * added is the same picture it always was — including after the last
+ * comparison is removed. Pure, so that promise is held by a unit test.
+ */
+export function comparisonRows(input: ComparisonRowsInput): CalculationRow[] {
+  const { formula, substitutedLabel, resultLabel, calculations } = input;
+  const rows: CalculationRow[] = [];
+  if (formula) rows.push({ label: formula.label, latex: formula.latex });
+
+  const several = calculations.length > 1;
+  const titleOf = (calc: ComparedCalculation, index: number): string =>
+    calc.title.trim() || (index === 0 ? UNTITLED_CURRENT : '');
+
+  for (const [index, calc] of calculations.entries()) {
+    if (calc.substituted === null) continue;
+    const own = several ? calc.title.trim() : '';
+    rows.push({
+      label: index === 0 && !own ? substitutedLabel : own,
+      latex: calc.substituted,
+    });
+  }
+
+  for (const [index, calc] of calculations.entries()) {
+    if (calc.result === null) continue;
+    const label = several
+      ? [resultLabel.trim(), titleOf(calc, index)].filter(Boolean).join(' — ')
+      : resultLabel;
+    rows.push({ label, latex: calc.result });
+  }
+  return rows;
+}
+
 /** Only the `@font-face` rules — the layout CSS is for measuring, not output. */
 export function fontFaceRules(css: string): string {
   return (css.match(/@font-face\s*\{[^}]*\}/g) ?? []).join('');

@@ -18,6 +18,7 @@
   } from '../../lib/gen/clipPath';
   import { copyText } from '../../lib/exportFile';
   import { imageFromDrop, imageFromFiles } from '../../lib/img/ingest';
+  import ColorField from '../ColorField.svelte';
 
   /**
    * Stateless tool (0.6.0 Phase 5, decision 5): every mode keeps its own
@@ -83,7 +84,46 @@
     altTimer = setTimeout(() => (copiedAlt = false), 1500);
   }
 
-  // ---- preview image -----------------------------------------------------
+  // ---- preview stage -------------------------------------------------------
+  /**
+   * The stage is width-bound with a chosen aspect ratio (feedback round 1: a
+   * box that fills the column stretches every shape). Handles and the overlay
+   * position themselves in percent of the stage box, so any ratio maps 1:1.
+   */
+  const RATIOS: { id: string; w: number; h: number }[] = [
+    { id: '1/1', w: 1, h: 1 },
+    { id: '4/3', w: 4, h: 3 },
+    { id: '3/2', w: 3, h: 2 },
+    { id: '16/9', w: 16, h: 9 },
+    { id: '9/16', w: 9, h: 16 },
+    { id: '3/4', w: 3, h: 4 },
+    { id: '2/3', w: 2, h: 3 },
+    { id: '21/9', w: 21, h: 9 },
+  ];
+  /** The tallest the stage may grow; the width follows so the ratio holds. */
+  const STAGE_MAX_HEIGHT_REM = 26;
+  let aspect = $state('4/3');
+  let stageStyle = $derived.by(() => {
+    const r = RATIOS.find((x) => x.id === aspect) ?? RATIOS[1];
+    // `min(…)` keeps the box width-bound: a max-height alone would cap the
+    // height and leave the width (and so the ratio) wrong. The 1rem is the
+    // stage's own side margins, which `100%` does not include.
+    return `aspect-ratio: ${r.w} / ${r.h}; width: min(calc(100% - 1rem), ${(STAGE_MAX_HEIGHT_REM * r.w) / r.h}rem);`;
+  });
+
+  // ---- preview fill --------------------------------------------------------
+  type Fill = 'solid' | 'gradient' | 'image';
+  const FILLS: { id: Fill; label: string }[] = [
+    { id: 'solid', label: 'Solid' },
+    { id: 'gradient', label: 'Gradient' },
+    { id: 'image', label: 'Image' },
+  ];
+  let fill = $state<Fill>('solid');
+  let fillColor = $state('#e8a13a');
+  let gradientFrom = $state('#1e3a5f');
+  let gradientTo = $state('#e8a13a');
+  let gradientAngle = $state(135);
+
   let stage = $state<HTMLDivElement | null>(null);
   let imageUrl = $state<string | null>(null);
   let imageError = $state<string | null>(null);
@@ -94,6 +134,7 @@
     if (res.ok) {
       imageUrl = res.image.canvas.toDataURL('image/png');
       imageError = null;
+      fill = 'image';
     } else {
       imageError = res.message;
     }
@@ -113,12 +154,21 @@
     imageError = null;
   }
 
-  let previewStyle = $derived(
-    `clip-path: ${result.value};` +
-      (imageUrl
-        ? ` background-image: url("${imageUrl}"); background-size: cover; background-position: center;`
-        : ''),
-  );
+  /**
+   * One inline style for the sample. An unparseable colour mid-typing makes
+   * the browser drop that declaration, so the `.sample` fallback shows until
+   * the text resolves again — nothing else needs to validate it.
+   */
+  let previewStyle = $derived.by(() => {
+    const clip = `clip-path: ${result.value};`;
+    if (fill === 'image' && imageUrl) {
+      return `${clip} background-image: url("${imageUrl}"); background-size: cover; background-position: center;`;
+    }
+    if (fill === 'gradient') {
+      return `${clip} background-image: linear-gradient(${gradientAngle}deg, ${gradientFrom}, ${gradientTo});`;
+    }
+    return `${clip} background-color: ${fillColor};`;
+  });
 
   // ---- handles ------------------------------------------------------------
   const clamp = (n: number) => Math.min(100, Math.max(0, n));
@@ -368,8 +418,8 @@
         ondragleave={() => (dragging = false)}
         ondrop={onDrop}
       >
-        <div class="stage" bind:this={stage} ondblclick={addPointAtEnd}>
-          <div class="sample" class:gradient={!imageUrl} data-testid="cp-preview" style={previewStyle}></div>
+        <div class="stage" data-testid="cp-stage" style={stageStyle} bind:this={stage} ondblclick={addPointAtEnd}>
+          <div class="sample" data-testid="cp-preview" style={previewStyle}></div>
           <svg class="overlay" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
             {#if mode !== 'circle'}
               <path class="outline" d={result.previewPath} />
@@ -403,17 +453,68 @@
         </div>
       </div>
 
-      <div class="row">
-        <label class="file-label" for="cp-image">
-          Preview image — choose one, or drop it on the preview
-          <input id="cp-image" data-testid="cp-image" type="file" accept="image/*" onchange={onPick} />
-        </label>
-        {#if imageUrl}
-          <button class="btn btn-sm" data-testid="cp-image-clear" onclick={clearImage}>Back to the gradient</button>
-        {/if}
+      <div class="grid">
+        <div>
+          <label for="cp-aspect">Aspect ratio</label>
+          <select id="cp-aspect" data-testid="cp-aspect" bind:value={aspect}>
+            {#each RATIOS as r (r.id)}
+              <option value={r.id}>{r.id}</option>
+            {/each}
+          </select>
+        </div>
+        <div>
+          <span class="label-text" id="cp-fill-label">Fill</span>
+          <div class="modes" role="group" aria-labelledby="cp-fill-label">
+            {#each FILLS as f (f.id)}
+              <button
+                class="btn btn-sm"
+                class:btn-primary={fill === f.id}
+                aria-pressed={fill === f.id}
+                data-testid={'cp-fill-' + f.id}
+                onclick={() => (fill = f.id)}
+              >
+                {f.label}
+              </button>
+            {/each}
+          </div>
+        </div>
       </div>
-      {#if imageError}
-        <p class="error" role="alert" data-testid="cp-image-error">{imageError}</p>
+
+      {#if fill === 'solid'}
+        <div class="grid">
+          <div>
+            <label for="cp-fill-color">Colour</label>
+            <ColorField id="cp-fill-color" testid="cp-fill-color" bind:value={fillColor} fallback="#e8a13a" ariaLabel="Fill colour" />
+          </div>
+        </div>
+      {:else if fill === 'gradient'}
+        <div class="grid">
+          <div>
+            <label for="cp-gradient-from">From</label>
+            <ColorField id="cp-gradient-from" testid="cp-gradient-from" bind:value={gradientFrom} fallback="#1e3a5f" ariaLabel="Gradient start colour" />
+          </div>
+          <div>
+            <label for="cp-gradient-to">To</label>
+            <ColorField id="cp-gradient-to" testid="cp-gradient-to" bind:value={gradientTo} fallback="#e8a13a" ariaLabel="Gradient end colour" />
+          </div>
+          <div>
+            <label for="cp-gradient-angle">Angle: {gradientAngle}°</label>
+            <input id="cp-gradient-angle" data-testid="cp-gradient-angle" type="range" min="0" max="360" step="1" bind:value={gradientAngle} />
+          </div>
+        </div>
+      {:else}
+        <div class="row">
+          <label class="file-label" for="cp-image">
+            Preview image — choose one, or drop it on the preview
+            <input id="cp-image" data-testid="cp-image" type="file" accept="image/*" onchange={onPick} />
+          </label>
+          {#if imageUrl}
+            <button class="btn btn-sm" data-testid="cp-image-clear" onclick={clearImage}>Remove image</button>
+          {/if}
+        </div>
+        {#if imageError}
+          <p class="error" role="alert" data-testid="cp-image-error">{imageError}</p>
+        {/if}
       {/if}
 
       <pre class="mono css" data-testid="cp-css">{result.css}</pre>
@@ -526,19 +627,22 @@
 
   .stage {
     position: relative;
-    height: 18rem;
-    /* A little room so handles on the box edge stay reachable. */
-    margin: 0.5rem;
+    /* Ratio and width come inline from the Aspect ratio select. */
+    box-sizing: border-box;
+    /* A little room so handles on the box edge stay reachable; auto centres. */
+    margin: 0.5rem auto;
   }
 
   .sample {
     position: absolute;
     inset: 0;
-    background: #1e3a5f;
+    /* Fallback while a typed colour does not parse yet. */
+    background-color: #e8a13a;
   }
 
-  .sample.gradient {
-    background: linear-gradient(135deg, #1e3a5f 0%, #2f6fb0 45%, #e8a13a 100%);
+  .label-text {
+    display: block;
+    margin-bottom: var(--space-1);
   }
 
   .overlay {

@@ -622,6 +622,11 @@ export interface BatchVariation {
   randomIcon: string[] | null;
   /** Scene: the allowed scenes, one picked per item. */
   scenes: SceneId[] | null;
+  /** Mosaic: item `i` adds `i × delta` percent to the block size, clamped to
+   * the slider's 2–25. */
+  blockSizeDelta: number | null;
+  /** Mosaic: item `i` adds `i × delta` to the cut-out share, clamped to 0–1. */
+  cutRatioDelta: number | null;
   /** Mosaic and swirl: `shuffle` reorders the palette per item (the same
    * colours, so a batch stays one family); `random` draws new ones, as many
    * as the base palette has. */
@@ -644,6 +649,8 @@ export const DEFAULT_BATCH_VARIATION: BatchVariation = {
   sizeDelta: null,
   randomIcon: null,
   scenes: null,
+  blockSizeDelta: null,
+  cutRatioDelta: null,
   palette: 'off',
 };
 
@@ -654,7 +661,40 @@ export const VARIATION_BOUNDS = {
   density: [10, 400],
   opacity: [0.05, 1],
   iconScale: [0.1, 0.95],
+  blockSize: [2, 25],
+  cutRatio: [0, 1],
 } as const;
+
+/** The long side of a randomized batch size: wide enough to be a real
+ * placeholder, small enough that a PNG batch of fifty still rasterizes. */
+export const RANDOM_SIZE_RANGE = [200, 2000] as const;
+
+/**
+ * `n` seeded random sizes for the sizes table (feedback round 1).
+ *
+ * With `keepRatio` the long side is rolled and the short side follows the
+ * base's proportions, so a 16:9 base gives `n` 16:9 sizes at different
+ * scales; without it both sides are rolled on their own. Pure — the page
+ * calls it with an rng from the batch seed and the numbers land in the
+ * table, where they stay editable; `buildBatch` only ever reads the table.
+ */
+export function randomSizes(
+  base: { width: number; height: number },
+  n: number,
+  keepRatio: boolean,
+  rng: () => number
+): { width: number; height: number }[] {
+  const count = Number.isFinite(n) ? Math.min(50, Math.max(1, Math.trunc(n))) : 1;
+  const bw = clampSide(base.width);
+  const bh = clampSide(base.height);
+  const [lo, hi] = RANDOM_SIZE_RANGE;
+  return Array.from({ length: count }, () => {
+    if (!keepRatio) return { width: randomInt(rng, lo, hi), height: randomInt(rng, lo, hi) };
+    const long = randomInt(rng, lo, hi);
+    const short = clampSide((long * Math.min(bw, bh)) / Math.max(bw, bh));
+    return bw >= bh ? { width: long, height: short } : { width: short, height: long };
+  });
+}
 
 const SEED_ALPHABET = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
 
@@ -682,7 +722,7 @@ const round3 = (n: number): number => Math.round(n * 1000) / 1000;
  * Only an enabled rule pulls from the rng, so turning one rule on does not
  * reshuffle the others' results. Rules are applied in a fixed order (sizes,
  * background, ink, gradient, noise, seed, lines, opacity, icon, scene,
- * palette) for the same reason.
+ * mosaic, palette) for the same reason.
  */
 export function varyOptions(
   base: ImageOptions,
@@ -753,6 +793,13 @@ export function varyOptions(
 
   if (variation.scenes && variation.scenes.length > 0) {
     out.scene = pick(rng, variation.scenes)!;
+  }
+
+  if (variation.blockSizeDelta !== null) {
+    out.blockSize = round3(clampUnit(base.blockSize + i * variation.blockSizeDelta, ...VARIATION_BOUNDS.blockSize));
+  }
+  if (variation.cutRatioDelta !== null) {
+    out.cutRatio = round3(clampUnit(base.cutRatio + i * variation.cutRatioDelta, ...VARIATION_BOUNDS.cutRatio));
   }
 
   if (variation.palette === 'shuffle') out.palette = shuffled(rng, base.palette);
